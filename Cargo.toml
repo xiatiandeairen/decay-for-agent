@@ -3,3 +3,7 @@ name = "decay"
 version = "0.1.0"
 description = "Project health monitoring for AI agents"
 edition = "2024"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"

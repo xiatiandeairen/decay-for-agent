@@ -1,5 +1,6 @@
 mod db;
 mod diagnose;
+mod filter;
 mod git;
 mod scan;
 mod score;

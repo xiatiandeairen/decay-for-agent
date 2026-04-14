@@ -1,10 +1,10 @@
 mod db;
 mod diagnose;
+mod dimension;
 mod filter;
 mod git;
 mod run;
 mod scan;
-mod score;
 mod trend;
 
 use clap::Parser;

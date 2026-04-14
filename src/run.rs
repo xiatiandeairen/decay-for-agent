@@ -1,41 +1,31 @@
+use std::collections::HashMap;
 use std::env;
 
 use anyhow::Result;
 use log::debug;
 use serde::Serialize;
 
-use crate::{db, diagnose, git, scan, score, trend};
+use crate::{db, diagnose, dimension, git, scan, trend};
 
 #[derive(Serialize)]
 pub struct Report {
     pub snapshot_id: i64,
-    pub scores: Scores,
+    pub scores: HashMap<String, Option<i32>>,
+    pub composite: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub trend: Option<trend::Trend>,
+    pub trend: Option<HashMap<String, trend::Delta>>,
     pub issues: Vec<diagnose::Issue>,
     pub scan: scan::ScanSummary,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub git: Option<git::GitSummary>,
 }
 
-#[derive(Serialize)]
-pub struct Scores {
-    pub structural: i32,
-    pub complexity: i32,
-    pub fragility: Option<i32>,
-    pub composite: i32,
-}
-
-pub const HEALTH_REPORT_TEMPLATE: &str = include_str!("../templates/health-report.md");
-
 pub struct MarkdownCtx<'a> {
     pub snapshot_id: i64,
     pub project_path: &'a str,
-    pub s: i32,
-    pub c: i32,
-    pub f: Option<i32>,
-    pub comp: i32,
-    pub trend_data: &'a Option<trend::Trend>,
+    pub scores: &'a HashMap<String, Option<i32>>,
+    pub composite: i32,
+    pub trend_data: &'a Option<HashMap<String, trend::Delta>>,
     pub scan_summary: &'a scan::ScanSummary,
     pub git_summary: &'a Option<git::GitSummary>,
     pub issues: &'a [diagnose::Issue],
@@ -45,31 +35,47 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
     let MarkdownCtx {
         snapshot_id,
         project_path,
-        s,
-        c,
-        f,
-        comp,
+        scores,
+        composite,
         trend_data,
         scan_summary,
         git_summary,
         issues,
     } = ctx;
-    let f_str = f.map_or("N/A".to_string(), |v| v.to_string());
 
-    let (s_trend, c_trend, f_trend, comp_trend) = match trend_data {
-        Some(t) => (
-            format!("{}", t.structural),
-            format!("{}", t.complexity),
-            format!("{}", t.fragility),
-            format!("{}", t.composite),
-        ),
-        None => (
-            "—".to_string(),
-            "—".to_string(),
-            "—".to_string(),
-            "—".to_string(),
-        ),
-    };
+    // Build scores table rows dynamically
+    let dimension_order = ["structural", "complexity", "fragility"];
+    let mut scores_rows = String::new();
+    for name in &dimension_order {
+        let score_str = scores
+            .get(*name)
+            .and_then(|s| *s)
+            .map_or("N/A".to_string(), |v| v.to_string());
+        let trend_str = trend_data
+            .as_ref()
+            .and_then(|t| t.get(*name))
+            .map_or("—".to_string(), |d| format!("{d}"));
+        scores_rows.push_str(&format!("| {name} | {score_str} | {trend_str} |\n"));
+    }
+    // Add any dimensions not in the fixed order
+    for (name, score) in scores.iter() {
+        if !dimension_order.contains(&name.as_str()) && name != "composite" {
+            let score_str = score.map_or("N/A".to_string(), |v: i32| v.to_string());
+            let trend_str = trend_data
+                .as_ref()
+                .and_then(|t| t.get(name))
+                .map_or("—".to_string(), |d| format!("{d}"));
+            scores_rows.push_str(&format!("| {name} | {score_str} | {trend_str} |\n"));
+        }
+    }
+
+    let comp_trend = trend_data
+        .as_ref()
+        .and_then(|t| t.get("composite"))
+        .map_or("—".to_string(), |d| format!("{d}"));
+    scores_rows.push_str(&format!(
+        "| **composite** | **{composite}** | **{comp_trend}** |"
+    ));
 
     let (total_commits, files_analyzed) = match git_summary {
         Some(g) => (g.total_commits.to_string(), g.files_analyzed.to_string()),
@@ -140,26 +146,40 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
 
     let timestamp = chrono_now();
 
-    HEALTH_REPORT_TEMPLATE
-        .replace("{{project_name}}", &project_name)
-        .replace("{{version}}", env!("CARGO_PKG_VERSION"))
-        .replace("{{timestamp}}", &timestamp)
-        .replace("{{snapshot_id}}", &snapshot_id.to_string())
-        .replace("{{structural}}", &s.to_string())
-        .replace("{{complexity}}", &c.to_string())
-        .replace("{{fragility}}", &f_str)
-        .replace("{{composite}}", &comp.to_string())
-        .replace("{{structural_trend}}", &s_trend)
-        .replace("{{complexity_trend}}", &c_trend)
-        .replace("{{fragility_trend}}", &f_trend)
-        .replace("{{composite_trend}}", &comp_trend)
-        .replace("{{file_count}}", &scan_summary.file_count.to_string())
-        .replace("{{dir_count}}", &scan_summary.dir_count.to_string())
-        .replace("{{max_depth}}", &scan_summary.max_depth.to_string())
-        .replace("{{total_commits}}", &total_commits)
-        .replace("{{files_analyzed}}", &files_analyzed)
-        .replace("{{issue_summary}}", &issue_summary)
-        .replace("{{issues_section}}", &issues_section)
+    // Use a simplified template approach — build the full markdown
+    format!(
+        "# {project_name} Health Report\n\
+         \n\
+         decay v{version} | {timestamp} | Snapshot #{snapshot_id}\n\
+         \n\
+         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\
+         \n\
+         ## Scores\n\
+         \n\
+         | Dimension | Score | Trend |\n\
+         |-----------|------:|-------|\n\
+         {scores_rows}\n\
+         \n\
+         ## Scan\n\
+         \n\
+         | Metric | Value |\n\
+         |--------|------:|\n\
+         | Files | {file_count} |\n\
+         | Directories | {dir_count} |\n\
+         | Max depth | {max_depth} |\n\
+         | Commits (90d) | {total_commits} |\n\
+         | Files changed | {files_analyzed} |\n\
+         \n\
+         ## Issues ({issue_summary})\n\
+         \n\
+         {issues_section}\n\
+         \n\
+         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
+        version = env!("CARGO_PKG_VERSION"),
+        file_count = scan_summary.file_count,
+        dir_count = scan_summary.dir_count,
+        max_depth = scan_summary.max_depth,
+    )
 }
 
 fn is_leap(y: u64) -> bool {
@@ -171,7 +191,6 @@ fn chrono_now() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    // Simple UTC date-time formatting
     let secs_per_day: u64 = 86400;
     let days = now / secs_per_day;
     let remaining = now % secs_per_day;
@@ -208,7 +227,6 @@ fn chrono_now() -> String {
 /// Run the core decay logic.
 ///
 /// Returns `Ok(true)` if critical issues exist, `Ok(false)` otherwise.
-/// Does not call `process::exit` — caller is responsible for exit codes.
 pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
     debug!("decay starting");
 
@@ -241,25 +259,49 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
         }
     };
 
-    let s = score::structural(&conn, snapshot_id)?;
-    let c = score::complexity(&conn, snapshot_id)?;
-    let f = if git_summary.is_some() {
-        score::fragility(&conn, snapshot_id)?
-    } else {
-        None
-    };
-    let comp = score::composite(s, c, f);
-    debug!("scores: structural={s} complexity={c} fragility={f:?} composite={comp}");
+    // Evaluate all dimensions via registry
+    let dimensions = dimension::all_dimensions();
+    let mut scores: HashMap<String, Option<i32>> = HashMap::new();
+    let mut all_issues: Vec<diagnose::Issue> = Vec::new();
 
+    for dim in &dimensions {
+        let result = dim.evaluate(&conn, snapshot_id)?;
+        debug!("dimension {}: score={:?}", result.name, result.score);
+        scores.insert(result.name.clone(), result.score);
+        all_issues.extend(result.issues);
+    }
+
+    all_issues.sort_by_key(|i| i.level);
+
+    // Compute composite (equal-weight average of available scores)
+    let available: Vec<i32> = scores.values().filter_map(|s| *s).collect();
+    let comp = if available.is_empty() {
+        0
+    } else {
+        available.iter().sum::<i32>() / available.len() as i32
+    };
+    scores.insert("composite".to_string(), Some(comp));
+
+    // Persist dimension scores
+    let score_pairs: Vec<(String, Option<i32>)> = scores
+        .iter()
+        .map(|(k, v)| (k.clone(), *v))
+        .collect();
+    db::insert_dimension_scores(&conn, snapshot_id, &score_pairs)?;
+
+    // Also persist to legacy scores table for backward compat
+    let s = scores.get("structural").and_then(|s| *s).unwrap_or(0);
+    let c = scores.get("complexity").and_then(|s| *s).unwrap_or(0);
+    let f = scores.get("fragility").and_then(|s| *s);
     db::insert_scores(&conn, snapshot_id, s, c, f, comp)?;
 
-    let trend_data = db::get_previous_scores(&conn, &project_path_str, snapshot_id)?
-        .map(|prev| trend::Trend::compare(s, c, f, comp, &prev));
+    debug!("scores: {scores:?} composite={comp}");
 
-    let issues = diagnose::run(&conn, snapshot_id)?;
-    debug!("diagnosis complete: {} issues", issues.len());
+    // Trend comparison
+    let trend_data = db::get_previous_dimension_scores(&conn, &project_path_str, snapshot_id)?
+        .map(|prev| trend::compare_dimensions(&scores, &prev));
 
-    let critical_count = issues
+    let critical_count = all_issues
         .iter()
         .filter(|i| i.level == diagnose::Level::Critical)
         .count();
@@ -267,14 +309,10 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
     if json {
         let report = Report {
             snapshot_id,
-            scores: Scores {
-                structural: s,
-                complexity: c,
-                fragility: f,
-                composite: comp,
-            },
+            scores: scores.clone(),
+            composite: comp,
             trend: trend_data,
-            issues,
+            issues: all_issues,
             scan: scan_summary,
             git: git_summary,
         };
@@ -283,14 +321,12 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
         let md = render_markdown(&MarkdownCtx {
             snapshot_id,
             project_path: &project_path_str,
-            s,
-            c,
-            f,
-            comp,
+            scores: &scores,
+            composite: comp,
             trend_data: &trend_data,
             scan_summary: &scan_summary,
             git_summary: &git_summary,
-            issues: &issues,
+            issues: &all_issues,
         });
         println!("{md}");
     } else if quiet {
@@ -310,19 +346,39 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
         }
 
         match &trend_data {
-            Some(t) => println!("{}", trend::format_health_with_trend(comp, s, c, f, t)),
+            Some(t) => {
+                let mut health_parts = vec![format!("Health: {comp}/100")];
+                if let Some(cd) = t.get("composite") {
+                    health_parts[0] = format!("Health: {comp}/100 ({cd})");
+                }
+                for dim in &dimensions {
+                    let name = dim.name();
+                    let score_str = scores
+                        .get(name)
+                        .and_then(|s| *s)
+                        .map_or("N/A".to_string(), |v| v.to_string());
+                    let trend_str = t
+                        .get(name)
+                        .map_or(String::new(), |d| format!(" ({d})"));
+                    health_parts.push(format!("{name}: {score_str}{trend_str}"));
+                }
+                println!("{}", health_parts.join(" "));
+            }
             None => {
-                let f_display = match f {
-                    Some(v) => format!("{v}"),
-                    None => "N/A".to_string(),
-                };
-                println!(
-                    "Health: {comp}/100 structural: {s} complexity: {c} fragility: {f_display}"
-                );
+                let mut health_parts = vec![format!("Health: {comp}/100")];
+                for dim in &dimensions {
+                    let name = dim.name();
+                    let score_str = scores
+                        .get(name)
+                        .and_then(|s| *s)
+                        .map_or("N/A".to_string(), |v| v.to_string());
+                    health_parts.push(format!("{name}: {score_str}"));
+                }
+                println!("{}", health_parts.join(" "));
             }
         }
 
-        diagnose::print_issues(&issues);
+        diagnose::print_issues(&all_issues);
 
         println!(
             "Snapshot #{snapshot_id} created for {}",

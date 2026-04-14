@@ -48,3 +48,5 @@
   - [tech](.know/docs/requirements/markdown-output/tech.md) | 2026-04-14
 - [quiet-mode](.know/docs/requirements/quiet-mode/prd.md) | 2026-04-14
   - [tech](.know/docs/requirements/quiet-mode/tech.md) | 2026-04-14
+- [dimension-trait](.know/docs/requirements/dimension-trait/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/dimension-trait/tech.md) | 2026-04-14

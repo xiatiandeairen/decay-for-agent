@@ -1,6 +1,5 @@
+use std::collections::HashMap;
 use std::fmt;
-
-use crate::db::PreviousScores;
 
 /// Direction and magnitude of score change.
 #[derive(Clone, serde::Serialize)]
@@ -34,36 +33,6 @@ impl From<Delta> for String {
     }
 }
 
-/// Trend comparison across all dimensions.
-#[derive(serde::Serialize)]
-pub struct Trend {
-    pub structural: Delta,
-    pub complexity: Delta,
-    pub fragility: Delta,
-    pub composite: Delta,
-}
-
-impl Trend {
-    /// Compare current scores against previous snapshot.
-    pub fn compare(
-        structural: i32,
-        complexity: i32,
-        fragility: Option<i32>,
-        composite: i32,
-        previous: &PreviousScores,
-    ) -> Self {
-        Trend {
-            structural: delta(structural, previous.structural),
-            complexity: delta(complexity, previous.complexity),
-            fragility: match (fragility, previous.fragility) {
-                (Some(curr), Some(prev)) => delta(curr, prev),
-                _ => Delta::NA,
-            },
-            composite: delta(composite, previous.composite),
-        }
-    }
-}
-
 fn delta(current: i32, previous: i32) -> Delta {
     let diff = current - previous;
     match diff.cmp(&0) {
@@ -73,22 +42,21 @@ fn delta(current: i32, previous: i32) -> Delta {
     }
 }
 
-/// Format the health line with trend info.
-pub fn format_health_with_trend(
-    composite: i32,
-    structural: i32,
-    complexity: i32,
-    fragility: Option<i32>,
-    trend: &Trend,
-) -> String {
-    let f_display = match fragility {
-        Some(v) => format!("{v}"),
-        None => "N/A".to_string(),
-    };
-    format!(
-        "Health: {composite}/100 ({}) structural: {structural} ({}) complexity: {complexity} ({}) fragility: {f_display} ({})",
-        trend.composite, trend.structural, trend.complexity, trend.fragility
-    )
+/// Compare current dimension scores against previous snapshot scores.
+pub fn compare_dimensions(
+    current: &HashMap<String, Option<i32>>,
+    previous: &HashMap<String, Option<i32>>,
+) -> HashMap<String, Delta> {
+    let mut result = HashMap::new();
+    for (name, curr_score) in current {
+        let prev_score = previous.get(name).copied().flatten();
+        let d = match (*curr_score, prev_score) {
+            (Some(c), Some(p)) => delta(c, p),
+            _ => Delta::NA,
+        };
+        result.insert(name.clone(), d);
+    }
+    result
 }
 
 #[cfg(test)]
@@ -111,30 +79,36 @@ mod tests {
     }
 
     #[test]
-    fn test_compare_with_previous() {
-        let prev = PreviousScores {
-            structural: 80,
-            complexity: 90,
-            fragility: Some(70),
-            composite: 80,
-        };
-        let trend = Trend::compare(85, 90, Some(60), 78, &prev);
-        assert!(matches!(trend.structural, Delta::Up(5)));
-        assert!(matches!(trend.complexity, Delta::Unchanged));
-        assert!(matches!(trend.fragility, Delta::Down(10)));
-        assert!(matches!(trend.composite, Delta::Down(2)));
+    fn test_compare_dimensions() {
+        let mut current = HashMap::new();
+        current.insert("structural".to_string(), Some(85));
+        current.insert("complexity".to_string(), Some(90));
+        current.insert("fragility".to_string(), Some(60));
+        current.insert("composite".to_string(), Some(78));
+
+        let mut previous = HashMap::new();
+        previous.insert("structural".to_string(), Some(80));
+        previous.insert("complexity".to_string(), Some(90));
+        previous.insert("fragility".to_string(), Some(70));
+        previous.insert("composite".to_string(), Some(80));
+
+        let trend = compare_dimensions(&current, &previous);
+        assert!(matches!(trend.get("structural").unwrap(), Delta::Up(5)));
+        assert!(matches!(trend.get("complexity").unwrap(), Delta::Unchanged));
+        assert!(matches!(trend.get("fragility").unwrap(), Delta::Down(10)));
+        assert!(matches!(trend.get("composite").unwrap(), Delta::Down(2)));
     }
 
     #[test]
-    fn test_compare_fragility_na() {
-        let prev = PreviousScores {
-            structural: 80,
-            complexity: 90,
-            fragility: None,
-            composite: 85,
-        };
-        let trend = Trend::compare(80, 90, Some(70), 80, &prev);
-        assert!(matches!(trend.fragility, Delta::NA));
+    fn test_compare_na() {
+        let mut current = HashMap::new();
+        current.insert("fragility".to_string(), Some(70));
+
+        let mut previous = HashMap::new();
+        previous.insert("fragility".to_string(), None);
+
+        let trend = compare_dimensions(&current, &previous);
+        assert!(matches!(trend.get("fragility").unwrap(), Delta::NA));
     }
 
     #[test]

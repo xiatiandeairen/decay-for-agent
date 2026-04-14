@@ -1,10 +1,12 @@
 mod collector;
+mod config;
 mod db;
 mod diagnose;
 mod dimension;
 mod filter;
 mod filter_pipeline;
 mod git;
+mod git_pipeline;
 mod profile;
 mod run;
 mod scan;

@@ -4,6 +4,7 @@ use std::process::Command;
 use anyhow::Result;
 use log::debug;
 
+use crate::config::DecayConfig;
 use crate::filter_pipeline::{self, FilterContext};
 
 /// A resolved file with its metadata.
@@ -14,20 +15,22 @@ pub struct FileEntry {
 }
 
 /// Resolve the list of files to scan using:
-/// L1: Source selection (git > walkdir fallback)
+/// L1: Source selection (git > ignore-aware walk fallback)
 /// L2-L4: Filter pipeline (dir exclusion → file type → language)
 pub fn resolve_files(project_path: &Path) -> Result<Vec<FileEntry>> {
+    let config = DecayConfig::load(project_path);
+
     // L1: Collect raw files
     let raw = if let Some(files) = git_files(project_path)? {
         debug!("filter: using git ls-files ({} files)", files.len());
         files
     } else {
-        debug!("filter: no git, falling back to walkdir");
+        debug!("filter: no git, falling back to ignore-aware walk");
         walk_files(project_path)?
     };
 
-    // L2-L4: Run filter pipeline
-    let ctx = FilterContext::new(project_path);
+    // L2-L4: Run filter pipeline with config
+    let ctx = FilterContext::from_config(project_path, &config);
     let filtered = filter_pipeline::run_pipeline(raw, &ctx);
     debug!("filter: pipeline result: {} files", filtered.len());
 
@@ -60,8 +63,7 @@ fn git_files(project_path: &Path) -> Result<Option<Vec<FileEntry>>> {
         if line.is_empty() {
             continue;
         }
-        let rel_path = PathBuf::from(line);
-        if let Some(entry) = make_entry(project_path, &rel_path)? {
+        if let Some(entry) = make_entry(project_path, &PathBuf::from(line))? {
             files.push(entry);
         }
     }
@@ -72,8 +74,7 @@ fn git_files(project_path: &Path) -> Result<Option<Vec<FileEntry>>> {
             if line.is_empty() {
                 continue;
             }
-            let rel_path = PathBuf::from(line);
-            if let Some(entry) = make_entry(project_path, &rel_path)? {
+            if let Some(entry) = make_entry(project_path, &PathBuf::from(line))? {
                 files.push(entry);
             }
         }
@@ -82,14 +83,28 @@ fn git_files(project_path: &Path) -> Result<Option<Vec<FileEntry>>> {
     Ok(Some(files))
 }
 
-/// L1 fallback: Walk the directory tree (no filtering, pipeline handles it).
+/// L1 fallback: Walk using `ignore` crate (respects .gitignore, .ignore, hidden files).
 fn walk_files(project_path: &Path) -> Result<Vec<FileEntry>> {
-    use walkdir::WalkDir;
+    use ignore::WalkBuilder;
+
+    let walker = WalkBuilder::new(project_path)
+        .hidden(true)       // skip hidden files/dirs
+        .git_ignore(true)   // respect .gitignore
+        .git_global(true)   // respect global gitignore
+        .git_exclude(true)  // respect .git/info/exclude
+        .ignore(true)       // respect .ignore files
+        .parents(true)      // respect parent directory ignore files
+        .build();
 
     let mut files = Vec::new();
 
-    for entry in WalkDir::new(project_path).into_iter().filter_map(|e| e.ok()) {
-        if entry.file_type().is_dir() {
+    for entry in walker {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        if entry.file_type().is_some_and(|ft| ft.is_dir()) {
             continue;
         }
 
@@ -104,6 +119,7 @@ fn walk_files(project_path: &Path) -> Result<Vec<FileEntry>> {
         }
     }
 
+    debug!("filter: ignore-aware walk found {} files", files.len());
     Ok(files)
 }
 
@@ -158,34 +174,33 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn test_walk_and_filter() -> Result<()> {
+    fn test_resolve_with_gitignore() -> Result<()> {
         let dir = TempDir::new()?;
         fs::write(dir.path().join("main.rs"), "fn main() {}")?;
-        fs::create_dir_all(dir.path().join(".build/debug"))?;
-        fs::write(dir.path().join(".build/debug/app"), "binary")?;
-        fs::create_dir_all(dir.path().join("DerivedData/cache"))?;
-        fs::write(dir.path().join("DerivedData/cache/data"), "cache")?;
-        fs::write(dir.path().join("icon.png"), "image")?;
-        fs::write(dir.path().join("readme.md"), "# hello")?;
+        fs::create_dir_all(dir.path().join("output"))?;
+        fs::write(dir.path().join("output/data"), "binary")?;
+        fs::write(dir.path().join(".gitignore"), "output/\n")?;
 
+        // resolve_files uses walk_files (no git) → ignore crate respects .gitignore → pipeline filters
         let files = resolve_files(dir.path())?;
-        // .build → L2 excluded, DerivedData → L2 excluded
-        // icon.png → L3 excluded, readme.md → L4 excluded (not rust)
-        assert_eq!(files.len(), 1);
-        assert_eq!(files[0].rel_path, PathBuf::from("main.rs"));
+        let names: Vec<_> = files.iter().map(|f| f.rel_path.to_string_lossy().to_string()).collect();
+        assert!(names.contains(&"main.rs".to_string()));
+        assert!(!names.iter().any(|n| n.contains("output")));
         Ok(())
     }
 
     #[test]
-    fn test_vendor_excluded() -> Result<()> {
+    fn test_resolve_with_ignore_file() -> Result<()> {
         let dir = TempDir::new()?;
-        fs::write(dir.path().join("app.swift"), "import UIKit")?;
-        fs::create_dir_all(dir.path().join("vendor/DoKit"))?;
-        fs::write(dir.path().join("vendor/DoKit/DoKit.m"), "objc")?;
+        fs::write(dir.path().join("main.rs"), "fn main() {}")?;
+        fs::create_dir_all(dir.path().join("generated"))?;
+        fs::write(dir.path().join("generated/code.rs"), "// generated")?;
+        fs::write(dir.path().join(".ignore"), "generated/\n")?;
 
         let files = resolve_files(dir.path())?;
-        assert_eq!(files.len(), 1);
-        assert_eq!(files[0].rel_path, PathBuf::from("app.swift"));
+        let names: Vec<_> = files.iter().map(|f| f.rel_path.to_string_lossy().to_string()).collect();
+        assert!(names.contains(&"main.rs".to_string()));
+        assert!(!names.iter().any(|n| n.contains("generated")));
         Ok(())
     }
 

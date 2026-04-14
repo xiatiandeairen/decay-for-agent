@@ -3,24 +3,25 @@ use std::path::{Path, PathBuf};
 
 use log::debug;
 
+use crate::config::DecayConfig;
 use crate::filter::FileEntry;
 
 /// Context shared across all filter stages.
 pub struct FilterContext {
     pub project_path: PathBuf,
-    // Reserved for future .decayrc config overrides
     pub extra_exclude_dirs: Vec<String>,
     pub extra_exclude_extensions: Vec<String>,
     pub language_override: Option<Vec<String>>,
 }
 
 impl FilterContext {
-    pub fn new(project_path: &Path) -> Self {
+    /// Build context from DecayConfig.
+    pub fn from_config(project_path: &Path, config: &DecayConfig) -> Self {
         Self {
             project_path: project_path.to_path_buf(),
-            extra_exclude_dirs: Vec::new(),
-            extra_exclude_extensions: Vec::new(),
-            language_override: None,
+            extra_exclude_dirs: config.exclude_dirs.clone(),
+            extra_exclude_extensions: config.exclude_extensions.clone(),
+            language_override: config.languages.clone(),
         }
     }
 }
@@ -170,12 +171,12 @@ impl FilterStage for FileTypeFilter {
 // ============================================================
 
 /// Language group: a named set of file extensions.
-struct LanguageGroup {
-    name: &'static str,
-    extensions: &'static [&'static str],
+pub struct LanguageGroup {
+    pub name: &'static str,
+    pub extensions: &'static [&'static str],
 }
 
-const LANGUAGE_GROUPS: &[LanguageGroup] = &[
+pub const LANGUAGE_GROUPS: &[LanguageGroup] = &[
     LanguageGroup { name: "rust", extensions: &["rs"] },
     LanguageGroup { name: "swift", extensions: &["swift"] },
     LanguageGroup { name: "objc", extensions: &["m", "mm", "h"] },
@@ -303,7 +304,7 @@ mod tests {
     }
 
     fn default_ctx() -> FilterContext {
-        FilterContext::new(Path::new("/tmp/test"))
+        FilterContext::from_config(Path::new("/tmp/test"), &DecayConfig::default())
     }
 
     // --- DirExclusion tests ---
@@ -449,7 +450,7 @@ mod tests {
             make_file("README.md", 500),
             make_file("Cargo.toml", 200),
         ];
-        let ctx = FilterContext::new(Path::new("/tmp/test"));
+        let ctx = FilterContext::from_config(Path::new("/tmp/test"), &DecayConfig::default());
         let result = run_pipeline(files, &ctx);
         // node_modules → L2 excluded
         // vendor → L2 excluded

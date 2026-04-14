@@ -3,7 +3,6 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use git2::Repository;
-use rusqlite::Connection;
 
 /// Summary of git history analysis.
 #[derive(serde::Serialize)]
@@ -12,13 +11,18 @@ pub struct GitSummary {
     pub total_commits: usize,
 }
 
-/// Analyze git history for the given number of days and write to git_changes table.
-pub fn collect(
-    conn: &Connection,
-    snapshot_id: i64,
-    project_path: &Path,
-    days: u32,
-) -> Result<GitSummary> {
+/// A single file's change statistics from git history.
+pub struct GitChange {
+    pub path: String,
+    pub change_count: i64,
+    pub lines_added: i64,
+    pub lines_deleted: i64,
+    pub last_modified: String,
+}
+
+/// Analyze git history for the given number of days.
+/// Returns (changes, summary) without writing to DB.
+pub fn collect(project_path: &Path, days: u32) -> Result<(Vec<GitChange>, GitSummary)> {
     let repo = Repository::open(project_path).context("failed to open git repository")?;
 
     let mut revwalk = repo.revwalk().context("failed to create revwalk")?;
@@ -30,7 +34,7 @@ pub fn collect(
     let cutoff = chrono_cutoff(days);
     let mut total_commits = 0;
 
-    // Aggregate per file: change_count, lines_added, lines_deleted, last_modified
+    // Aggregate per file
     let mut file_stats: HashMap<String, FileChange> = HashMap::new();
 
     for oid in revwalk {
@@ -51,8 +55,6 @@ pub fn collect(
             .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
             .context("failed to diff trees")?;
 
-        // Collect changed file paths from deltas
-        let mut seen_in_commit: Vec<String> = Vec::new();
         for delta in diff.deltas() {
             if let Some(path) = delta
                 .new_file()
@@ -60,18 +62,16 @@ pub fn collect(
                 .or_else(|| delta.old_file().path())
                 .map(|p| p.to_string_lossy().to_string())
             {
-                let entry = file_stats.entry(path.clone()).or_insert(FileChange {
+                let entry = file_stats.entry(path).or_insert(FileChange {
                     change_count: 0,
                     lines_added: 0,
                     lines_deleted: 0,
                     last_modified: commit_time,
                 });
                 entry.change_count += 1;
-                seen_in_commit.push(path);
             }
         }
 
-        // Count line-level changes in single pass
         diff.foreach(
             &mut |_, _| true,
             None,
@@ -98,26 +98,24 @@ pub fn collect(
 
     let files_analyzed = file_stats.len();
 
-    for (path, stats) in &file_stats {
-        let last_modified = format_timestamp(stats.last_modified);
-        conn.execute(
-            "INSERT INTO git_changes (snapshot_id, path, change_count, lines_added, lines_deleted, last_modified) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![
-                snapshot_id,
-                path,
-                stats.change_count,
-                stats.lines_added,
-                stats.lines_deleted,
-                last_modified,
-            ],
-        )
-        .context("failed to insert git_changes record")?;
-    }
+    let changes: Vec<GitChange> = file_stats
+        .into_iter()
+        .map(|(path, stats)| GitChange {
+            path,
+            change_count: stats.change_count,
+            lines_added: stats.lines_added,
+            lines_deleted: stats.lines_deleted,
+            last_modified: format_timestamp(stats.last_modified),
+        })
+        .collect();
 
-    Ok(GitSummary {
-        files_analyzed,
-        total_commits,
-    })
+    Ok((
+        changes,
+        GitSummary {
+            files_analyzed,
+            total_commits,
+        },
+    ))
 }
 
 struct FileChange {
@@ -127,7 +125,6 @@ struct FileChange {
     last_modified: i64,
 }
 
-/// Calculate the unix timestamp for N days ago.
 fn chrono_cutoff(days: u32) -> i64 {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -136,9 +133,7 @@ fn chrono_cutoff(days: u32) -> i64 {
     now - (days as i64 * 86400)
 }
 
-/// Format a unix timestamp as ISO 8601 string.
 fn format_timestamp(ts: i64) -> String {
-    // Simple UTC formatting without external crate
     let secs_per_day: i64 = 86400;
     let days = ts / secs_per_day;
     let remaining = ts % secs_per_day;
@@ -146,7 +141,6 @@ fn format_timestamp(ts: i64) -> String {
     let minutes = (remaining % 3600) / 60;
     let seconds = remaining % 60;
 
-    // Days since epoch to year-month-day (simplified)
     let mut y = 1970;
     let mut d = days;
     loop {
@@ -187,7 +181,6 @@ mod tests {
 
     #[test]
     fn test_format_timestamp() {
-        // 2026-01-01 00:00:00 UTC = 1767225600
         let ts = 1767225600;
         let result = format_timestamp(ts);
         assert_eq!(result, "2026-01-01T00:00:00Z");
@@ -207,29 +200,12 @@ mod tests {
 
     #[test]
     fn test_collect_on_current_repo() -> Result<()> {
-        let conn = Connection::open_in_memory()?;
-        conn.execute_batch(
-            "CREATE TABLE git_changes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                snapshot_id INTEGER NOT NULL,
-                path TEXT NOT NULL,
-                change_count INTEGER NOT NULL,
-                lines_added INTEGER NOT NULL,
-                lines_deleted INTEGER NOT NULL,
-                last_modified TEXT NOT NULL
-            );",
-        )?;
-
         let project_path = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let summary = collect(&conn, 1, project_path, 90)?;
+        let (changes, summary) = collect(project_path, 90)?;
 
-        // We should have at least some commits and files in this repo
         assert!(summary.total_commits > 0, "expected commits in repo");
         assert!(summary.files_analyzed > 0, "expected files analyzed");
-
-        let count: i64 =
-            conn.query_row("SELECT COUNT(*) FROM git_changes", [], |row| row.get(0))?;
-        assert!(count > 0, "expected git_changes records");
+        assert!(!changes.is_empty(), "expected git changes");
 
         Ok(())
     }

@@ -38,3 +38,4 @@
 - [test-debug](.know/docs/requirements/test-debug/prd.md) | 2026-04-14
   - [tech](.know/docs/requirements/test-debug/tech.md) | 2026-04-14
 - [mcp-server](.know/docs/requirements/mcp-server/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/mcp-server/tech.md) | 2026-04-14

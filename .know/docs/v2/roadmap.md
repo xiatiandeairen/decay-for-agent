@@ -30,7 +30,7 @@
 
 | # | 里程碑 | 验证点 | 进度 | 需求 |
 |---|--------|--------|------|------|
-| M1 | **搭建 MCP server** — 独立进程包装 CLI `--json` 为 MCP tool | Claude Code agent 通过 MCP 调用 decay 并获取 JSON 结果 | 0/1 | [mcp-server](../requirements/mcp-server/prd.md) |
+| M1 | **搭建 MCP server** — 独立进程包装 CLI `--json` 为 MCP tool | Claude Code agent 通过 MCP 调用 decay 并获取 JSON 结果 | 1/1 | [mcp-server](../requirements/mcp-server/prd.md) |
 | M2 | **创建 skill 入口** — `/decay` slash command + SKILL.md | 用户在 Claude Code 中 `/decay` 触发健康检查并看到格式化结果 | 0/0 | — |
 | M3 | **添加 Markdown 输出** — `--markdown` flag 生成人可读报告 | `decay --markdown` 输出包含评分、趋势、问题、处方的格式化报告 | 0/0 | — |
 | M4 | **集成 sprint** — sprint insight 阶段自动调用 decay | sprint 结束时自动产生健康快照，趋势数据跟着开发节奏累积 | 0/0 | — |

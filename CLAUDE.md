@@ -41,3 +41,7 @@
   - [tech](.know/docs/requirements/mcp-server/tech.md) | 2026-04-14
 - [skill-entry](.know/docs/requirements/skill-entry/prd.md) | 2026-04-14
   - [tech](.know/docs/requirements/skill-entry/tech.md) | 2026-04-14
+- [markdown-output](.know/docs/requirements/markdown-output/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/markdown-output/tech.md) | 2026-04-14
+- [quiet-mode](.know/docs/requirements/quiet-mode/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/quiet-mode/tech.md) | 2026-04-14

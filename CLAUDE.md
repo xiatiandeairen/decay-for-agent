@@ -54,3 +54,5 @@
   - [tech](.know/docs/requirements/collector-plugin/tech.md) | 2026-04-14
 - [score-profile](.know/docs/requirements/score-profile/prd.md) | 2026-04-14
   - [tech](.know/docs/requirements/score-profile/tech.md) | 2026-04-14
+- [maintainability](.know/docs/requirements/maintainability/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/maintainability/tech.md) | 2026-04-14

@@ -26,34 +26,40 @@ impl ScoreProfile {
     pub fn for_type(pt: ProjectType) -> Self {
         let weights = match pt {
             ProjectType::Cli => vec![
-                ("structural", 0.30),
-                ("complexity", 0.40),
-                ("fragility", 0.30),
+                ("structural", 0.25),
+                ("complexity", 0.30),
+                ("fragility", 0.25),
+                ("maintainability", 0.20),
             ],
             ProjectType::WebService => vec![
-                ("structural", 0.25),
-                ("complexity", 0.30),
-                ("fragility", 0.45),
+                ("structural", 0.20),
+                ("complexity", 0.25),
+                ("fragility", 0.35),
+                ("maintainability", 0.20),
             ],
             ProjectType::Library => vec![
-                ("structural", 0.30),
-                ("complexity", 0.40),
-                ("fragility", 0.30),
+                ("structural", 0.20),
+                ("complexity", 0.30),
+                ("fragility", 0.20),
+                ("maintainability", 0.30),
             ],
             ProjectType::MobileApp => vec![
-                ("structural", 0.25),
-                ("complexity", 0.35),
-                ("fragility", 0.40),
+                ("structural", 0.20),
+                ("complexity", 0.30),
+                ("fragility", 0.30),
+                ("maintainability", 0.20),
             ],
             ProjectType::Monorepo => vec![
-                ("structural", 0.35),
-                ("complexity", 0.30),
-                ("fragility", 0.35),
+                ("structural", 0.30),
+                ("complexity", 0.25),
+                ("fragility", 0.25),
+                ("maintainability", 0.20),
             ],
             ProjectType::Generic => vec![
-                ("structural", 0.33),
-                ("complexity", 0.34),
-                ("fragility", 0.33),
+                ("structural", 0.25),
+                ("complexity", 0.25),
+                ("fragility", 0.25),
+                ("maintainability", 0.25),
             ],
         };
         ScoreProfile {
@@ -334,9 +340,10 @@ mod tests {
         scores.insert("structural".to_string(), Some(100));
         scores.insert("complexity".to_string(), Some(100));
         scores.insert("fragility".to_string(), Some(0));
-        // 100*0.25 + 100*0.30 + 0*0.45 = 55
+        scores.insert("maintainability".to_string(), Some(100));
+        // 100*0.20 + 100*0.25 + 0*0.35 + 100*0.20 = 65
         let comp = profile.weighted_composite(&scores);
-        assert_eq!(comp, 55);
+        assert_eq!(comp, 65);
     }
 
     #[test]
@@ -346,9 +353,10 @@ mod tests {
         scores.insert("structural".to_string(), Some(80));
         scores.insert("complexity".to_string(), Some(60));
         scores.insert("fragility".to_string(), None);
-        // (80*0.30 + 60*0.40) / (0.30+0.40) = (24+24)/0.70 ≈ 69
+        scores.insert("maintainability".to_string(), Some(100));
+        // (80*0.25 + 60*0.30 + 100*0.20) / (0.25+0.30+0.20) = (20+18+20)/0.75 ≈ 77
         let comp = profile.weighted_composite(&scores);
-        assert_eq!(comp, 69);
+        assert_eq!(comp, 77);
     }
 
     #[test]

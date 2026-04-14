@@ -1,5 +1,6 @@
 pub mod complexity;
 pub mod fragility;
+pub mod maintainability;
 pub mod structural;
 
 use anyhow::Result;
@@ -43,5 +44,6 @@ pub fn all_dimensions() -> Vec<Box<dyn Dimension>> {
         Box::new(structural::Structural),
         Box::new(complexity::Complexity),
         Box::new(fragility::Fragility),
+        Box::new(maintainability::Maintainability),
     ]
 }

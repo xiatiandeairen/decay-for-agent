@@ -1,217 +1,65 @@
-<p align="center">
-  <h1 align="center">decay-for-agent</h1>
-  <p align="center">
-    Project decay prevention — multi-dimensional health scoring, trend tracking, and rule-based refactoring for AI agents.
-  </p>
-</p>
+# decay
 
-<p align="center">
-  <a href="#installation">Installation</a> •
-  <a href="#quick-start">Quick Start</a> •
-  <a href="#architecture">Architecture</a> •
-  <a href="#contributing">Contributing</a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/xiatiandeairen/decay-for-agent/actions/workflows/ci.yml"><img src="https://github.com/xiatiandeairen/decay-for-agent/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/xiatiandeairen/decay-for-agent/releases"><img src="https://img.shields.io/github/v/release/xiatiandeairen/decay-for-agent?include_prereleases" alt="Release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
-</p>
-
----
+Project health monitoring for AI agents.
 
 ## What is this?
 
-**decay-for-agent** is a [Claude Code plugin](https://docs.anthropic.com/en/docs/claude-code) that gives AI agents structured project health monitoring. Instead of ad-hoc code reviews, Decay tracks measurable decay signals over time and generates actionable refactoring prescriptions.
+Projects accumulate structural debt silently — files grow too large, modules become too coupled, complexity creeps up. By the time it's obvious, cleanup is expensive.
 
-**The problem:** Projects accumulate structural debt silently — files grow too large, modules become too coupled, complexity creeps up. By the time it's obvious, cleanup is expensive.
-
-**The solution:** Decay snapshots project metrics into SQLite on every sprint, scores health across multiple dimensions (0–100), detects trends, runs rule checks, and outputs refactoring plans that can be fed directly to `/sprint`.
-
-### Key Features
-
-- **Multi-dimensional scoring** — Composite health score across structural, complexity, coupling, and size dimensions
-- **Trend tracking** — SQLite-backed history with before/after comparison across snapshots
-- **Rule engine** — Configurable rules (`max_file_lines`, `max_module_imports`, etc.) with pass/warn/fail output
-- **Refactoring prescriptions** — Diagnosed problems become structured refactoring plans in terminal, Markdown, or sprint format
-- **PostToolUse hooks** — Optionally auto-snapshot after file-modifying tool calls
-
-## Installation
-
-### As a Claude Code plugin (recommended)
-
-Clone into your project's plugins directory:
-
-```bash
-# Navigate to your project
-cd your-project
-
-# Add as a git submodule (recommended)
-git submodule add https://github.com/xiatiandeairen/decay-for-agent.git src/plugins/decay
-
-# Or clone directly
-git clone https://github.com/xiatiandeairen/decay-for-agent.git src/plugins/decay
-```
-
-Register in your `.claude/settings.json`:
-
-```json
-{
-  "plugins": ["src/plugins/decay"]
-}
-```
-
-### Verify installation
-
-Once installed, the following slash command becomes available in Claude Code:
-
-```
-/decay    — Project health check: score, diagnose, trend, prescribe
-```
+**decay** snapshots project metrics into SQLite, scores health across three dimensions (0–100), tracks trends over time, and generates actionable refactoring prescriptions.
 
 ## Quick Start
 
-```
-> /decay
-
-# Decay snapshots the project and shows trend:
-#   structural_score:  78  (↓ from 82)
-#   complexity_score:  65  (↓ from 71)
-#   coupling_score:    81  (stable)
-#   composite:         74  ⚠️  warn
-#
-# Top issues:
-#   - AuthService.swift: 923 lines (> 800 threshold) [FAIL]
-#   - DataEngine.swift:  612 lines (> 500 threshold) [WARN]
-#   - avg module imports: 14.2 (> 12 threshold)     [WARN]
-```
-
-Run with a specific subcommand:
-
 ```bash
-ENTRY="src/plugins/decay/scripts/entry.sh"
+cargo install --path .
 
-bash $ENTRY snapshot          # Collect and store a new snapshot
-bash $ENTRY score             # Show composite + dimension scores (0–100)
-bash $ENTRY diagnose          # Problem list with improvement suggestions
-bash $ENTRY prescribe         # Refactoring plan (terminal summary)
-bash $ENTRY prescribe --markdown  # Full Markdown report
-bash $ENTRY prescribe --sprint    # Sprint-ready task description
-bash $ENTRY trend             # CLI trend table across snapshots
-bash $ENTRY report            # Write collab/reports/decay-{date}.md
-bash $ENTRY rules             # Run all rule checks (pass/warn/fail)
-bash $ENTRY status            # Latest snapshot summary
+decay          # Full health check
+decay --json   # Machine-readable output
+decay --debug  # Verbose logging
 ```
 
-Pipe the prescription into `/sprint`:
+## Example Output
 
 ```
-> /sprint $(bash src/plugins/decay/scripts/entry.sh prescribe --sprint)
+Scanned: 42 files, 12 dirs, max depth 3
+Git: 28 commits, 15 files changed (last 90 days)
+Health: 88/100 (↑3) structural: 95 (→) complexity: 90 (↑5) fragility: 80 (↑5)
+Issues (1 warning):
+  [WARNING] fragility: top 10% files account for 55% of churn — distribute changes across more files
+Snapshot #4 created for /path/to/project
 ```
 
-## Architecture
+## Features
 
-```
-decay-for-agent/
-├── .claude-plugin/
-│   └── plugin.json            # Plugin metadata (name, version, keywords)
-├── config/
-│   ├── default.toml           # Default thresholds and rule configuration
-│   └── schema.sql             # SQLite schema (snapshots, metrics, trends)
-├── decay/                     # Python core
-│   ├── snapshot.py            # Metric collection (file sizes, imports, complexity)
-│   ├── scorer.py              # Dimension scoring (0–100 per axis)
-│   ├── trend.py               # Cross-snapshot trend analysis
-│   ├── diagnoser.py           # Problem detection and prioritization
-│   ├── prescriber.py          # Refactoring plan generation
-│   ├── report.py              # Markdown report writer
-│   ├── db.py                  # SQLite persistence layer
-│   ├── config.py              # Config loading (default.toml + project overrides)
-│   ├── output.py              # Terminal formatting helpers
-│   └── rules/
-│       ├── engine.py          # Rule base class and RuleResult type
-│       └── builtin.py         # Built-in rules (max_file_lines, max_module_imports, …)
-├── hooks/
-│   └── hooks.json             # PostToolUse hook for auto-snapshot
-├── scripts/
-│   ├── entry.sh               # CLI entry point — routes subcommands
-│   └── collect.sh             # Shell-level metric collection helpers
-├── skills/
-│   └── decay/SKILL.md         # /decay skill definition for Claude Code
-└── tests/
-    └── decay-test.sh          # Integration test suite
-```
+| Feature | Description |
+|---------|-------------|
+| File scanning | Traverse project tree, collect file count / depth / size |
+| Git analysis | Analyze 90-day commit history, identify churn hotspots |
+| Three-dimension scoring | structural (0-100) + complexity (0-100) + fragility (0-100) |
+| Composite score | Weighted average health score |
+| Trend tracking | Compare with previous snapshot, show ↑↓→ arrows |
+| Diagnosis | Identify specific issues with severity levels (critical/warning/info) |
+| Prescriptions | Actionable refactoring suggestions for each issue |
+| JSON output | `--json` for programmatic consumption |
+| Debug logging | `--debug` for internal flow visibility |
 
-### Data Flow
+## Scoring
 
-```
-Project source files
-        │
-        ▼
-┌──────────────┐   snapshot   ┌─────────────────────┐
-│  collect.sh  │─────────────▶│  SQLite (snapshots,  │
-│  + snapshot  │              │  metrics, trends)    │
-└──────────────┘              └──────────┬──────────┘
-                                         │
-          ┌──────────────────────────────┼──────────────────────────────┐
-          ▼                              ▼                              ▼
-   ┌────────────┐               ┌──────────────┐              ┌──────────────┐
-   │  scorer    │               │   diagnoser  │              │    trend     │
-   │  0–100     │               │  issues list │              │  comparison  │
-   └────────────┘               └──────┬───────┘              └──────────────┘
-                                        │
-                                        ▼
-                               ┌──────────────────┐
-                               │   prescriber     │
-                               │  terminal /      │
-                               │  markdown /      │
-                               │  sprint format   │
-                               └──────────────────┘
-```
+Deduction-based scoring (100 = healthy, deduct points for violations):
 
-### Scoring Dimensions
+| Dimension | Measures | Key thresholds |
+|-----------|----------|---------------|
+| structural | File count, directory depth, top-level sprawl | >500 files, depth >5, >15 top dirs |
+| complexity | Large file ratio, average/max file size | >15KB files, avg >10KB, max >50KB |
+| fragility | Churn concentration, hotspot intensity | top 10% >50% churn, single file >500 lines churn |
 
-| Dimension | What it measures |
-|-----------|-----------------|
-| `structural` | File size distribution, line count outliers |
-| `complexity` | Cyclomatic complexity, nesting depth |
-| `coupling` | Module import counts, dependency fan-in/out |
-| `size` | Overall project growth rate |
+## Data Storage
 
-Score range: 0 (critical) → 100 (healthy). Composite is a weighted average.
+Snapshots are stored in SQLite under the XDG data directory:
+- macOS: `~/Library/Application Support/decay/snapshots.db`
+- Linux: `~/.local/share/decay/snapshots.db`
 
-### Rule Severity
-
-| Status | Meaning |
-|--------|---------|
-| `pass` | Within configured threshold |
-| `warn` | Exceeds soft threshold — monitor |
-| `fail` | Exceeds hard threshold — action required |
-
-Rules are configurable in `config/default.toml` and can be overridden per project.
-
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feat/my-feature`)
-3. Make your changes
-4. Run the test suite: `bash tests/decay-test.sh`
-5. Submit a pull request
-
-### Development
-
-```bash
-# Run a snapshot against the current project
-bash scripts/entry.sh snapshot
-
-# Run all rule checks
-bash scripts/entry.sh rules
-
-# Run integration tests
-bash tests/decay-test.sh
-```
+Each project is identified by its absolute path. Multiple projects share the same database.
 
 ## License
 

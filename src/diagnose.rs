@@ -3,7 +3,8 @@ use std::fmt;
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Level {
     Critical,
     Warning,
@@ -20,7 +21,8 @@ impl fmt::Display for Level {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Category {
     Structural,
     Complexity,
@@ -37,6 +39,7 @@ impl fmt::Display for Category {
     }
 }
 
+#[derive(serde::Serialize)]
 pub struct Issue {
     pub level: Level,
     pub category: Category,

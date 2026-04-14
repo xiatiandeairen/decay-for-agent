@@ -28,3 +28,9 @@
   - [tech](.know/docs/requirements/diagnosis/tech.md) | 2026-04-14
 - [prescription](.know/docs/requirements/prescription/prd.md) | 2026-04-14
   - [tech](.know/docs/requirements/prescription/tech.md) | 2026-04-14
+- [trend](.know/docs/requirements/trend/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/trend/tech.md) | 2026-04-14
+- [json-output](.know/docs/requirements/json-output/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/json-output/tech.md) | 2026-04-14
+- [test-debug](.know/docs/requirements/test-debug/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/test-debug/tech.md) | 2026-04-14

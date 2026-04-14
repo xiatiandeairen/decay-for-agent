@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use log::debug;
 use rusqlite::Connection;
 
 // --- Structural thresholds ---
@@ -26,6 +27,7 @@ const MAX_CHURN_WARN: i64 = 500;
 /// Penalizes: too many files, deep directories, too many top-level dirs.
 pub fn structural(conn: &Connection, snapshot_id: i64) -> Result<i32> {
     let mut score: i32 = 100;
+    debug!("structural: file_count query starting");
 
     // File count
     let file_count: i64 = conn
@@ -81,6 +83,7 @@ pub fn structural(conn: &Connection, snapshot_id: i64) -> Result<i32> {
 /// Penalizes: high ratio of large files, high average size, very large max file.
 pub fn complexity(conn: &Connection, snapshot_id: i64) -> Result<i32> {
     let mut score: i32 = 100;
+    debug!("complexity: scoring starting");
 
     let file_count: i64 = conn
         .query_row(
@@ -157,6 +160,7 @@ pub fn fragility(conn: &Connection, snapshot_id: i64) -> Result<Option<i32>> {
     }
 
     let mut score: i32 = 100;
+    debug!("fragility: scoring starting");
 
     // Total churn
     let total_churn: i64 = conn

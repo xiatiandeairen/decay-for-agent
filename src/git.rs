@@ -6,6 +6,7 @@ use git2::Repository;
 use rusqlite::Connection;
 
 /// Summary of git history analysis.
+#[derive(serde::Serialize)]
 pub struct GitSummary {
     pub files_analyzed: usize,
     pub total_commits: usize,

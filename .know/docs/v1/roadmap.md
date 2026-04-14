@@ -26,9 +26,9 @@
 | M2 | **采集数据** — 文件结构扫描 + git 历史分析 → SQLite | 对真实项目跑 `decay`，SQLite 中有完整快照数据 | 3/3 | [snapshot-store](../requirements/snapshot-store/prd.md), [file-scan](../requirements/file-scan/prd.md), [git-analysis](../requirements/git-analysis/prd.md) |
 | M3 | **计算评分** — structural / complexity / fragility 独立评分 + 加权合成 | 输出包含三个维度的 0-100 分数和 composite 分数 | 4/4 | [structural-score](../requirements/structural-score/prd.md), [complexity-score](../requirements/complexity-score/prd.md), [fragility-score](../requirements/fragility-score/prd.md), [composite-score](../requirements/composite-score/prd.md) |
 | M4 | **生成处方** — 从指标识别问题，生成分优先级的重构建议 | 输出包含分级问题列表和可操作的处方 | 2/2 | [diagnosis](../requirements/diagnosis/prd.md), [prescription](../requirements/prescription/prd.md) |
-| M5 | **追踪趋势** — 跨快照对比，有历史时自动附带 | 第二次运行时输出包含与上次的对比和变化方向 | 0/0 | — |
-| M6 | **格式化输出** — terminal 默认 + `--json` 机器可读输出 | `decay` 输出人可读格式，`decay --json` 输出合法 JSON | 0/0 | — |
-| M7 | **测试加固** — 单元测试覆盖采集层和分析层，`--debug` flag | `cargo test` 全通过，`decay --debug` 输出详细日志 | 0/0 | — |
+| M5 | **追踪趋势** — 跨快照对比，有历史时自动附带 | 第二次运行时输出包含与上次的对比和变化方向 | 1/1 | [trend](../requirements/trend/prd.md) |
+| M6 | **格式化输出** — terminal 默认 + `--json` 机器可读输出 | `decay` 输出人可读格式，`decay --json` 输出合法 JSON | 1/1 | [json-output](../requirements/json-output/prd.md) |
+| M7 | **测试加固** — 单元测试覆盖采集层和分析层，`--debug` flag | `cargo test` 全通过，`decay --debug` 输出详细日志 | 1/1 | [test-debug](../requirements/test-debug/prd.md) |
 
 ## 3. 当前版本
 

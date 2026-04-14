@@ -5,6 +5,7 @@ use rusqlite::Connection;
 use walkdir::WalkDir;
 
 /// Summary of a file structure scan.
+#[derive(serde::Serialize)]
 pub struct ScanSummary {
     pub file_count: usize,
     pub dir_count: usize,

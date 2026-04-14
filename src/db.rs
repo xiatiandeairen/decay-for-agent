@@ -89,6 +89,50 @@ pub fn insert_scores(
     Ok(())
 }
 
+/// Scores from a previous snapshot.
+pub struct PreviousScores {
+    pub structural: i32,
+    pub complexity: i32,
+    pub fragility: Option<i32>,
+    pub composite: i32,
+}
+
+/// Get scores from the most recent previous snapshot for the same project.
+pub fn get_previous_scores(
+    conn: &Connection,
+    project_path: &str,
+    current_snapshot_id: i64,
+) -> Result<Option<PreviousScores>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT sc.structural, sc.complexity, sc.fragility, sc.composite
+         FROM scores sc
+         JOIN snapshots s ON s.id = sc.snapshot_id
+         WHERE s.project_path = ?1 AND sc.snapshot_id < ?2
+         ORDER BY sc.snapshot_id DESC
+         LIMIT 1",
+        )
+        .context("failed to prepare previous scores query")?;
+
+    let result = stmt.query_row(
+        rusqlite::params![project_path, current_snapshot_id],
+        |row| {
+            Ok(PreviousScores {
+                structural: row.get(0)?,
+                complexity: row.get(1)?,
+                fragility: row.get(2)?,
+                composite: row.get(3)?,
+            })
+        },
+    );
+
+    match result {
+        Ok(scores) => Ok(Some(scores)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e).context("failed to get previous scores"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

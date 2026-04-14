@@ -23,7 +23,7 @@
 | # | 里程碑 | 验证点 | 进度 | 需求 |
 |---|--------|--------|------|------|
 | M1 | **搭建脚手架** — Rust 项目结构、CI、基础 CLI 框架 | `cargo build` 通过，`decay --help` 输出帮助信息 | 2/2 | [project-init](../requirements/project-init/prd.md), [cli-framework](../requirements/cli-framework/prd.md) |
-| M2 | **采集数据** — 文件结构扫描 + git 历史分析 → SQLite | 对真实项目跑 `decay`，SQLite 中有完整快照数据 | 0/0 | — |
+| M2 | **采集数据** — 文件结构扫描 + git 历史分析 → SQLite | 对真实项目跑 `decay`，SQLite 中有完整快照数据 | 0/3 | [snapshot-store](../requirements/snapshot-store/prd.md), [file-scan](../requirements/file-scan/prd.md), [git-analysis](../requirements/git-analysis/prd.md) |
 | M3 | **计算评分** — structural / complexity / fragility 独立评分 + 加权合成 | 输出包含三个维度的 0-100 分数和 composite 分数 | 0/0 | — |
 | M4 | **生成处方** — 从指标识别问题，生成分优先级的重构建议 | 输出包含分级问题列表和可操作的处方 | 0/0 | — |
 | M5 | **追踪趋势** — 跨快照对比，有历史时自动附带 | 第二次运行时输出包含与上次的对比和变化方向 | 0/0 | — |

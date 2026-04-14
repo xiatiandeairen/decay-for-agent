@@ -1,6 +1,10 @@
 pub mod complexity;
 pub mod fragility;
 pub mod maintainability;
+pub mod observability;
+pub mod performance;
+pub mod quality;
+pub mod reliability;
 pub mod structural;
 
 use anyhow::Result;
@@ -45,5 +49,9 @@ pub fn all_dimensions() -> Vec<Box<dyn Dimension>> {
         Box::new(complexity::Complexity),
         Box::new(fragility::Fragility),
         Box::new(maintainability::Maintainability),
+        Box::new(observability::Observability),
+        Box::new(quality::QualityAssurance),
+        Box::new(reliability::Reliability),
+        Box::new(performance::Performance),
     ]
 }

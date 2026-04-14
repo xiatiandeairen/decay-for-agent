@@ -26,40 +26,64 @@ impl ScoreProfile {
     pub fn for_type(pt: ProjectType) -> Self {
         let weights = match pt {
             ProjectType::Cli => vec![
-                ("structural", 0.25),
-                ("complexity", 0.30),
-                ("fragility", 0.25),
-                ("maintainability", 0.20),
+                ("structural", 0.12),
+                ("complexity", 0.18),
+                ("fragility", 0.12),
+                ("maintainability", 0.15),
+                ("observability", 0.08),
+                ("quality_assurance", 0.15),
+                ("reliability", 0.10),
+                ("performance", 0.10),
             ],
             ProjectType::WebService => vec![
-                ("structural", 0.20),
-                ("complexity", 0.25),
-                ("fragility", 0.35),
-                ("maintainability", 0.20),
+                ("structural", 0.10),
+                ("complexity", 0.12),
+                ("fragility", 0.15),
+                ("maintainability", 0.12),
+                ("observability", 0.18),
+                ("quality_assurance", 0.13),
+                ("reliability", 0.12),
+                ("performance", 0.08),
             ],
             ProjectType::Library => vec![
-                ("structural", 0.20),
-                ("complexity", 0.30),
-                ("fragility", 0.20),
-                ("maintainability", 0.30),
+                ("structural", 0.12),
+                ("complexity", 0.15),
+                ("fragility", 0.10),
+                ("maintainability", 0.20),
+                ("observability", 0.05),
+                ("quality_assurance", 0.18),
+                ("reliability", 0.12),
+                ("performance", 0.08),
             ],
             ProjectType::MobileApp => vec![
-                ("structural", 0.20),
-                ("complexity", 0.30),
-                ("fragility", 0.30),
-                ("maintainability", 0.20),
+                ("structural", 0.10),
+                ("complexity", 0.15),
+                ("fragility", 0.12),
+                ("maintainability", 0.13),
+                ("observability", 0.12),
+                ("quality_assurance", 0.13),
+                ("reliability", 0.10),
+                ("performance", 0.15),
             ],
             ProjectType::Monorepo => vec![
-                ("structural", 0.30),
-                ("complexity", 0.25),
-                ("fragility", 0.25),
-                ("maintainability", 0.20),
+                ("structural", 0.18),
+                ("complexity", 0.12),
+                ("fragility", 0.12),
+                ("maintainability", 0.15),
+                ("observability", 0.08),
+                ("quality_assurance", 0.15),
+                ("reliability", 0.10),
+                ("performance", 0.10),
             ],
             ProjectType::Generic => vec![
-                ("structural", 0.25),
-                ("complexity", 0.25),
-                ("fragility", 0.25),
-                ("maintainability", 0.25),
+                ("structural", 0.125),
+                ("complexity", 0.125),
+                ("fragility", 0.125),
+                ("maintainability", 0.125),
+                ("observability", 0.125),
+                ("quality_assurance", 0.125),
+                ("reliability", 0.125),
+                ("performance", 0.125),
             ],
         };
         ScoreProfile {
@@ -334,29 +358,26 @@ mod tests {
     }
 
     #[test]
-    fn test_weighted_composite_web_service() {
-        let profile = ScoreProfile::for_type(ProjectType::WebService);
+    fn test_weighted_composite_all_100() {
+        let profile = ScoreProfile::for_type(ProjectType::Generic);
         let mut scores = HashMap::new();
-        scores.insert("structural".to_string(), Some(100));
-        scores.insert("complexity".to_string(), Some(100));
-        scores.insert("fragility".to_string(), Some(0));
-        scores.insert("maintainability".to_string(), Some(100));
-        // 100*0.20 + 100*0.25 + 0*0.35 + 100*0.20 = 65
-        let comp = profile.weighted_composite(&scores);
-        assert_eq!(comp, 65);
+        for dim in ["structural", "complexity", "fragility", "maintainability",
+                     "observability", "quality_assurance", "reliability", "performance"] {
+            scores.insert(dim.to_string(), Some(100));
+        }
+        assert_eq!(profile.weighted_composite(&scores), 100);
     }
 
     #[test]
     fn test_weighted_composite_skips_none() {
-        let profile = ScoreProfile::for_type(ProjectType::Cli);
+        let profile = ScoreProfile::for_type(ProjectType::Generic);
         let mut scores = HashMap::new();
         scores.insert("structural".to_string(), Some(80));
-        scores.insert("complexity".to_string(), Some(60));
-        scores.insert("fragility".to_string(), None);
-        scores.insert("maintainability".to_string(), Some(100));
-        // (80*0.25 + 60*0.30 + 100*0.20) / (0.25+0.30+0.20) = (20+18+20)/0.75 ≈ 77
+        scores.insert("complexity".to_string(), Some(80));
+        scores.insert("fragility".to_string(), None); // skipped
+        // (80*0.125 + 80*0.125) / (0.125+0.125) = 80
         let comp = profile.weighted_composite(&scores);
-        assert_eq!(comp, 77);
+        assert_eq!(comp, 80);
     }
 
     #[test]

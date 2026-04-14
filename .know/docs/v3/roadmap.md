@@ -51,10 +51,10 @@
 | M2  | **采集层插件化** — 采集器抽象为 trait，支持编译期注册新数据源                      | 新采集器（内容分析、依赖解析）可通过 trait 接入，不修改调度代码            | 0/1 | [collector-plugin](../requirements/collector-plugin/prd.md) |
 | M3  | **分层打分系统** — 项目类型自动检测 + ScoreProfile 驱动阈值和权重               | 不同类型项目（CLI / Web / Library）得到差异化的评分和权重         | 0/2 | [score-profile](../requirements/score-profile/prd.md) |
 | M4  | **可维护性维度** — 重复代码、函数/文件长度分布、死代码检测                          | maintainability 维度输出 0-100 评分 + 诊断 + 处方        | 0/1 | [maintainability](../requirements/maintainability/prd.md) |
-| M5  | **可观测性与恢复能力维度** — 日志/监控密度、错误处理覆盖率、panic/unwrap 密度          | observability 维度输出 0-100 评分 + 诊断 + 处方          | 0/1 |     |
-| M6  | **质量保障维度** — 测试文件比例、测试/源码比率、断言密度                           | quality assurance 维度输出 0-100 评分 + 诊断 + 处方      | 0/1 |     |
-| M7  | **可靠性与安全维度** — unsafe 代码比例、依赖漏洞信号、输入验证密度                   | reliability & security 维度输出 0-100 评分 + 诊断 + 处方 | 0/1 |     |
-| M8  | **性能维度** — 嵌套循环密度、大数据结构拷贝模式、同步阻塞调用检测                       | performance 维度输出 0-100 评分 + 诊断 + 处方            | 0/1 |     |
+| M5  | **可观测性与恢复能力维度** — 日志/监控密度、错误处理覆盖率、panic/unwrap 密度          | observability 维度输出 0-100 评分 + 诊断 + 处方          | 0/1 | [observability](../requirements/observability/prd.md) |
+| M6  | **质量保障维度** — 测试文件比例、测试/源码比率、断言密度                           | quality assurance 维度输出 0-100 评分 + 诊断 + 处方      | 0/1 | [quality-assurance](../requirements/quality-assurance/prd.md) |
+| M7  | **可靠性与安全维度** — unsafe 代码比例、依赖漏洞信号、输入验证密度                   | reliability & security 维度输出 0-100 评分 + 诊断 + 处方 | 0/1 | [reliability](../requirements/reliability/prd.md) |
+| M8  | **性能维度** — 嵌套循环密度、大数据结构拷贝模式、同步阻塞调用检测                       | performance 维度输出 0-100 评分 + 诊断 + 处方            | 0/1 | [performance](../requirements/performance/prd.md) |
 | M9  | **Composite score 升级** — 可扩展加权，读取 ScoreProfile 权重聚合所有维度    | 8 个维度正确聚合，不同项目类型权重不同                           | 0/1 |     |
 
 

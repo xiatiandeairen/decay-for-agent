@@ -56,3 +56,11 @@
   - [tech](.know/docs/requirements/score-profile/tech.md) | 2026-04-14
 - [maintainability](.know/docs/requirements/maintainability/prd.md) | 2026-04-14
   - [tech](.know/docs/requirements/maintainability/tech.md) | 2026-04-14
+- [observability](.know/docs/requirements/observability/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/observability/tech.md) | 2026-04-14
+- [quality-assurance](.know/docs/requirements/quality-assurance/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/quality-assurance/tech.md) | 2026-04-14
+- [reliability](.know/docs/requirements/reliability/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/reliability/tech.md) | 2026-04-14
+- [performance](.know/docs/requirements/performance/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/performance/tech.md) | 2026-04-14

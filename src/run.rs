@@ -5,7 +5,7 @@ use anyhow::Result;
 use log::debug;
 use serde::Serialize;
 
-use crate::{db, diagnose, dimension, git, scan, trend};
+use crate::{collector, db, diagnose, dimension, trend};
 
 #[derive(Serialize)]
 pub struct Report {
@@ -15,9 +15,7 @@ pub struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trend: Option<HashMap<String, trend::Delta>>,
     pub issues: Vec<diagnose::Issue>,
-    pub scan: scan::ScanSummary,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub git: Option<git::GitSummary>,
+    pub collectors: HashMap<String, HashMap<String, String>>,
 }
 
 pub struct MarkdownCtx<'a> {
@@ -26,8 +24,7 @@ pub struct MarkdownCtx<'a> {
     pub scores: &'a HashMap<String, Option<i32>>,
     pub composite: i32,
     pub trend_data: &'a Option<HashMap<String, trend::Delta>>,
-    pub scan_summary: &'a scan::ScanSummary,
-    pub git_summary: &'a Option<git::GitSummary>,
+    pub collectors: &'a HashMap<String, HashMap<String, String>>,
     pub issues: &'a [diagnose::Issue],
 }
 
@@ -38,10 +35,12 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         scores,
         composite,
         trend_data,
-        scan_summary,
-        git_summary,
+        collectors,
         issues,
     } = ctx;
+
+    let scan_stats = collectors.get("file_scan");
+    let git_stats = collectors.get("git_history");
 
     // Build scores table rows dynamically
     let dimension_order = ["structural", "complexity", "fragility"];
@@ -77,10 +76,26 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         "| **composite** | **{composite}** | **{comp_trend}** |"
     ));
 
-    let (total_commits, files_analyzed) = match git_summary {
-        Some(g) => (g.total_commits.to_string(), g.files_analyzed.to_string()),
-        None => ("N/A".to_string(), "N/A".to_string()),
-    };
+    let file_count = scan_stats
+        .and_then(|s| s.get("files"))
+        .cloned()
+        .unwrap_or_else(|| "N/A".to_string());
+    let dir_count = scan_stats
+        .and_then(|s| s.get("dirs"))
+        .cloned()
+        .unwrap_or_else(|| "N/A".to_string());
+    let max_depth = scan_stats
+        .and_then(|s| s.get("max_depth"))
+        .cloned()
+        .unwrap_or_else(|| "N/A".to_string());
+    let total_commits = git_stats
+        .and_then(|s| s.get("commits"))
+        .cloned()
+        .unwrap_or_else(|| "N/A".to_string());
+    let files_analyzed = git_stats
+        .and_then(|s| s.get("files_analyzed"))
+        .cloned()
+        .unwrap_or_else(|| "N/A".to_string());
 
     let critical_count = issues
         .iter()
@@ -176,9 +191,6 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
          \n\
          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
         version = env!("CARGO_PKG_VERSION"),
-        file_count = scan_summary.file_count,
-        dir_count = scan_summary.dir_count,
-        max_depth = scan_summary.max_depth,
     )
 }
 
@@ -236,28 +248,29 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
     let snapshot_id = db::create_snapshot(&conn, &project_path_str)?;
     debug!("snapshot {snapshot_id} created for {project_path_str}");
 
-    let scan_summary = scan::collect(&conn, snapshot_id, &project_path)?;
-    debug!(
-        "scan complete: {} files, {} dirs",
-        scan_summary.file_count, scan_summary.dir_count
-    );
+    // Run all collectors via registry
+    let collectors = collector::all_collectors();
+    let mut collector_stats: HashMap<String, HashMap<String, String>> = HashMap::new();
 
-    let git_summary = match git::collect(&conn, snapshot_id, &project_path, 90) {
-        Ok(summary) => {
-            debug!(
-                "git analysis complete: {} commits, {} files",
-                summary.total_commits, summary.files_analyzed
-            );
-            Some(summary)
+    for c in &collectors {
+        c.ensure_schema(&conn)?;
+        if !c.available(&project_path) {
+            debug!("collector {} skipped: not available", c.name());
+            continue;
         }
-        Err(e) => {
-            debug!("git analysis skipped: {e}");
-            if !json && !markdown && !quiet {
-                eprintln!("Git analysis skipped: {e}");
+        match c.collect(&conn, snapshot_id, &project_path) {
+            Ok(summary) => {
+                debug!("collector {}: {:?}", summary.name, summary.stats);
+                collector_stats.insert(summary.name, summary.stats);
             }
-            None
+            Err(e) => {
+                debug!("collector {} failed: {e}", c.name());
+                if !json && !markdown && !quiet {
+                    eprintln!("{} skipped: {e}", c.name());
+                }
+            }
         }
-    };
+    }
 
     // Evaluate all dimensions via registry
     let dimensions = dimension::all_dimensions();
@@ -313,8 +326,7 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
             composite: comp,
             trend: trend_data,
             issues: all_issues,
-            scan: scan_summary,
-            git: git_summary,
+            collectors: collector_stats,
         };
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else if markdown {
@@ -324,8 +336,7 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
             scores: &scores,
             composite: comp,
             trend_data: &trend_data,
-            scan_summary: &scan_summary,
-            git_summary: &git_summary,
+            collectors: &collector_stats,
             issues: &all_issues,
         });
         println!("{md}");
@@ -333,16 +344,17 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
         println!("Health: {comp}/100 ({critical_count} critical)");
     } else {
         // Default terminal output
-        println!(
-            "Scanned: {} files, {} dirs, max depth {}",
-            scan_summary.file_count, scan_summary.dir_count, scan_summary.max_depth
-        );
+        if let Some(scan) = collector_stats.get("file_scan") {
+            let files = scan.get("files").map_or("?", |s| s);
+            let dirs = scan.get("dirs").map_or("?", |s| s);
+            let depth = scan.get("max_depth").map_or("?", |s| s);
+            println!("Scanned: {files} files, {dirs} dirs, max depth {depth}");
+        }
 
-        if let Some(ref git) = git_summary {
-            println!(
-                "Git: {} commits, {} files changed (last 90 days)",
-                git.total_commits, git.files_analyzed
-            );
+        if let Some(git) = collector_stats.get("git_history") {
+            let commits = git.get("commits").map_or("?", |s| s);
+            let analyzed = git.get("files_analyzed").map_or("?", |s| s);
+            println!("Git: {commits} commits, {analyzed} files changed (last 90 days)");
         }
 
         match &trend_data {

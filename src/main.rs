@@ -1,3 +1,4 @@
+mod collector;
 mod db;
 mod diagnose;
 mod dimension;

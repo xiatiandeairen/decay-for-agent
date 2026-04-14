@@ -52,7 +52,7 @@ pub fn init() -> Result<Connection> {
             snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
             structural INTEGER NOT NULL,
             complexity INTEGER NOT NULL,
-            fragility INTEGER NOT NULL,
+            fragility INTEGER,
             composite INTEGER NOT NULL
         );",
     )
@@ -78,7 +78,7 @@ pub fn insert_scores(
     snapshot_id: i64,
     structural: i32,
     complexity: i32,
-    fragility: i32,
+    fragility: Option<i32>,
     composite: i32,
 ) -> Result<()> {
     conn.execute(

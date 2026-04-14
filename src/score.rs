@@ -1,6 +1,26 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
+// --- Structural thresholds ---
+const FILE_COUNT_WARN: i64 = 500;
+const FILE_COUNT_CRIT: i64 = 1000;
+const DEPTH_WARN: i64 = 5;
+const DEPTH_CRIT: i64 = 8;
+const TOP_DIRS_WARN: i64 = 15;
+
+// --- Complexity thresholds ---
+/// ~500 lines of code
+const LARGE_FILE_BYTES: i64 = 15360;
+const LARGE_RATIO_WARN: f64 = 0.2;
+const LARGE_RATIO_CRIT: f64 = 0.4;
+const AVG_SIZE_WARN: f64 = 10240.0;
+const MAX_SIZE_WARN: i64 = 51200;
+
+// --- Fragility thresholds ---
+const CHURN_CONCENTRATION_WARN: f64 = 0.5;
+const CHURN_CONCENTRATION_CRIT: f64 = 0.7;
+const MAX_CHURN_WARN: i64 = 500;
+
 /// Compute structural health score (0-100, deduction-based).
 ///
 /// Penalizes: too many files, deep directories, too many top-level dirs.
@@ -16,9 +36,9 @@ pub fn structural(conn: &Connection, snapshot_id: i64) -> Result<i32> {
         )
         .context("failed to count files")?;
 
-    if file_count > 1000 {
+    if file_count > FILE_COUNT_CRIT {
         score -= 40;
-    } else if file_count > 500 {
+    } else if file_count > FILE_COUNT_WARN {
         score -= 20;
     }
 
@@ -31,9 +51,9 @@ pub fn structural(conn: &Connection, snapshot_id: i64) -> Result<i32> {
         )
         .context("failed to get max depth")?;
 
-    if max_depth > 8 {
+    if max_depth > DEPTH_CRIT {
         score -= 30;
-    } else if max_depth > 5 {
+    } else if max_depth > DEPTH_WARN {
         score -= 15;
     }
 
@@ -49,7 +69,7 @@ pub fn structural(conn: &Connection, snapshot_id: i64) -> Result<i32> {
         )
         .context("failed to count top-level dirs")?;
 
-    if top_dirs > 15 {
+    if top_dirs > TOP_DIRS_WARN {
         score -= 15;
     }
 
@@ -77,16 +97,16 @@ pub fn complexity(conn: &Connection, snapshot_id: i64) -> Result<i32> {
     // Large file ratio (>15KB ≈ ~500 lines)
     let large_count: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM files WHERE snapshot_id = ?1 AND size_bytes > 15360",
-            [snapshot_id],
+            "SELECT COUNT(*) FROM files WHERE snapshot_id = ?1 AND size_bytes > ?2",
+            rusqlite::params![snapshot_id, LARGE_FILE_BYTES],
             |row| row.get(0),
         )
         .context("failed to count large files")?;
 
     let large_ratio = large_count as f64 / file_count as f64;
-    if large_ratio > 0.4 {
+    if large_ratio > LARGE_RATIO_CRIT {
         score -= 45;
-    } else if large_ratio > 0.2 {
+    } else if large_ratio > LARGE_RATIO_WARN {
         score -= 25;
     }
 
@@ -99,7 +119,7 @@ pub fn complexity(conn: &Connection, snapshot_id: i64) -> Result<i32> {
         )
         .context("failed to get avg file size")?;
 
-    if avg_size > 10240.0 {
+    if avg_size > AVG_SIZE_WARN {
         score -= 15;
     }
 
@@ -112,7 +132,7 @@ pub fn complexity(conn: &Connection, snapshot_id: i64) -> Result<i32> {
         )
         .context("failed to get max file size")?;
 
-    if max_size > 51200 {
+    if max_size > MAX_SIZE_WARN {
         score -= 10;
     }
 
@@ -166,9 +186,9 @@ pub fn fragility(conn: &Connection, snapshot_id: i64) -> Result<Option<i32>> {
         .context("failed to get top churn")?;
 
     let concentration = top_churn as f64 / total_churn as f64;
-    if concentration > 0.7 {
+    if concentration > CHURN_CONCENTRATION_CRIT {
         score -= 45;
-    } else if concentration > 0.5 {
+    } else if concentration > CHURN_CONCENTRATION_WARN {
         score -= 25;
     }
 
@@ -181,7 +201,7 @@ pub fn fragility(conn: &Connection, snapshot_id: i64) -> Result<Option<i32>> {
         )
         .context("failed to get max churn")?;
 
-    if max_churn > 500 {
+    if max_churn > MAX_CHURN_WARN {
         score -= 15;
     }
 

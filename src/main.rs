@@ -51,7 +51,7 @@ fn main() -> Result<()> {
             };
             let comp = score::composite(s, c, f);
 
-            db::insert_scores(&conn, snapshot_id, s, c, f.unwrap_or(-1), comp)?;
+            db::insert_scores(&conn, snapshot_id, s, c, f, comp)?;
 
             let f_display = match f {
                 Some(v) => format!("{v}"),

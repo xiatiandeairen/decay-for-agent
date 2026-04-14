@@ -50,11 +50,7 @@ pub fn collect(
             .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
             .context("failed to diff trees")?;
 
-        let stats = diff.stats().context("failed to get diff stats")?;
-        let _ = stats; // We'll iterate deltas instead
-
-        for delta_idx in 0..diff.deltas().len() {
-            let delta = diff.deltas().nth(delta_idx).unwrap();
+        for delta in diff.deltas() {
             let file_path = delta
                 .new_file()
                 .path()

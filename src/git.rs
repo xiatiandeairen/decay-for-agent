@@ -51,58 +51,49 @@ pub fn collect(
             .diff_tree_to_tree(parent_tree.as_ref(), Some(&tree), None)
             .context("failed to diff trees")?;
 
+        // Collect changed file paths from deltas
+        let mut seen_in_commit: Vec<String> = Vec::new();
         for delta in diff.deltas() {
-            let file_path = delta
+            if let Some(path) = delta
                 .new_file()
                 .path()
                 .or_else(|| delta.old_file().path())
-                .map(|p| p.to_string_lossy().to_string());
-
-            if let Some(path) = file_path {
-                let entry = file_stats.entry(path).or_insert(FileChange {
+                .map(|p| p.to_string_lossy().to_string())
+            {
+                let entry = file_stats.entry(path.clone()).or_insert(FileChange {
                     change_count: 0,
                     lines_added: 0,
                     lines_deleted: 0,
                     last_modified: commit_time,
                 });
                 entry.change_count += 1;
-                // last_modified is the most recent (first seen due to TIME sort)
+                seen_in_commit.push(path);
             }
         }
 
-        // Get line-level stats via patch
-        let mut line_stats_opts = git2::DiffOptions::new();
-        let diff_with_lines = repo
-            .diff_tree_to_tree(
-                parent_tree.as_ref(),
-                Some(&tree),
-                Some(&mut line_stats_opts),
-            )
-            .context("failed to diff for line stats")?;
+        // Count line-level changes in single pass
+        diff.foreach(
+            &mut |_, _| true,
+            None,
+            None,
+            Some(&mut |delta, _hunk, line| {
+                let file_path = delta
+                    .new_file()
+                    .path()
+                    .or_else(|| delta.old_file().path())
+                    .map(|p| p.to_string_lossy().to_string());
 
-        diff_with_lines
-            .foreach(
-                &mut |_, _| true,
-                None,
-                None,
-                Some(&mut |delta, _hunk, line| {
-                    let file_path = delta
-                        .new_file()
-                        .path()
-                        .or_else(|| delta.old_file().path())
-                        .map(|p| p.to_string_lossy().to_string());
-
-                    if let Some(entry) = file_path.and_then(|path| file_stats.get_mut(&path)) {
-                        match line.origin() {
-                            '+' => entry.lines_added += 1,
-                            '-' => entry.lines_deleted += 1,
-                            _ => {}
-                        }
+                if let Some(entry) = file_path.and_then(|path| file_stats.get_mut(&path)) {
+                    match line.origin() {
+                        '+' => entry.lines_added += 1,
+                        '-' => entry.lines_deleted += 1,
+                        _ => {}
                     }
-                    true
-                }),
-            )
-            .context("failed to iterate diff lines")?;
+                }
+                true
+            }),
+        )
+        .context("failed to count line changes")?;
     }
 
     let files_analyzed = file_stats.len();

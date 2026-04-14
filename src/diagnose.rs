@@ -205,10 +205,10 @@ fn diagnose_fragility(conn: &Connection, snapshot_id: i64, issues: &mut Vec<Issu
         return Ok(());
     }
 
-    // High churn files (>500 lines)
+    // High churn files (>500 lines), excluding auto-generated lock files
     let mut stmt = conn
         .prepare(
-            "SELECT path, (lines_added + lines_deleted) as churn FROM git_changes WHERE snapshot_id = ?1 AND (lines_added + lines_deleted) > 500 ORDER BY churn DESC",
+            "SELECT path, (lines_added + lines_deleted) as churn FROM git_changes WHERE snapshot_id = ?1 AND (lines_added + lines_deleted) > 500 AND path NOT LIKE '%.lock' AND path NOT LIKE '%lock.json' ORDER BY churn DESC",
         )
         .context("failed to prepare churn query")?;
 
@@ -262,10 +262,10 @@ fn diagnose_fragility(conn: &Connection, snapshot_id: i64, issues: &mut Vec<Issu
         }
     }
 
-    // Frequently changed files (>10 changes)
+    // Frequently changed files (>10 changes), excluding lock files
     let mut freq_stmt = conn
         .prepare(
-            "SELECT path, change_count FROM git_changes WHERE snapshot_id = ?1 AND change_count > 10 ORDER BY change_count DESC",
+            "SELECT path, change_count FROM git_changes WHERE snapshot_id = ?1 AND change_count > 10 AND path NOT LIKE '%.lock' AND path NOT LIKE '%lock.json' ORDER BY change_count DESC",
         )
         .context("failed to prepare freq query")?;
 

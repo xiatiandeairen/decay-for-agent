@@ -1,0 +1,1 @@
+{"tag":"pitfall","tier":1,"scope":"project","tm":"active:directive","summary":"subagent Rust 代码需 cargo fmt + clippy 修复 — collapsible-if 等常见问题","path":"entries/pitfall/subagent-rust-lint.md","hits":0,"revs":0,"created":"2026-04-14","updated":"2026-04-14"}

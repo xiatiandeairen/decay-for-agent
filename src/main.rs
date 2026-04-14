@@ -1,5 +1,10 @@
+mod db;
+
+use std::env;
+
 use anyhow::Result;
-use clap::{CommandFactory, Parser};
+use clap::Parser;
+use db::{create_snapshot, init};
 
 /// Project health monitoring for AI agents
 #[derive(Parser)]
@@ -11,13 +16,15 @@ fn main() -> Result<()> {
 
     match cli {
         Ok(_) => {
-            // No subcommands yet — show help when called with no args
-            let mut cmd = Cli::command();
-            cmd.print_help()?;
-            println!();
+            let conn = init()?;
+            let project_path = env::current_dir()?;
+            let snapshot_id = create_snapshot(&conn, &project_path.to_string_lossy())?;
+            println!(
+                "Snapshot #{snapshot_id} created for {}",
+                project_path.display()
+            );
         }
         Err(e) => {
-            // Let clap handle --help, --version, and errors naturally
             e.exit();
         }
     }

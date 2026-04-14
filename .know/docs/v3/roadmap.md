@@ -55,7 +55,7 @@
 | M6  | **质量保障维度** — 测试文件比例、测试/源码比率、断言密度                           | quality assurance 维度输出 0-100 评分 + 诊断 + 处方      | 0/1 | [quality-assurance](../requirements/quality-assurance/prd.md) |
 | M7  | **可靠性与安全维度** — unsafe 代码比例、依赖漏洞信号、输入验证密度                   | reliability & security 维度输出 0-100 评分 + 诊断 + 处方 | 0/1 | [reliability](../requirements/reliability/prd.md) |
 | M8  | **性能维度** — 嵌套循环密度、大数据结构拷贝模式、同步阻塞调用检测                       | performance 维度输出 0-100 评分 + 诊断 + 处方            | 0/1 | [performance](../requirements/performance/prd.md) |
-| M9  | **Composite score 升级** — 可扩展加权，读取 ScoreProfile 权重聚合所有维度    | 8 个维度正确聚合，不同项目类型权重不同                           | 0/1 |     |
+| M9  | **Composite score 升级** — 可扩展加权，读取 ScoreProfile 权重聚合所有维度    | 8 个维度正确聚合，不同项目类型权重不同                           | 1/1 | 已在 M3 中实现 |
 
 
 ## 3. 当前版本

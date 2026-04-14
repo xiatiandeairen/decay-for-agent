@@ -3,6 +3,7 @@ mod db;
 mod diagnose;
 mod dimension;
 mod filter;
+mod filter_pipeline;
 mod git;
 mod profile;
 mod run;

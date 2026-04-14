@@ -45,6 +45,15 @@ pub fn init() -> Result<Connection> {
             lines_added INTEGER NOT NULL,
             lines_deleted INTEGER NOT NULL,
             last_modified TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS scores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+            structural INTEGER NOT NULL,
+            complexity INTEGER NOT NULL,
+            fragility INTEGER NOT NULL,
+            composite INTEGER NOT NULL
         );",
     )
     .context("failed to create tables")?;
@@ -61,6 +70,23 @@ pub fn create_snapshot(conn: &Connection, project_path: &str) -> Result<i64> {
     .context("failed to insert snapshot")?;
 
     Ok(conn.last_insert_rowid())
+}
+
+/// Insert scores for a snapshot.
+pub fn insert_scores(
+    conn: &Connection,
+    snapshot_id: i64,
+    structural: i32,
+    complexity: i32,
+    fragility: i32,
+    composite: i32,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO scores (snapshot_id, structural, complexity, fragility, composite) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![snapshot_id, structural, complexity, fragility, composite],
+    )
+    .context("failed to insert scores")?;
+    Ok(())
 }
 
 #[cfg(test)]

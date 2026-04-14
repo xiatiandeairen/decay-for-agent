@@ -22,7 +22,7 @@
 
 | 任务 | 文档 | 进度 |
 |------|------|------|
-| complexity 评分 tech | — | 0/0 |
+| complexity 评分 tech | [tech](tech.md) | 0/0 |
 
 ## 5. 验收标准
 

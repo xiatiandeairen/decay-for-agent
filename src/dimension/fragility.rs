@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use log::debug;
-use rusqlite::Connection;
 
 use super::Dimension;
+use crate::data_store::DataStore;
 use crate::diagnose::{Issue, Level};
 
 // --- Fragility thresholds ---
@@ -17,7 +17,10 @@ impl Dimension for Fragility {
         "fragility"
     }
 
-    fn score(&self, conn: &Connection, snapshot_id: i64) -> Result<Option<i32>> {
+    fn score(&self, store: &DataStore) -> Result<Option<i32>> {
+        let conn = store.conn();
+        let snapshot_id = store.snapshot_id();
+
         let file_count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM git_changes WHERE snapshot_id = ?1",
@@ -80,7 +83,9 @@ impl Dimension for Fragility {
         Ok(Some(score.max(0)))
     }
 
-    fn diagnose(&self, conn: &Connection, snapshot_id: i64) -> Result<Vec<Issue>> {
+    fn diagnose(&self, store: &DataStore) -> Result<Vec<Issue>> {
+        let conn = store.conn();
+        let snapshot_id = store.snapshot_id();
         let mut issues = Vec::new();
         let name = self.name().to_string();
 
@@ -182,57 +187,53 @@ impl Dimension for Fragility {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data_store::DataStore;
+    use rusqlite::Connection;
 
-    fn setup_db() -> Connection {
+    fn setup_store() -> DataStore {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE git_changes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                snapshot_id INTEGER NOT NULL,
-                path TEXT NOT NULL,
-                change_count INTEGER NOT NULL,
-                lines_added INTEGER NOT NULL,
-                lines_deleted INTEGER NOT NULL,
-                last_modified TEXT NOT NULL
-            );",
-        )
-        .unwrap();
-        conn
+            "CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), version TEXT NOT NULL);
+             CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, depth INTEGER NOT NULL);
+             CREATE TABLE git_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, change_count INTEGER NOT NULL, lines_added INTEGER NOT NULL, lines_deleted INTEGER NOT NULL, last_modified TEXT NOT NULL);",
+        ).unwrap();
+        conn.execute("INSERT INTO snapshots (project_path, version) VALUES ('/tmp', '0.1.0')", []).unwrap();
+        DataStore::new(conn, 1, "/tmp".to_string())
     }
 
     #[test]
     fn test_no_git() -> Result<()> {
-        let conn = setup_db();
+        let store = setup_store();
         let dim = Fragility;
-        let score = dim.score(&conn, 1)?;
+        let score = dim.score(&store)?;
         assert_eq!(score, None);
         Ok(())
     }
 
     #[test]
     fn test_even_churn() -> Result<()> {
-        let conn = setup_db();
+        let store = setup_store();
         for i in 0..10 {
-            conn.execute(
+            store.conn().execute(
                 "INSERT INTO git_changes (snapshot_id, path, change_count, lines_added, lines_deleted, last_modified) VALUES (1, ?1, 5, 50, 30, '2026-04-01')",
                 [format!("src/file{i}.rs")],
             )?;
         }
         let dim = Fragility;
-        let score = dim.score(&conn, 1)?.unwrap();
+        let score = dim.score(&store)?.unwrap();
         assert!(score > 70, "evenly spread churn should score >70, got {score}");
         Ok(())
     }
 
     #[test]
     fn test_high_churn_critical() -> Result<()> {
-        let conn = setup_db();
-        conn.execute(
+        let store = setup_store();
+        store.conn().execute(
             "INSERT INTO git_changes (snapshot_id, path, change_count, lines_added, lines_deleted, last_modified) VALUES (1, 'hot.rs', 20, 400, 200, '2026-04-01')",
             [],
         )?;
         let dim = Fragility;
-        let issues = dim.diagnose(&conn, 1)?;
+        let issues = dim.diagnose(&store)?;
         assert!(issues.iter().any(|i| i.level == Level::Critical && i.message.contains("hot.rs")));
         Ok(())
     }

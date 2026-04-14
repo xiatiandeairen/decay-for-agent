@@ -5,7 +5,7 @@ use anyhow::Result;
 use log::debug;
 use serde::Serialize;
 
-use crate::{collector, db, diagnose, dimension, profile, trend};
+use crate::{collector, data_store, db, diagnose, dimension, profile, trend};
 
 #[derive(Serialize)]
 pub struct Report {
@@ -160,7 +160,7 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         .unwrap_or_default()
         .to_string_lossy();
 
-    let timestamp = chrono_now();
+    let timestamp = crate::util::now_utc();
 
     // Use a simplified template approach — build the full markdown
     format!(
@@ -193,48 +193,6 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
         version = env!("CARGO_PKG_VERSION"),
     )
-}
-
-fn is_leap(y: u64) -> bool {
-    y.is_multiple_of(4) && (!y.is_multiple_of(100) || y.is_multiple_of(400))
-}
-
-fn chrono_now() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-    let secs_per_day: u64 = 86400;
-    let days = now / secs_per_day;
-    let remaining = now % secs_per_day;
-    let hours = remaining / 3600;
-    let minutes = (remaining % 3600) / 60;
-
-    let mut y: u64 = 1970;
-    let mut d = days;
-    loop {
-        let diy = if is_leap(y) { 366 } else { 365 };
-        if d < diy {
-            break;
-        }
-        d -= diy;
-        y += 1;
-    }
-    let leap = is_leap(y);
-    let mdays: &[u64] = if leap {
-        &[31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    } else {
-        &[31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    };
-    let mut m: u64 = 1;
-    for &md in mdays {
-        if d < md {
-            break;
-        }
-        d -= md;
-        m += 1;
-    }
-    format!("{y:04}-{m:02}-{:02} {hours:02}:{minutes:02} UTC", d + 1)
 }
 
 /// Run the core decay logic.
@@ -278,13 +236,16 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
     let score_profile = profile::ScoreProfile::for_type(project_type);
     debug!("detected project type: {project_type:?}");
 
+    // Build shared DataStore for all dimensions (lazy-loads source files, deps)
+    let store = data_store::DataStore::new(conn, snapshot_id, project_path_str.clone());
+
     // Evaluate all dimensions via registry
     let dimensions = dimension::all_dimensions();
     let mut scores: HashMap<String, Option<i32>> = HashMap::new();
     let mut all_issues: Vec<diagnose::Issue> = Vec::new();
 
     for dim in &dimensions {
-        let result = dim.evaluate(&conn, snapshot_id)?;
+        let result = dim.evaluate(&store)?;
         debug!("dimension {}: score={:?}", result.name, result.score);
         scores.insert(result.name.clone(), result.score);
         all_issues.extend(result.issues);
@@ -301,18 +262,18 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
         .iter()
         .map(|(k, v)| (k.clone(), *v))
         .collect();
-    db::insert_dimension_scores(&conn, snapshot_id, &score_pairs)?;
+    db::insert_dimension_scores(store.conn(), snapshot_id, &score_pairs)?;
 
     // Also persist to legacy scores table for backward compat
     let s = scores.get("structural").and_then(|s| *s).unwrap_or(0);
     let c = scores.get("complexity").and_then(|s| *s).unwrap_or(0);
     let f = scores.get("fragility").and_then(|s| *s);
-    db::insert_scores(&conn, snapshot_id, s, c, f, comp)?;
+    db::insert_scores(store.conn(), snapshot_id, s, c, f, comp)?;
 
     debug!("scores: {scores:?} composite={comp}");
 
     // Trend comparison
-    let trend_data = db::get_previous_dimension_scores(&conn, &project_path_str, snapshot_id)?
+    let trend_data = db::get_previous_dimension_scores(store.conn(), &project_path_str, snapshot_id)?
         .map(|prev| trend::compare_dimensions(&scores, &prev));
 
     let critical_count = all_issues

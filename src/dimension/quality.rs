@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use log::debug;
-use rusqlite::Connection;
 
 use super::Dimension;
+use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
 pub struct QualityAssurance;
@@ -14,14 +14,13 @@ impl Dimension for QualityAssurance {
         "quality_assurance"
     }
 
-    fn score(&self, conn: &Connection, snapshot_id: i64) -> Result<Option<i32>> {
-        let project_path = get_project_path(conn, snapshot_id)?;
-        let files = get_all_files(conn, snapshot_id)?;
-        if files.is_empty() {
+    fn score(&self, store: &DataStore) -> Result<Option<i32>> {
+        let source_files = store.source_files();
+        if source_files.is_empty() {
             return Ok(Some(100));
         }
 
-        let analysis = analyze(&project_path, &files);
+        let analysis = analyze(source_files);
         let mut score: i32 = 100;
         debug!("quality_assurance: {} source, {} test files", analysis.source_files, analysis.test_files);
 
@@ -59,14 +58,13 @@ impl Dimension for QualityAssurance {
         Ok(Some(score.max(0)))
     }
 
-    fn diagnose(&self, conn: &Connection, snapshot_id: i64) -> Result<Vec<Issue>> {
-        let project_path = get_project_path(conn, snapshot_id)?;
-        let files = get_all_files(conn, snapshot_id)?;
-        if files.is_empty() {
+    fn diagnose(&self, store: &DataStore) -> Result<Vec<Issue>> {
+        let source_files = store.source_files();
+        if source_files.is_empty() {
             return Ok(vec![]);
         }
 
-        let analysis = analyze(&project_path, &files);
+        let analysis = analyze(source_files);
         let mut issues = Vec::new();
         let cat = self.name().to_string();
 
@@ -126,8 +124,7 @@ struct Analysis {
     untested_source_files: Vec<String>,
 }
 
-fn analyze(project_path: &str, rel_paths: &[String]) -> Analysis {
-    let base = Path::new(project_path);
+fn analyze(files: &[SourceFile]) -> Analysis {
     let mut source_files = 0;
     let mut test_files = 0;
     let mut source_lines = 0;
@@ -140,24 +137,14 @@ fn analyze(project_path: &str, rel_paths: &[String]) -> Analysis {
         ".to_equal(", "assert_eq!", "assert_ne!", "assert!(", "#[test]",
         "@test", "@Test", "def test_"];
 
-    for rel_path in rel_paths {
-        if !is_source_file(rel_path) {
-            continue;
-        }
-
-        let abs_path = base.join(rel_path);
-        let Ok(content) = std::fs::read_to_string(&abs_path) else {
-            continue;
-        };
-        let line_count = content.lines().count();
-
-        if is_test_file(rel_path) || is_inline_test_module(&content) {
+    for sf in files {
+        if is_test_file(&sf.path) || is_inline_test_module(&sf.content) {
             test_files += 1;
-            test_lines += line_count;
-            test_names.push(rel_path.clone());
+            test_lines += sf.line_count;
+            test_names.push(sf.path.clone());
 
             // Count assertions
-            for line in content.lines() {
+            for line in &sf.lines {
                 let trimmed = line.trim();
                 for pat in &assert_patterns {
                     if trimmed.contains(pat) {
@@ -168,8 +155,8 @@ fn analyze(project_path: &str, rel_paths: &[String]) -> Analysis {
             }
         } else {
             source_files += 1;
-            source_lines += line_count;
-            source_names.push(rel_path.clone());
+            source_lines += sf.line_count;
+            source_names.push(sf.path.clone());
         }
     }
 
@@ -215,58 +202,41 @@ fn is_inline_test_module(content: &str) -> bool {
     content.contains("#[cfg(test)]")
 }
 
-fn is_source_file(path: &str) -> bool {
-    let src_extensions = [".rs", ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".java",
-        ".kt", ".swift", ".rb", ".php", ".c", ".cpp", ".h", ".hpp", ".cs"];
-    src_extensions.iter().any(|ext| path.ends_with(ext))
-}
-
-fn get_project_path(conn: &Connection, snapshot_id: i64) -> Result<String> {
-    conn.query_row("SELECT project_path FROM snapshots WHERE id = ?1", [snapshot_id], |row| row.get(0))
-        .context("failed to get project path")
-}
-
-fn get_all_files(conn: &Connection, snapshot_id: i64) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare("SELECT path FROM files WHERE snapshot_id = ?1")
-        .context("failed to prepare file paths query")?;
-    stmt.query_map([snapshot_id], |row| row.get(0))
-        .context("failed to query file paths")?
-        .collect::<std::result::Result<Vec<String>, _>>()
-        .context("failed to collect file paths")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data_store::DataStore;
+    use rusqlite::Connection;
     use std::fs;
     use tempfile::TempDir;
 
-    fn setup_db(dir: &TempDir) -> (Connection, i64) {
+    fn setup_store(dir: &TempDir) -> DataStore {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), version TEXT NOT NULL);
-             CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, depth INTEGER NOT NULL);",
+             CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, depth INTEGER NOT NULL);
+             CREATE TABLE git_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, change_count INTEGER NOT NULL, lines_added INTEGER NOT NULL, lines_deleted INTEGER NOT NULL, last_modified TEXT NOT NULL);",
         ).unwrap();
         conn.execute("INSERT INTO snapshots (project_path, version) VALUES (?1, '0.1.0')", [dir.path().to_string_lossy().to_string()]).unwrap();
         let sid = conn.last_insert_rowid();
-        (conn, sid)
+        DataStore::new(conn, sid, dir.path().to_string_lossy().to_string())
     }
 
-    fn add_file(conn: &Connection, sid: i64, dir: &TempDir, path: &str, content: &str) {
+    fn add_file(store: &DataStore, dir: &TempDir, path: &str, content: &str) {
         fs::create_dir_all(dir.path().join(path).parent().unwrap()).unwrap();
         fs::write(dir.path().join(path), content).unwrap();
-        conn.execute("INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (?1, ?2, ?3, 1)", rusqlite::params![sid, path, content.len()]).unwrap();
+        store.conn().execute("INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (?1, ?2, ?3, 1)", rusqlite::params![store.snapshot_id(), path, content.len()]).unwrap();
     }
 
     #[test]
     fn test_no_tests() -> Result<()> {
         let dir = TempDir::new()?;
-        let (conn, sid) = setup_db(&dir);
-        add_file(&conn, sid, &dir, "src/main.rs", "fn main() {}\n");
+        let store = setup_store(&dir);
+        add_file(&store, &dir, "src/main.rs", "fn main() {}\n");
         let dim = QualityAssurance;
-        let score = dim.score(&conn, sid)?.unwrap();
+        let score = dim.score(&store)?.unwrap();
         assert!(score < 50, "no-test project should score <50, got {score}");
-        let issues = dim.diagnose(&conn, sid)?;
+        let issues = dim.diagnose(&store)?;
         assert!(issues.iter().any(|i| i.level == Level::Critical && i.message.contains("no test")));
         Ok(())
     }
@@ -274,11 +244,11 @@ mod tests {
     #[test]
     fn test_with_tests() -> Result<()> {
         let dir = TempDir::new()?;
-        let (conn, sid) = setup_db(&dir);
-        add_file(&conn, sid, &dir, "src/lib.rs", "pub fn add(a: i32, b: i32) -> i32 { a + b }\n");
-        add_file(&conn, sid, &dir, "tests/test_lib.rs", "#[test]\nfn test_add() {\n    assert_eq!(add(1, 2), 3);\n}\n");
+        let store = setup_store(&dir);
+        add_file(&store, &dir, "src/lib.rs", "pub fn add(a: i32, b: i32) -> i32 { a + b }\n");
+        add_file(&store, &dir, "tests/test_lib.rs", "#[test]\nfn test_add() {\n    assert_eq!(add(1, 2), 3);\n}\n");
         let dim = QualityAssurance;
-        let score = dim.score(&conn, sid)?.unwrap();
+        let score = dim.score(&store)?.unwrap();
         assert!(score > 50, "project with tests should score >50, got {score}");
         Ok(())
     }

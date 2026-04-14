@@ -105,7 +105,7 @@ pub fn collect(project_path: &Path, days: u32) -> Result<(Vec<GitChange>, GitSum
             change_count: stats.change_count,
             lines_added: stats.lines_added,
             lines_deleted: stats.lines_deleted,
-            last_modified: format_timestamp(stats.last_modified),
+            last_modified: crate::util::format_timestamp(stats.last_modified),
         })
         .collect();
 
@@ -133,58 +133,9 @@ fn chrono_cutoff(days: u32) -> i64 {
     now - (days as i64 * 86400)
 }
 
-fn format_timestamp(ts: i64) -> String {
-    let secs_per_day: i64 = 86400;
-    let days = ts / secs_per_day;
-    let remaining = ts % secs_per_day;
-    let hours = remaining / 3600;
-    let minutes = (remaining % 3600) / 60;
-    let seconds = remaining % 60;
-
-    let mut y = 1970;
-    let mut d = days;
-    loop {
-        let days_in_year = if is_leap_year(y) { 366 } else { 365 };
-        if d < days_in_year {
-            break;
-        }
-        d -= days_in_year;
-        y += 1;
-    }
-    let months_days: &[i64] = if is_leap_year(y) {
-        &[31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    } else {
-        &[31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    };
-    let mut m = 1;
-    for &md in months_days {
-        if d < md {
-            break;
-        }
-        d -= md;
-        m += 1;
-    }
-
-    format!(
-        "{y:04}-{m:02}-{:02}T{hours:02}:{minutes:02}:{seconds:02}Z",
-        d + 1
-    )
-}
-
-fn is_leap_year(y: i64) -> bool {
-    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_format_timestamp() {
-        let ts = 1767225600;
-        let result = format_timestamp(ts);
-        assert_eq!(result, "2026-01-01T00:00:00Z");
-    }
 
     #[test]
     fn test_chrono_cutoff() {

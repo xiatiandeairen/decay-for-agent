@@ -1,10 +1,8 @@
-use std::path::Path;
-
-use anyhow::{Context, Result};
+use anyhow::Result;
 use log::debug;
-use rusqlite::Connection;
 
 use super::Dimension;
+use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
 // --- Thresholds ---
@@ -19,14 +17,13 @@ impl Dimension for Observability {
         "observability"
     }
 
-    fn score(&self, conn: &Connection, snapshot_id: i64) -> Result<Option<i32>> {
-        let project_path = get_project_path(conn, snapshot_id)?;
-        let files = get_source_files(conn, snapshot_id)?;
-        if files.is_empty() {
+    fn score(&self, store: &DataStore) -> Result<Option<i32>> {
+        let source_files = store.source_files();
+        if source_files.is_empty() {
             return Ok(Some(100));
         }
 
-        let analysis = analyze(&project_path, &files);
+        let analysis = analyze(source_files);
         let mut score: i32 = 100;
         debug!("observability: {} files, {} lines", analysis.file_count, analysis.total_lines);
 
@@ -61,14 +58,13 @@ impl Dimension for Observability {
         Ok(Some(score.max(0)))
     }
 
-    fn diagnose(&self, conn: &Connection, snapshot_id: i64) -> Result<Vec<Issue>> {
-        let project_path = get_project_path(conn, snapshot_id)?;
-        let files = get_source_files(conn, snapshot_id)?;
-        if files.is_empty() {
+    fn diagnose(&self, store: &DataStore) -> Result<Vec<Issue>> {
+        let source_files = store.source_files();
+        if source_files.is_empty() {
             return Ok(vec![]);
         }
 
-        let analysis = analyze(&project_path, &files);
+        let analysis = analyze(source_files);
         let mut issues = Vec::new();
         let cat = self.name().to_string();
 
@@ -126,8 +122,7 @@ struct Analysis {
     unwrap_details: Vec<(String, usize)>,
 }
 
-fn analyze(project_path: &str, rel_paths: &[String]) -> Analysis {
-    let base = Path::new(project_path);
+fn analyze(source_files: &[SourceFile]) -> Analysis {
     let mut file_count = 0;
     let mut total_lines = 0;
     let mut unwrap_panic_count = 0;
@@ -146,19 +141,13 @@ fn analyze(project_path: &str, rel_paths: &[String]) -> Analysis {
 
     let catch_patterns = ["catch", "except", "rescue"];
 
-    for rel_path in rel_paths {
-        let abs_path = base.join(rel_path);
-        let Ok(content) = std::fs::read_to_string(&abs_path) else {
-            continue;
-        };
-
+    for sf in source_files {
         file_count += 1;
-        let lines: Vec<&str> = content.lines().collect();
-        total_lines += lines.len();
+        total_lines += sf.line_count;
 
         let mut file_unwraps = 0;
 
-        for (i, line) in lines.iter().enumerate() {
+        for (i, line) in sf.lines.iter().enumerate() {
             let trimmed = line.trim();
 
             // Check logging
@@ -184,7 +173,7 @@ fn analyze(project_path: &str, rel_paths: &[String]) -> Analysis {
                 if trimmed.starts_with(pat) || trimmed.contains(&format!("}} {pat}")) || trimmed.contains(&format!("{pat} ")) {
                     total_catches += 1;
                     // Check if next non-empty line is just closing brace (empty catch)
-                    let next_content = lines.get(i + 1).map(|l| l.trim()).unwrap_or("");
+                    let next_content = sf.lines.get(i + 1).map(|l| l.trim()).unwrap_or("");
                     if next_content == "}" || next_content == "pass" || next_content.is_empty() {
                         empty_catches += 1;
                     }
@@ -204,7 +193,7 @@ fn analyze(project_path: &str, rel_paths: &[String]) -> Analysis {
         }
 
         if file_unwraps > 0 {
-            unwrap_details.push((rel_path.clone(), file_unwraps));
+            unwrap_details.push((sf.path.clone(), file_unwraps));
         }
     }
 
@@ -220,64 +209,39 @@ fn analyze(project_path: &str, rel_paths: &[String]) -> Analysis {
     }
 }
 
-fn get_project_path(conn: &Connection, snapshot_id: i64) -> Result<String> {
-    conn.query_row(
-        "SELECT project_path FROM snapshots WHERE id = ?1",
-        [snapshot_id],
-        |row| row.get(0),
-    )
-    .context("failed to get project path")
-}
-
-fn get_source_files(conn: &Connection, snapshot_id: i64) -> Result<Vec<String>> {
-    let mut stmt = conn
-        .prepare("SELECT path FROM files WHERE snapshot_id = ?1")
-        .context("failed to prepare file paths query")?;
-    let paths: Vec<String> = stmt
-        .query_map([snapshot_id], |row| row.get(0))
-        .context("failed to query file paths")?
-        .collect::<std::result::Result<Vec<_>, _>>()
-        .context("failed to collect file paths")?;
-    // Filter to source files only
-    Ok(paths.into_iter().filter(|p| is_source_file(p)).collect())
-}
-
-fn is_source_file(path: &str) -> bool {
-    let src_extensions = [".rs", ".py", ".js", ".ts", ".tsx", ".jsx", ".go", ".java",
-        ".kt", ".swift", ".rb", ".php", ".c", ".cpp", ".h", ".hpp", ".cs"];
-    src_extensions.iter().any(|ext| path.ends_with(ext))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data_store::DataStore;
+    use rusqlite::Connection;
     use std::fs;
     use tempfile::TempDir;
 
-    fn setup_db(dir: &TempDir) -> (Connection, i64) {
+    fn setup_store(dir: &TempDir) -> DataStore {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), version TEXT NOT NULL);
-             CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, depth INTEGER NOT NULL);",
+             CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, depth INTEGER NOT NULL);
+             CREATE TABLE git_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, change_count INTEGER NOT NULL, lines_added INTEGER NOT NULL, lines_deleted INTEGER NOT NULL, last_modified TEXT NOT NULL);",
         ).unwrap();
         conn.execute("INSERT INTO snapshots (project_path, version) VALUES (?1, '0.1.0')", [dir.path().to_string_lossy().to_string()]).unwrap();
         let sid = conn.last_insert_rowid();
-        (conn, sid)
+        DataStore::new(conn, sid, dir.path().to_string_lossy().to_string())
     }
 
-    fn add_file(conn: &Connection, sid: i64, dir: &TempDir, path: &str, content: &str) {
+    fn add_file(store: &DataStore, dir: &TempDir, path: &str, content: &str) {
         fs::create_dir_all(dir.path().join(path).parent().unwrap()).unwrap();
         fs::write(dir.path().join(path), content).unwrap();
-        conn.execute("INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (?1, ?2, ?3, 1)", rusqlite::params![sid, path, content.len()]).unwrap();
+        store.conn().execute("INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (?1, ?2, ?3, 1)", rusqlite::params![store.snapshot_id(), path, content.len()]).unwrap();
     }
 
     #[test]
     fn test_healthy_with_logging() -> Result<()> {
         let dir = TempDir::new()?;
-        let (conn, sid) = setup_db(&dir);
-        add_file(&conn, sid, &dir, "src/main.rs", "use log::info;\nfn main() {\n    info!(\"starting\");\n}\n");
+        let store = setup_store(&dir);
+        add_file(&store, &dir, "src/main.rs", "use log::info;\nfn main() {\n    info!(\"starting\");\n}\n");
         let dim = Observability;
-        let score = dim.score(&conn, sid)?.unwrap();
+        let score = dim.score(&store)?.unwrap();
         assert!(score > 70, "project with logging should score >70, got {score}");
         Ok(())
     }
@@ -285,11 +249,11 @@ mod tests {
     #[test]
     fn test_many_unwraps() -> Result<()> {
         let dir = TempDir::new()?;
-        let (conn, sid) = setup_db(&dir);
+        let store = setup_store(&dir);
         let content = (0..20).map(|i| format!("let x{i} = val.unwrap();")).collect::<Vec<_>>().join("\n");
-        add_file(&conn, sid, &dir, "src/main.rs", &content);
+        add_file(&store, &dir, "src/main.rs", &content);
         let dim = Observability;
-        let issues = dim.diagnose(&conn, sid)?;
+        let issues = dim.diagnose(&store)?;
         assert!(issues.iter().any(|i| i.message.contains("unwrap/panic")));
         Ok(())
     }

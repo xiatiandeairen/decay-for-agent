@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use log::debug;
-use rusqlite::Connection;
 
 use super::Dimension;
+use crate::data_store::DataStore;
 use crate::diagnose::{Issue, Level};
 
 // --- Complexity thresholds ---
@@ -19,7 +19,9 @@ impl Dimension for Complexity {
         "complexity"
     }
 
-    fn score(&self, conn: &Connection, snapshot_id: i64) -> Result<Option<i32>> {
+    fn score(&self, store: &DataStore) -> Result<Option<i32>> {
+        let conn = store.conn();
+        let snapshot_id = store.snapshot_id();
         let mut score: i32 = 100;
         debug!("complexity: scoring starting");
 
@@ -77,7 +79,9 @@ impl Dimension for Complexity {
         Ok(Some(score.max(0)))
     }
 
-    fn diagnose(&self, conn: &Connection, snapshot_id: i64) -> Result<Vec<Issue>> {
+    fn diagnose(&self, store: &DataStore) -> Result<Vec<Issue>> {
+        let conn = store.conn();
+        let snapshot_id = store.snapshot_id();
         let mut issues = Vec::new();
         let name = self.name().to_string();
 
@@ -140,46 +144,44 @@ impl Dimension for Complexity {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data_store::DataStore;
+    use rusqlite::Connection;
 
-    fn setup_db() -> Connection {
+    fn setup_store() -> DataStore {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
-            "CREATE TABLE files (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                snapshot_id INTEGER NOT NULL,
-                path TEXT NOT NULL,
-                size_bytes INTEGER NOT NULL,
-                depth INTEGER NOT NULL
-            );",
-        )
-        .unwrap();
-        conn
+            "CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), version TEXT NOT NULL);
+             CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, depth INTEGER NOT NULL);
+             CREATE TABLE git_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, change_count INTEGER NOT NULL, lines_added INTEGER NOT NULL, lines_deleted INTEGER NOT NULL, last_modified TEXT NOT NULL);",
+        ).unwrap();
+        conn.execute("INSERT INTO snapshots (project_path, version) VALUES ('/tmp', '0.1.0')", []).unwrap();
+        DataStore::new(conn, 1, "/tmp".to_string())
     }
 
     #[test]
     fn test_healthy() -> Result<()> {
-        let conn = setup_db();
+        let store = setup_store();
         for i in 0..20 {
-            conn.execute(
+            store.conn().execute(
                 "INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (1, ?1, 3000, 2)",
                 [format!("src/file{i}.rs")],
             )?;
         }
         let dim = Complexity;
-        let score = dim.score(&conn, 1)?.unwrap();
+        let score = dim.score(&store)?.unwrap();
         assert!(score > 80, "healthy complexity should score >80, got {score}");
         Ok(())
     }
 
     #[test]
     fn test_large_file_warning() -> Result<()> {
-        let conn = setup_db();
-        conn.execute(
+        let store = setup_store();
+        store.conn().execute(
             "INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (1, 'big.rs', 20000, 1)",
             [],
         )?;
         let dim = Complexity;
-        let issues = dim.diagnose(&conn, 1)?;
+        let issues = dim.diagnose(&store)?;
         assert!(!issues.is_empty());
         assert!(issues.iter().any(|i| i.level == Level::Warning && i.message.contains("big.rs")));
         Ok(())

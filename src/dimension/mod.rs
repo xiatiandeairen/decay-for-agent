@@ -8,8 +8,8 @@ pub mod reliability;
 pub mod structural;
 
 use anyhow::Result;
-use rusqlite::Connection;
 
+use crate::data_store::DataStore;
 use crate::diagnose::Issue;
 
 /// Result of evaluating a single dimension.
@@ -21,23 +21,21 @@ pub struct DimensionResult {
 }
 
 /// A measurable dimension of code health.
+///
+/// Dimensions pull data from DataStore (lazy-loaded, cached).
+/// DB-only dimensions use store.conn(); file-based dimensions use store.source_files().
 pub trait Dimension: Send + Sync {
-    /// Dimension name, used for output and persistence.
     fn name(&self) -> &'static str;
 
-    /// Compute health score (0-100, deduction-based).
-    /// Returns None when the required data source is unavailable.
-    fn score(&self, conn: &Connection, snapshot_id: i64) -> Result<Option<i32>>;
+    fn score(&self, store: &DataStore) -> Result<Option<i32>>;
 
-    /// Diagnose issues and generate prescriptions.
-    fn diagnose(&self, conn: &Connection, snapshot_id: i64) -> Result<Vec<Issue>>;
+    fn diagnose(&self, store: &DataStore) -> Result<Vec<Issue>>;
 
-    /// Run score + diagnose in one call.
-    fn evaluate(&self, conn: &Connection, snapshot_id: i64) -> Result<DimensionResult> {
+    fn evaluate(&self, store: &DataStore) -> Result<DimensionResult> {
         Ok(DimensionResult {
             name: self.name().to_string(),
-            score: self.score(conn, snapshot_id)?,
-            issues: self.diagnose(conn, snapshot_id)?,
+            score: self.score(store)?,
+            issues: self.diagnose(store)?,
         })
     }
 }

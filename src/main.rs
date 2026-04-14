@@ -1,5 +1,6 @@
 mod collector;
 mod config;
+mod data_store;
 mod db;
 mod diagnose;
 mod dimension;
@@ -11,6 +12,7 @@ mod profile;
 mod run;
 mod scan;
 mod trend;
+mod util;
 
 use clap::Parser;
 

@@ -27,9 +27,27 @@ pub fn init() -> Result<Connection> {
             project_path TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             version TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS files (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+            path TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            depth INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS git_changes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+            path TEXT NOT NULL,
+            change_count INTEGER NOT NULL,
+            lines_added INTEGER NOT NULL,
+            lines_deleted INTEGER NOT NULL,
+            last_modified TEXT NOT NULL
         );",
     )
-    .context("failed to create snapshots table")?;
+    .context("failed to create tables")?;
 
     Ok(conn)
 }

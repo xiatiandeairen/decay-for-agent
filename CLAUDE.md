@@ -13,4 +13,6 @@
 - [snapshot-store](.know/docs/requirements/snapshot-store/prd.md) | 2026-04-14
   - [tech](.know/docs/requirements/snapshot-store/tech.md) | 2026-04-14
 - [file-scan](.know/docs/requirements/file-scan/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/file-scan/tech.md) | 2026-04-14
 - [git-analysis](.know/docs/requirements/git-analysis/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/git-analysis/tech.md) | 2026-04-14

@@ -25,4 +25,6 @@
 - [composite-score](.know/docs/requirements/composite-score/prd.md) | 2026-04-14
   - [tech](.know/docs/requirements/composite-score/tech.md) | 2026-04-14
 - [diagnosis](.know/docs/requirements/diagnosis/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/diagnosis/tech.md) | 2026-04-14
 - [prescription](.know/docs/requirements/prescription/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/prescription/tech.md) | 2026-04-14

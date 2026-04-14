@@ -1,4 +1,5 @@
 mod db;
+mod diagnose;
 mod git;
 mod scan;
 mod score;
@@ -60,6 +61,10 @@ fn main() -> Result<()> {
             println!(
                 "Health: {comp}/100 (structural: {s}, complexity: {c}, fragility: {f_display})"
             );
+
+            let issues = diagnose::run(&conn, snapshot_id)?;
+            diagnose::print_issues(&issues);
+
             println!(
                 "Snapshot #{snapshot_id} created for {}",
                 project_path.display()

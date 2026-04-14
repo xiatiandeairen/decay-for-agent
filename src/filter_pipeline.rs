@@ -291,6 +291,36 @@ fn is_any_language_ext(ext: &str) -> bool {
     ext_to_group(ext).is_some()
 }
 
+/// Detect primary languages from a list of file paths.
+/// Returns language group names with ≥10% share.
+pub fn detect_primary_languages(paths: &[String]) -> Vec<String> {
+    let mut group_counts: HashMap<&str, usize> = HashMap::new();
+    let mut total = 0;
+
+    for path in paths {
+        let ext = std::path::Path::new(path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        if let Some(group) = ext_to_group(&ext) {
+            *group_counts.entry(group).or_default() += 1;
+            total += 1;
+        }
+    }
+
+    if total == 0 {
+        return vec![];
+    }
+
+    group_counts
+        .iter()
+        .filter(|(_, count)| **count as f64 / total as f64 >= PRIMARY_LANGUAGE_THRESHOLD)
+        .map(|(name, _)| name.to_string())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

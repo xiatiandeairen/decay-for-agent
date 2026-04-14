@@ -6,8 +6,14 @@ use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
 // --- Thresholds ---
+/// Unwrap/panic calls per 1,000 lines. These mask errors and make failures opaque.
+/// 5 per 1K lines is the point where panic-driven flow starts dominating error paths.
 const UNWRAP_DENSITY_WARN: f64 = 5.0;  // per 1K lines
+/// Critical unwrap density: 15+ per 1K lines means error handling is essentially absent.
+/// At this level any unexpected input will likely crash the process with no useful context.
 const UNWRAP_DENSITY_CRIT: f64 = 15.0;
+/// Number of hardcoded URLs in non-comment source lines.
+/// More than 5 suggests configuration is embedded in code instead of being externalized.
 const HARDCODED_CONFIG_WARN: usize = 5;
 
 pub struct Observability;

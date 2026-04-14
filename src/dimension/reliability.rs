@@ -5,6 +5,22 @@ use super::Dimension;
 use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
+// --- Thresholds ---
+/// Unsafe/eval occurrences per 1,000 lines triggering a warning.
+/// 2+ per 1K lines means unsafe usage is habitual rather than exceptional.
+const UNSAFE_DENSITY_WARN: f64 = 2.0;
+/// Critical unsafe density: 8+ per 1K lines indicates safety guarantees are systematically bypassed.
+/// At this level, memory safety and sandboxing assumptions can no longer be trusted.
+const UNSAFE_DENSITY_CRIT: f64 = 8.0;
+/// Direct dependency count above which supply-chain risk becomes significant.
+/// 50+ direct deps dramatically increases the attack surface and update burden.
+const DEP_COUNT_WARN: usize = 50;
+/// Critical dependency count. 100+ direct deps signals transitive exposure is very likely unaudited.
+const DEP_COUNT_CRIT: usize = 100;
+/// Unsafe/eval occurrences per file before flagging it individually in diagnosis.
+/// More than 3 in one file suggests that file specifically is a reliability weak point.
+const UNSAFE_PER_FILE_WARN: usize = 3;
+
 pub struct Reliability;
 
 impl Dimension for Reliability {
@@ -25,9 +41,9 @@ impl Dimension for Reliability {
         // Unsafe/eval density
         if analysis.total_lines > 0 {
             let density = analysis.unsafe_count as f64 / (analysis.total_lines as f64 / 1000.0);
-            if density > 8.0 {
+            if density > UNSAFE_DENSITY_CRIT {
                 score -= 30;
-            } else if density > 2.0 {
+            } else if density > UNSAFE_DENSITY_WARN {
                 score -= 15;
             }
         }
@@ -42,9 +58,9 @@ impl Dimension for Reliability {
 
         // Dependency count
         let dep_count = store.dependencies().direct_count;
-        if dep_count > 100 {
+        if dep_count > DEP_COUNT_CRIT {
             score -= 20;
-        } else if dep_count > 50 {
+        } else if dep_count > DEP_COUNT_WARN {
             score -= 10;
         }
 
@@ -63,7 +79,7 @@ impl Dimension for Reliability {
 
         // Report files with unsafe/eval
         for (path, count) in &analysis.unsafe_details {
-            if *count > 3 {
+            if *count > UNSAFE_PER_FILE_WARN {
                 issues.push(Issue {
                     level: Level::Warning,
                     category: cat.clone(),
@@ -95,7 +111,7 @@ impl Dimension for Reliability {
 
         // Dependency count
         let dep_count = store.dependencies().direct_count;
-        if dep_count > 50 {
+        if dep_count > DEP_COUNT_WARN {
             issues.push(Issue {
                 level: Level::Info,
                 category: cat,

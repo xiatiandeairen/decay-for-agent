@@ -7,6 +7,22 @@ use super::Dimension;
 use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
+// --- Thresholds ---
+/// Minimum ratio of test files to total files (source + test) before penalizing.
+/// Below 10% means tests are rare outliers rather than a first-class practice.
+const TEST_FILE_RATIO_WARN: f64 = 0.10;
+/// Healthy test file ratio floor. Projects above 20% treat testing as a standard habit.
+/// Below this, meaningful coverage gaps are almost guaranteed.
+const TEST_FILE_RATIO_GOOD: f64 = 0.20;
+/// Ratio of test lines to source lines. Below 10% indicates very thin test suites.
+/// A ratio under 0.1 typically means only happy-path cases are covered.
+const TEST_LINE_RATIO_WARN: f64 = 0.10;
+/// Moderate test line ratio. 30% test-to-source lines is a reasonable baseline for safety.
+const TEST_LINE_RATIO_GOOD: f64 = 0.30;
+/// Assertions per 20 test lines. Below 1 assertion per 20 lines means tests assert little.
+/// Tests without assertions may pass trivially and provide no real confidence.
+const ASSERT_DENSITY_MIN: f64 = 1.0;
+
 pub struct QualityAssurance;
 
 impl Dimension for QualityAssurance {
@@ -30,9 +46,9 @@ impl Dimension for QualityAssurance {
             let test_ratio = analysis.test_files as f64 / total as f64;
             if test_ratio == 0.0 {
                 score -= 40;
-            } else if test_ratio < 0.10 {
+            } else if test_ratio < TEST_FILE_RATIO_WARN {
                 score -= 25;
-            } else if test_ratio < 0.20 {
+            } else if test_ratio < TEST_FILE_RATIO_GOOD {
                 score -= 10;
             }
         }
@@ -40,9 +56,9 @@ impl Dimension for QualityAssurance {
         // Test/source line ratio
         if analysis.source_lines > 0 {
             let line_ratio = analysis.test_lines as f64 / analysis.source_lines as f64;
-            if line_ratio < 0.1 {
+            if line_ratio < TEST_LINE_RATIO_WARN {
                 score -= 20;
-            } else if line_ratio < 0.3 {
+            } else if line_ratio < TEST_LINE_RATIO_GOOD {
                 score -= 10;
             }
         }
@@ -50,7 +66,7 @@ impl Dimension for QualityAssurance {
         // Assertion density in test files
         if analysis.test_lines > 0 {
             let assert_per_20_lines = analysis.assert_count as f64 / (analysis.test_lines as f64 / 20.0);
-            if assert_per_20_lines < 1.0 {
+            if assert_per_20_lines < ASSERT_DENSITY_MIN {
                 score -= 10;
             }
         }

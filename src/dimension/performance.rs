@@ -5,6 +5,26 @@ use super::Dimension;
 use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
+// --- Thresholds ---
+/// Number of deeply nested loop sites (depth ≥ 3) before penalizing.
+/// More than 3 occurrences means O(n³)+ complexity is not an isolated incident.
+const DEEP_NEST_WARN: usize = 3;
+/// Critical nested loop count: 10+ sites with 3+ loop levels likely tanks throughput under load.
+const DEEP_NEST_CRIT: usize = 10;
+/// Clone/copy calls per 1,000 lines triggering a warning. Excessive cloning inflates allocations.
+/// 10 per 1K lines is where clone pressure starts to show up in profiling on hot paths.
+const CLONE_DENSITY_WARN: f64 = 10.0;
+/// Critical clone density: 25+ per 1K lines means ownership design is consistently avoided.
+/// At this level, heap allocation patterns are likely causing measurable memory pressure.
+const CLONE_DENSITY_CRIT: f64 = 25.0;
+/// Number of synchronous blocking calls (sleep, block_on) before penalizing.
+/// More than 5 blocking calls in async code risks starving the runtime's thread pool.
+const BLOCKING_CALLS_WARN: usize = 5;
+/// Critical blocking call count: 15+ makes async throughput effectively synchronous.
+const BLOCKING_CALLS_CRIT: usize = 15;
+/// Minimum loop nesting depth considered "deep" for nest detection.
+const DEEP_NEST_DEPTH: usize = 3;
+
 pub struct Performance;
 
 impl Dimension for Performance {
@@ -23,26 +43,26 @@ impl Dimension for Performance {
         debug!("performance: {} files, {} lines", analysis.file_count, analysis.total_lines);
 
         // Deep nested loops
-        if analysis.deep_nests > 10 {
+        if analysis.deep_nests > DEEP_NEST_CRIT {
             score -= 30;
-        } else if analysis.deep_nests > 3 {
+        } else if analysis.deep_nests > DEEP_NEST_WARN {
             score -= 15;
         }
 
         // Clone/copy density
         if analysis.total_lines > 0 {
             let density = analysis.clone_count as f64 / (analysis.total_lines as f64 / 1000.0);
-            if density > 25.0 {
+            if density > CLONE_DENSITY_CRIT {
                 score -= 20;
-            } else if density > 10.0 {
+            } else if density > CLONE_DENSITY_WARN {
                 score -= 10;
             }
         }
 
         // Sync blocking calls
-        if analysis.blocking_calls > 15 {
+        if analysis.blocking_calls > BLOCKING_CALLS_CRIT {
             score -= 20;
-        } else if analysis.blocking_calls > 5 {
+        } else if analysis.blocking_calls > BLOCKING_CALLS_WARN {
             score -= 10;
         }
 
@@ -147,7 +167,7 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
 
             if is_loop_start {
                 loop_depth += 1;
-                if loop_depth >= 3 {
+                if loop_depth >= DEEP_NEST_DEPTH {
                     deep_nests += 1;
                     nest_details.push((sf.path.clone(), i + 1, loop_depth));
                 }

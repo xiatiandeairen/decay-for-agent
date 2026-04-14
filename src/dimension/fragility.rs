@@ -6,8 +6,14 @@ use crate::data_store::DataStore;
 use crate::diagnose::{Issue, Level};
 
 // --- Fragility thresholds ---
+/// Fraction of total line churn concentrated in the top 10% of files.
+/// 50%+ concentration means a small set of files absorbs most change risk.
 const CHURN_CONCENTRATION_WARN: f64 = 0.5;
+/// Critical concentration: 70%+ of churn in top 10% of files signals hotspot fragility.
+/// These files are high-blast-radius; any bug there affects the whole project disproportionately.
 const CHURN_CONCENTRATION_CRIT: f64 = 0.7;
+/// Total lines added+deleted for a single file across history.
+/// 500+ lines of churn indicates a persistently unstable file that warrants isolation.
 const MAX_CHURN_WARN: i64 = 500;
 
 pub struct Fragility;
@@ -27,7 +33,7 @@ impl Dimension for Fragility {
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .context("failed to count git_changes")?;
+            .with_context(|| format!("fragility: failed to count git_changes for snapshot {snapshot_id}"))?;
 
         if file_count == 0 {
             return Ok(None);
@@ -42,7 +48,7 @@ impl Dimension for Fragility {
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .context("failed to sum churn")?;
+            .with_context(|| format!("fragility: failed to sum churn for snapshot {snapshot_id}"))?;
 
         if total_churn == 0 {
             return Ok(Some(100));
@@ -59,7 +65,7 @@ impl Dimension for Fragility {
                 rusqlite::params![snapshot_id, top_n],
                 |row| row.get(0),
             )
-            .context("failed to get top churn")?;
+            .with_context(|| format!("fragility: failed to get top churn for snapshot {snapshot_id}"))?;
 
         let concentration = top_churn as f64 / total_churn as f64;
         if concentration > CHURN_CONCENTRATION_CRIT {
@@ -74,7 +80,7 @@ impl Dimension for Fragility {
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .context("failed to get max churn")?;
+            .with_context(|| format!("fragility: failed to get max churn for snapshot {snapshot_id}"))?;
 
         if max_churn > MAX_CHURN_WARN {
             score -= 15;
@@ -95,7 +101,7 @@ impl Dimension for Fragility {
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .context("failed to count git_changes")?;
+            .with_context(|| format!("fragility: failed to count git_changes for snapshot {snapshot_id}"))?;
 
         if file_count == 0 {
             return Ok(issues);
@@ -106,13 +112,13 @@ impl Dimension for Fragility {
             .prepare(
                 "SELECT path, (lines_added + lines_deleted) as churn FROM git_changes WHERE snapshot_id = ?1 AND (lines_added + lines_deleted) > 500 AND path NOT LIKE '%.lock' AND path NOT LIKE '%lock.json' ORDER BY churn DESC",
             )
-            .context("failed to prepare churn query")?;
+            .with_context(|| format!("fragility: failed to prepare churn query for snapshot {snapshot_id}"))?;
 
         let high_churn: Vec<(String, i64)> = stmt
             .query_map([snapshot_id], |row| Ok((row.get(0)?, row.get(1)?)))
-            .context("failed to query high churn")?
+            .with_context(|| format!("fragility: failed to query high churn for snapshot {snapshot_id}"))?
             .collect::<std::result::Result<Vec<_>, _>>()
-            .context("failed to collect high churn")?;
+            .with_context(|| format!("fragility: failed to collect high churn for snapshot {snapshot_id}"))?;
 
         for (path, churn) in &high_churn {
             issues.push(Issue {
@@ -130,7 +136,7 @@ impl Dimension for Fragility {
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .context("failed to sum churn")?;
+            .with_context(|| format!("fragility: failed to sum churn for snapshot {snapshot_id}"))?;
 
         if total_churn > 0 {
             let top_n = (file_count as f64 * 0.1).ceil().max(1.0) as i64;
@@ -144,7 +150,7 @@ impl Dimension for Fragility {
                     rusqlite::params![snapshot_id, top_n],
                     |row| row.get(0),
                 )
-                .context("failed to get top churn")?;
+                .with_context(|| format!("fragility: failed to get top churn for snapshot {snapshot_id}"))?;
 
             let concentration = top_churn as f64 / total_churn as f64;
             if concentration > 0.5 {
@@ -163,13 +169,13 @@ impl Dimension for Fragility {
             .prepare(
                 "SELECT path, change_count FROM git_changes WHERE snapshot_id = ?1 AND change_count > 10 AND path NOT LIKE '%.lock' AND path NOT LIKE '%lock.json' ORDER BY change_count DESC",
             )
-            .context("failed to prepare freq query")?;
+            .with_context(|| format!("fragility: failed to prepare freq query for snapshot {snapshot_id}"))?;
 
         let frequent: Vec<(String, i64)> = freq_stmt
             .query_map([snapshot_id], |row| Ok((row.get(0)?, row.get(1)?)))
-            .context("failed to query frequent")?
+            .with_context(|| format!("fragility: failed to query frequent for snapshot {snapshot_id}"))?
             .collect::<std::result::Result<Vec<_>, _>>()
-            .context("failed to collect frequent")?;
+            .with_context(|| format!("fragility: failed to collect frequent for snapshot {snapshot_id}"))?;
 
         for (path, count) in &frequent {
             issues.push(Issue {

@@ -6,10 +6,20 @@ use crate::data_store::DataStore;
 use crate::diagnose::{Issue, Level};
 
 // --- Complexity thresholds ---
+/// Files larger than 15 KB (≈300–400 lines) are treated as complex.
+/// File size is a proxy for cyclomatic complexity when AST data is unavailable.
 const LARGE_FILE_BYTES: i64 = 15360;
+/// Fraction of files exceeding LARGE_FILE_BYTES that triggers a score penalty.
+/// 20% means 1 in 5 files is oversized — a pattern, not an outlier.
 const LARGE_RATIO_WARN: f64 = 0.2;
+/// Critical threshold: 40%+ oversized files means complexity is systemic.
+/// At this ratio, the codebase likely needs broad refactoring.
 const LARGE_RATIO_CRIT: f64 = 0.4;
+/// Average file size across the project. 10 KB average signals consistently dense files.
+/// A healthy average is below 5–8 KB, keeping most files focused and readable.
 const AVG_SIZE_WARN: f64 = 10240.0;
+/// Single-file ceiling: 50 KB (~1500+ lines) indicates a god object or generated code.
+/// Files this large are rarely maintainable and almost always need splitting.
 const MAX_SIZE_WARN: i64 = 51200;
 
 pub struct Complexity;
@@ -31,7 +41,7 @@ impl Dimension for Complexity {
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .context("failed to count files")?;
+            .with_context(|| format!("complexity: failed to count files for snapshot {snapshot_id}"))?;
 
         if file_count == 0 {
             return Ok(Some(100));
@@ -43,7 +53,7 @@ impl Dimension for Complexity {
                 rusqlite::params![snapshot_id, LARGE_FILE_BYTES],
                 |row| row.get(0),
             )
-            .context("failed to count large files")?;
+            .with_context(|| format!("complexity: failed to count large files for snapshot {snapshot_id}"))?;
 
         let large_ratio = large_count as f64 / file_count as f64;
         if large_ratio > LARGE_RATIO_CRIT {
@@ -58,7 +68,7 @@ impl Dimension for Complexity {
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .context("failed to get avg file size")?;
+            .with_context(|| format!("complexity: failed to get avg file size for snapshot {snapshot_id}"))?;
 
         if avg_size > AVG_SIZE_WARN {
             score -= 15;
@@ -70,7 +80,7 @@ impl Dimension for Complexity {
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .context("failed to get max file size")?;
+            .with_context(|| format!("complexity: failed to get max file size for snapshot {snapshot_id}"))?;
 
         if max_size > MAX_SIZE_WARN {
             score -= 10;
@@ -89,13 +99,13 @@ impl Dimension for Complexity {
             .prepare(
                 "SELECT path, size_bytes FROM files WHERE snapshot_id = ?1 AND size_bytes > 15360 ORDER BY size_bytes DESC",
             )
-            .context("failed to prepare large files query")?;
+            .with_context(|| format!("complexity: failed to prepare large files query for snapshot {snapshot_id}"))?;
 
         let large_files: Vec<(String, i64)> = stmt
             .query_map([snapshot_id], |row| Ok((row.get(0)?, row.get(1)?)))
-            .context("failed to query large files")?
+            .with_context(|| format!("complexity: failed to query large files for snapshot {snapshot_id}"))?
             .collect::<std::result::Result<Vec<_>, _>>()
-            .context("failed to collect large files")?;
+            .with_context(|| format!("complexity: failed to collect large files for snapshot {snapshot_id}"))?;
 
         for (path, size) in &large_files {
             let size_kb = size / 1024;
@@ -122,7 +132,7 @@ impl Dimension for Complexity {
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .context("failed to count files")?;
+            .with_context(|| format!("complexity: failed to count files for snapshot {snapshot_id}"))?;
 
         if file_count > 0 {
             let ratio = large_files.len() as f64 / file_count as f64;

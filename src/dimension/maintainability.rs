@@ -9,15 +9,31 @@ use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
 // --- Thresholds ---
+/// Files exceeding 300 lines are flagged as long. This is a maintenance burden indicator.
+/// 300 lines is roughly the upper bound for a file to remain fully readable in one sitting.
 const LONG_FILE_LINES: usize = 300;
+/// Fraction of files considered long that triggers a warning.
+/// 20% means the pattern is widespread enough to slow down navigation and review.
 const LONG_FILE_RATIO_WARN: f64 = 0.20;
+/// Critical ratio: 40%+ long files signals systemic poor decomposition across the codebase.
 const LONG_FILE_RATIO_CRIT: f64 = 0.40;
+/// Functions exceeding 50 lines are hard to reason about and test in isolation.
+/// 50 lines is a widely used heuristic (Clean Code, Google style) for function length.
 const LONG_FUNC_LINES: usize = 50;
+/// 10%+ of functions being long is a warning that single-responsibility isn't being enforced.
 const LONG_FUNC_RATIO_WARN: f64 = 0.10;
+/// 25%+ long functions is critical — refactoring has become necessary to keep the codebase safe.
 const LONG_FUNC_RATIO_CRIT: f64 = 0.25;
+/// Fraction of files sharing duplicate code blocks.
+/// 5% means duplication is creeping in; at this level extract-to-module fixes are cheap.
 const DUP_FILE_RATIO_WARN: f64 = 0.05;
+/// 15%+ files with shared duplicate blocks signals copy-paste culture has taken hold.
 const DUP_FILE_RATIO_CRIT: f64 = 0.15;
+/// TODO/FIXME density per 10,000 lines of code. High density signals deferred debt.
+/// 20 per 10K lines (~1 per 500 lines) is where debt starts compounding faster than it's resolved.
 const TODO_DENSITY_WARN: f64 = 20.0; // per 10K lines
+/// Minimum consecutive non-blank, non-comment lines to constitute a duplicate block.
+/// 6 lines is large enough to avoid false positives from common boilerplate patterns.
 const MIN_DUP_BLOCK: usize = 6;
 
 pub struct Maintainability;

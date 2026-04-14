@@ -100,33 +100,5 @@ fn detect_primary_languages(conn: &Connection, snapshot_id: i64) -> Vec<String> 
         .map(|rows| rows.filter_map(|r| r.ok()).collect())
         .unwrap_or_default();
 
-    // Count extensions by language group
-    let mut group_counts: HashMap<&str, usize> = HashMap::new();
-    let mut total = 0;
-
-    for path in &paths {
-        let ext = std::path::Path::new(path)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-
-        for group in crate::filter_pipeline::LANGUAGE_GROUPS {
-            if group.extensions.contains(&ext.as_str()) {
-                *group_counts.entry(group.name).or_default() += 1;
-                total += 1;
-                break;
-            }
-        }
-    }
-
-    if total == 0 {
-        return vec![];
-    }
-
-    group_counts
-        .iter()
-        .filter(|(_, count)| **count as f64 / total as f64 >= 0.10)
-        .map(|(name, _)| name.to_string())
-        .collect()
+    crate::filter_pipeline::detect_primary_languages(&paths)
 }

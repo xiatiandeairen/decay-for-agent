@@ -5,10 +5,20 @@ use crate::data_store::DataStore;
 use crate::diagnose::{Issue, Level};
 
 // --- Structural thresholds ---
+/// Total tracked files in the project. Exceeding this suggests modules need splitting.
+/// 500 is roughly where a flat project becomes hard to navigate without tooling.
 const FILE_COUNT_WARN: i64 = 500;
+/// Critical file count — at 1000+ files, boundaries are almost certainly unclear.
+/// Projects of this size typically need a monorepo or sub-crate decomposition.
 const FILE_COUNT_CRIT: i64 = 1000;
+/// Maximum directory nesting depth. Depth >5 usually means over-segmented hierarchy.
+/// Industry standard (e.g. Google style guide) recommends keeping nesting shallow.
 const DEPTH_WARN: i64 = 5;
+/// Critical nesting depth — 8+ levels make navigation and import paths unwieldy.
+/// At this point directory structure rarely reflects real module boundaries.
 const DEPTH_CRIT: i64 = 8;
+/// Number of distinct top-level directories. Too many indicates missing cohesion.
+/// 15+ top-level entries means the root is being used as a catch-all flat namespace.
 const TOP_DIRS_WARN: i64 = 15;
 
 pub struct Structural;
@@ -30,7 +40,7 @@ impl Dimension for Structural {
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .context("failed to count files")?;
+            .with_context(|| format!("structural: failed to count files for snapshot {snapshot_id}"))?;
 
         if file_count > FILE_COUNT_CRIT {
             score -= 40;
@@ -44,7 +54,7 @@ impl Dimension for Structural {
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .context("failed to get max depth")?;
+            .with_context(|| format!("structural: failed to get max depth for snapshot {snapshot_id}"))?;
 
         if max_depth > DEPTH_CRIT {
             score -= 30;
@@ -61,7 +71,7 @@ impl Dimension for Structural {
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .context("failed to count top-level dirs")?;
+            .with_context(|| format!("structural: failed to count top-level dirs for snapshot {snapshot_id}"))?;
 
         if top_dirs > TOP_DIRS_WARN {
             score -= 15;
@@ -82,7 +92,7 @@ impl Dimension for Structural {
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .context("failed to count files")?;
+            .with_context(|| format!("structural: failed to count files for snapshot {snapshot_id}"))?;
 
         if file_count > 1000 {
             issues.push(Issue {
@@ -106,7 +116,7 @@ impl Dimension for Structural {
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .context("failed to get max depth")?;
+            .with_context(|| format!("structural: failed to get max depth for snapshot {snapshot_id}"))?;
 
         if max_depth > 5 {
             issues.push(Issue {
@@ -126,7 +136,7 @@ impl Dimension for Structural {
                 [snapshot_id],
                 |row| row.get(0),
             )
-            .context("failed to count top-level dirs")?;
+            .with_context(|| format!("structural: failed to count top-level dirs for snapshot {snapshot_id}"))?;
 
         if top_dirs > 15 {
             issues.push(Issue {

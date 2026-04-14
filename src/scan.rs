@@ -5,6 +5,7 @@ use log::debug;
 use rusqlite::Connection;
 
 use crate::filter;
+use crate::util;
 
 /// Summary of a file structure scan.
 #[derive(serde::Serialize)]
@@ -25,7 +26,7 @@ pub fn collect(conn: &Connection, snapshot_id: i64, project_path: &Path) -> Resu
             "INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![
                 snapshot_id,
-                f.rel_path.to_string_lossy(),
+                util::normalize_path(&f.rel_path),
                 f.size as i64,
                 f.depth
             ],

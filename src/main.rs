@@ -4,6 +4,7 @@ mod diagnose;
 mod dimension;
 mod filter;
 mod git;
+mod profile;
 mod run;
 mod scan;
 mod trend;

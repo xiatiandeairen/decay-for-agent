@@ -5,10 +5,11 @@ use anyhow::Result;
 use log::debug;
 use serde::Serialize;
 
-use crate::{collector, db, diagnose, dimension, trend};
+use crate::{collector, db, diagnose, dimension, profile, trend};
 
 #[derive(Serialize)]
 pub struct Report {
+    pub project_type: profile::ProjectType,
     pub snapshot_id: i64,
     pub scores: HashMap<String, Option<i32>>,
     pub composite: i32,
@@ -272,6 +273,11 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
         }
     }
 
+    // Detect project type and load score profile
+    let project_type = profile::detect(&project_path);
+    let score_profile = profile::ScoreProfile::for_type(project_type);
+    debug!("detected project type: {project_type:?}");
+
     // Evaluate all dimensions via registry
     let dimensions = dimension::all_dimensions();
     let mut scores: HashMap<String, Option<i32>> = HashMap::new();
@@ -286,13 +292,8 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
 
     all_issues.sort_by_key(|i| i.level);
 
-    // Compute composite (equal-weight average of available scores)
-    let available: Vec<i32> = scores.values().filter_map(|s| *s).collect();
-    let comp = if available.is_empty() {
-        0
-    } else {
-        available.iter().sum::<i32>() / available.len() as i32
-    };
+    // Compute weighted composite using score profile
+    let comp = score_profile.weighted_composite(&scores);
     scores.insert("composite".to_string(), Some(comp));
 
     // Persist dimension scores
@@ -321,6 +322,7 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
 
     if json {
         let report = Report {
+            project_type,
             snapshot_id,
             scores: scores.clone(),
             composite: comp,

@@ -52,3 +52,5 @@
   - [tech](.know/docs/requirements/dimension-trait/tech.md) | 2026-04-14
 - [collector-plugin](.know/docs/requirements/collector-plugin/prd.md) | 2026-04-14
   - [tech](.know/docs/requirements/collector-plugin/tech.md) | 2026-04-14
+- [score-profile](.know/docs/requirements/score-profile/prd.md) | 2026-04-14
+  - [tech](.know/docs/requirements/score-profile/tech.md) | 2026-04-14

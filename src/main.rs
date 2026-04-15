@@ -1,4 +1,5 @@
 mod action;
+mod classify;
 mod collector;
 mod config;
 mod data_store;

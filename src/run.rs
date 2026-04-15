@@ -6,7 +6,7 @@ use anyhow::Result;
 use log::debug;
 use serde::Serialize;
 
-use crate::{action, collector, data_store, db, diagnose, dimension, profile, render, trend};
+use crate::{action, classify, collector, data_store, db, diagnose, dimension, profile, render, trend};
 
 #[derive(Serialize)]
 pub struct Report {
@@ -54,7 +54,8 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
 
     let store = data_store::DataStore::new(conn, snapshot_id, project_path_str.clone());
 
-    let (scores, comp, all_issues, all_actions) = evaluate(&store, &score_profile, snapshot_id, &project_path_str)?;
+    let (scores, comp, mut all_issues, all_actions) = evaluate(&store, &score_profile, snapshot_id, &project_path_str)?;
+    classify::classify_issues(&mut all_issues);
 
     let trend_data = db::get_previous_dimension_scores(store.conn(), &project_path_str, snapshot_id)?
         .map(|prev| trend::compare_dimensions(&scores, &prev));

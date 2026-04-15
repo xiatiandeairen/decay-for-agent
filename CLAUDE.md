@@ -97,3 +97,5 @@
   - [tech](.know/docs/requirements/trajectory-report/tech.md) | 2026-04-15
 - [detection-precision](.know/docs/requirements/detection-precision/prd.md) | 2026-04-15
   - [tech](.know/docs/requirements/detection-precision/tech.md) | 2026-04-15
+- [issue-classification](.know/docs/requirements/issue-classification/prd.md) | 2026-04-15
+  - [tech](.know/docs/requirements/issue-classification/tech.md) | 2026-04-15

@@ -165,8 +165,14 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
                 sections.push(format!("### {label}\n"));
                 for issue in level_issues {
                     let line = match issue.actions.first() {
-                        Some(a) => format!("- **{}**: {} — *{}*", issue.category, issue.message, a.suggestion),
-                        None => format!("- **{}**: {}", issue.category, issue.message),
+                        Some(a) => {
+                            let class = issue.classification.map(|c| format!(" `{c}`")).unwrap_or_default();
+                            format!("- **{}**{class}: {} — *{}*", issue.category, issue.message, a.suggestion)
+                        },
+                        None => {
+                            let class = issue.classification.map(|c| format!(" `{c}`")).unwrap_or_default();
+                            format!("- **{}**{class}: {}", issue.category, issue.message)
+                        },
                     };
                     sections.push(line);
                 }

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 /// Direction and magnitude of score change.
@@ -56,6 +56,101 @@ pub fn compare_dimensions(
         };
         result.insert(name.clone(), d);
     }
+    result
+}
+
+/// Direction of score change velocity.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
+pub enum Direction {
+    Improving,
+    Declining,
+    Stable,
+}
+
+impl fmt::Display for Direction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Direction::Improving => write!(f, "↑"),
+            Direction::Declining => write!(f, "↓"),
+            Direction::Stable => write!(f, "→"),
+        }
+    }
+}
+
+/// Velocity of a dimension's score over time.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Velocity {
+    pub dimension: String,
+    pub slope: f64,
+    pub direction: Direction,
+    pub data_points: usize,
+}
+
+/// Compute the slope of a least-squares linear regression.
+/// Uses sequential index (0, 1, 2, ...) as x-axis, ignoring snapshot_id gaps.
+/// Returns None if fewer than 2 data points.
+fn linear_regression_slope(points: &[(i64, i32)]) -> Option<f64> {
+    let n = points.len();
+    if n < 2 {
+        return None;
+    }
+    let n_f = n as f64;
+    let x_mean = (n_f - 1.0) / 2.0;
+    let y_mean: f64 = points.iter().map(|(_, y)| *y as f64).sum::<f64>() / n_f;
+
+    let mut num = 0.0;
+    let mut den = 0.0;
+    for (i, (_, y)) in points.iter().enumerate() {
+        let dx = i as f64 - x_mean;
+        let dy = *y as f64 - y_mean;
+        num += dx * dy;
+        den += dx * dx;
+    }
+
+    if den == 0.0 {
+        return Some(0.0);
+    }
+    Some(num / den)
+}
+
+fn direction_from_slope(slope: f64) -> Direction {
+    if slope > 1.0 {
+        Direction::Improving
+    } else if slope < -1.0 {
+        Direction::Declining
+    } else {
+        Direction::Stable
+    }
+}
+
+/// Calculate velocity for all dimensions with ≥3 data points.
+/// Results sorted by dimension name.
+pub fn calculate_velocities(snapshots: &[crate::db::SnapshotScores]) -> Vec<Velocity> {
+    let mut dims: HashSet<&str> = HashSet::new();
+    for s in snapshots {
+        for k in s.scores.keys() {
+            dims.insert(k.as_str());
+        }
+    }
+
+    let mut result: Vec<Velocity> = dims
+        .into_iter()
+        .filter_map(|dim| {
+            let series = dimension_series(snapshots, dim);
+            if series.len() < 3 {
+                return None;
+            }
+            let slope = linear_regression_slope(&series)?;
+            Some(Velocity {
+                dimension: dim.to_string(),
+                slope,
+                direction: direction_from_slope(slope),
+                data_points: series.len(),
+            })
+        })
+        .collect();
+
+    result.sort_by(|a, b| a.dimension.cmp(&b.dimension));
     result
 }
 
@@ -167,5 +262,99 @@ mod tests {
 
         let absent = dimension_series(&snapshots, "fragility");
         assert!(absent.is_empty());
+    }
+
+    #[test]
+    fn test_linear_regression_slope_ascending() {
+        // Points: (1,10), (2,20), (3,30) → perfect slope of 10
+        let points = vec![(1, 10), (2, 20), (3, 30)];
+        let slope = linear_regression_slope(&points).unwrap();
+        assert!((slope - 10.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_linear_regression_slope_descending() {
+        let points = vec![(1, 90), (2, 80), (3, 70)];
+        let slope = linear_regression_slope(&points).unwrap();
+        assert!((slope - (-10.0)).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_linear_regression_slope_flat() {
+        let points = vec![(1, 50), (2, 50), (3, 50)];
+        let slope = linear_regression_slope(&points).unwrap();
+        assert!((slope).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_linear_regression_slope_insufficient() {
+        assert!(linear_regression_slope(&[]).is_none());
+        assert!(linear_regression_slope(&[(1, 10)]).is_none());
+    }
+
+    #[test]
+    fn test_direction_from_slope() {
+        assert_eq!(direction_from_slope(2.5), Direction::Improving);
+        assert_eq!(direction_from_slope(-3.0), Direction::Declining);
+        assert_eq!(direction_from_slope(0.5), Direction::Stable);
+        assert_eq!(direction_from_slope(-0.5), Direction::Stable);
+        assert_eq!(direction_from_slope(1.0), Direction::Stable); // boundary: ≤1.0 is stable
+    }
+
+    #[test]
+    fn test_calculate_velocities() {
+        use crate::db::SnapshotScores;
+
+        let snapshots = vec![
+            SnapshotScores {
+                snapshot_id: 1,
+                created_at: "2026-01-01".into(),
+                scores: [("structural".into(), Some(80)), ("complexity".into(), Some(70))].into(),
+            },
+            SnapshotScores {
+                snapshot_id: 2,
+                created_at: "2026-01-02".into(),
+                scores: [("structural".into(), Some(85)), ("complexity".into(), Some(65))].into(),
+            },
+            SnapshotScores {
+                snapshot_id: 3,
+                created_at: "2026-01-03".into(),
+                scores: [("structural".into(), Some(90)), ("complexity".into(), Some(60))].into(),
+            },
+        ];
+
+        let vels = calculate_velocities(&snapshots);
+        assert_eq!(vels.len(), 2);
+
+        // Sorted alphabetically: complexity first
+        assert_eq!(vels[0].dimension, "complexity");
+        assert!((vels[0].slope - (-5.0)).abs() < 0.001);
+        assert_eq!(vels[0].direction, Direction::Declining);
+        assert_eq!(vels[0].data_points, 3);
+
+        assert_eq!(vels[1].dimension, "structural");
+        assert!((vels[1].slope - 5.0).abs() < 0.001);
+        assert_eq!(vels[1].direction, Direction::Improving);
+    }
+
+    #[test]
+    fn test_calculate_velocities_insufficient_data() {
+        use crate::db::SnapshotScores;
+
+        let snapshots = vec![
+            SnapshotScores {
+                snapshot_id: 1,
+                created_at: "2026-01-01".into(),
+                scores: [("structural".into(), Some(80))].into(),
+            },
+            SnapshotScores {
+                snapshot_id: 2,
+                created_at: "2026-01-02".into(),
+                scores: [("structural".into(), Some(85))].into(),
+            },
+        ];
+
+        let vels = calculate_velocities(&snapshots);
+        assert!(vels.is_empty()); // < 3 data points
     }
 }

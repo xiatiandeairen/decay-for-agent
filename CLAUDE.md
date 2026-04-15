@@ -82,3 +82,5 @@
   - [tech](.know/docs/requirements/agent-protocol/tech.md) | 2026-04-15
 - [trend-engine](.know/docs/requirements/trend-engine/prd.md) | 2026-04-15
   - [tech](.know/docs/requirements/trend-engine/tech.md) | 2026-04-15
+- [velocity](.know/docs/requirements/velocity/prd.md) | 2026-04-15
+  - [tech](.know/docs/requirements/velocity/tech.md) | 2026-04-15

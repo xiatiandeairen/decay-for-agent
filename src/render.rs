@@ -9,6 +9,7 @@ pub struct MarkdownCtx<'a> {
     pub scores: &'a HashMap<String, Option<i32>>,
     pub composite: i32,
     pub trend_data: &'a Option<HashMap<String, trend::Delta>>,
+    pub velocities: &'a [trend::Velocity],
     pub collectors: &'a HashMap<String, HashMap<String, String>>,
     pub issues: &'a [diagnose::Issue],
     pub actions: &'a [action::Action],
@@ -21,6 +22,7 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         scores,
         composite,
         trend_data,
+        velocities,
         collectors,
         issues,
         actions,
@@ -29,8 +31,13 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
     let scan_stats = collectors.get("file_scan");
     let git_stats = collectors.get("git_history");
 
+    // Build velocity lookup
+    let vel_map: HashMap<&str, &trend::Velocity> =
+        velocities.iter().map(|v| (v.dimension.as_str(), v)).collect();
+
     // Build scores table rows dynamically
     let dimension_order = ["structural", "complexity", "fragility"];
+    let has_velocity = !velocities.is_empty();
     let mut scores_rows = String::new();
     for name in &dimension_order {
         let score_str = scores
@@ -41,7 +48,14 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
             .as_ref()
             .and_then(|t| t.get(*name))
             .map_or("—".to_string(), |d| format!("{d}"));
-        scores_rows.push_str(&format!("| {name} | {score_str} | {trend_str} |\n"));
+        let vel_str = vel_map
+            .get(name)
+            .map_or("—".to_string(), |v| format!("{} {:.1}/snap", v.direction, v.slope));
+        if has_velocity {
+            scores_rows.push_str(&format!("| {name} | {score_str} | {trend_str} | {vel_str} |\n"));
+        } else {
+            scores_rows.push_str(&format!("| {name} | {score_str} | {trend_str} |\n"));
+        }
     }
     for (name, score) in scores.iter() {
         if !dimension_order.contains(&name.as_str()) && name != "composite" {
@@ -50,7 +64,14 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
                 .as_ref()
                 .and_then(|t| t.get(name))
                 .map_or("—".to_string(), |d| format!("{d}"));
-            scores_rows.push_str(&format!("| {name} | {score_str} | {trend_str} |\n"));
+            let vel_str = vel_map
+                .get(name.as_str())
+                .map_or("—".to_string(), |v| format!("{} {:.1}/snap", v.direction, v.slope));
+            if has_velocity {
+                scores_rows.push_str(&format!("| {name} | {score_str} | {trend_str} | {vel_str} |\n"));
+            } else {
+                scores_rows.push_str(&format!("| {name} | {score_str} | {trend_str} |\n"));
+            }
         }
     }
 
@@ -58,9 +79,18 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         .as_ref()
         .and_then(|t| t.get("composite"))
         .map_or("—".to_string(), |d| format!("{d}"));
-    scores_rows.push_str(&format!(
-        "| **composite** | **{composite}** | **{comp_trend}** |"
-    ));
+    let comp_vel = vel_map
+        .get("composite")
+        .map_or("—".to_string(), |v| format!("{} {:.1}/snap", v.direction, v.slope));
+    if has_velocity {
+        scores_rows.push_str(&format!(
+            "| **composite** | **{composite}** | **{comp_trend}** | **{comp_vel}** |"
+        ));
+    } else {
+        scores_rows.push_str(&format!(
+            "| **composite** | **{composite}** | **{comp_trend}** |"
+        ));
+    }
 
     let file_count = scan_stats
         .and_then(|s| s.get("files"))
@@ -153,6 +183,12 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         rows
     };
 
+    let scores_header = if has_velocity {
+        "| Dimension | Score | Trend | Velocity |\n|-----------|------:|-------|----------|\n"
+    } else {
+        "| Dimension | Score | Trend |\n|-----------|------:|-------|\n"
+    };
+
     let project_name = std::path::Path::new(project_path)
         .file_name()
         .unwrap_or_default()
@@ -169,8 +205,7 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
          \n\
          ## Scores\n\
          \n\
-         | Dimension | Score | Trend |\n\
-         |-----------|------:|-------|\n\
+         {scores_header}\
          {scores_rows}\n\
          \n\
          ## Scan\n\
@@ -199,6 +234,7 @@ pub fn render_terminal(
     scores: &HashMap<String, Option<i32>>,
     comp: i32,
     trend_data: &Option<HashMap<String, trend::Delta>>,
+    velocities: &[trend::Velocity],
     dimensions: &[Box<dyn dimension::Dimension>],
     issues: &[diagnose::Issue],
     snapshot_id: i64,
@@ -217,6 +253,9 @@ pub fn render_terminal(
         println!("Git: {commits} commits, {analyzed} files changed (last 90 days)");
     }
 
+    let vel_map: HashMap<&str, &trend::Velocity> =
+        velocities.iter().map(|v| (v.dimension.as_str(), v)).collect();
+
     let mut health_parts = Vec::new();
     let comp_trend = trend_data.as_ref().and_then(|t| t.get("composite"));
     match comp_trend {
@@ -233,7 +272,10 @@ pub fn render_terminal(
             .as_ref()
             .and_then(|t| t.get(name))
             .map_or(String::new(), |d| format!(" ({d})"));
-        health_parts.push(format!("{name}: {score_str}{trend_str}"));
+        let vel_str = vel_map
+            .get(name)
+            .map_or(String::new(), |v| format!(" {}{:.1}/snap", v.direction, v.slope));
+        health_parts.push(format!("{name}: {score_str}{trend_str}{vel_str}"));
     }
     println!("{}", health_parts.join(" "));
 

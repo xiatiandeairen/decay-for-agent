@@ -167,6 +167,62 @@ pub fn get_previous_dimension_scores(
     }
 }
 
+/// A snapshot's dimension scores with timestamp.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SnapshotScores {
+    pub snapshot_id: i64,
+    pub created_at: String,
+    pub scores: std::collections::HashMap<String, Option<i32>>,
+}
+
+/// Query dimension score time series for a project, ordered oldest → newest.
+/// Returns up to `limit` most recent snapshots (default 20).
+pub fn get_dimension_time_series(
+    conn: &Connection,
+    project_path: &str,
+    limit: Option<usize>,
+) -> Result<Vec<SnapshotScores>> {
+    let max = limit.unwrap_or(20) as i64;
+
+    let mut snap_stmt = conn
+        .prepare(
+            "SELECT id, created_at FROM snapshots
+             WHERE project_path = ?1
+             ORDER BY id DESC LIMIT ?2",
+        )
+        .context("failed to prepare time series snapshot query")?;
+
+    let snapshots: Vec<(i64, String)> = snap_stmt
+        .query_map(rusqlite::params![project_path, max], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .context("failed to query snapshots")?
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .context("failed to collect snapshots")?;
+
+    let mut score_stmt = conn
+        .prepare("SELECT dimension, score FROM dimension_scores WHERE snapshot_id = ?1")
+        .context("failed to prepare dimension_scores query for time series")?;
+
+    let mut result: Vec<SnapshotScores> = Vec::with_capacity(snapshots.len());
+    for (snap_id, created_at) in snapshots.into_iter().rev() {
+        let rows: Vec<(String, Option<i32>)> = score_stmt
+            .query_map([snap_id], |row| Ok((row.get(0)?, row.get(1)?)))
+            .context("failed to query dimension scores")?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .context("failed to collect dimension scores")?;
+
+        let scores: std::collections::HashMap<String, Option<i32>> = rows.into_iter().collect();
+        result.push(SnapshotScores {
+            snapshot_id: snap_id,
+            created_at,
+            scores,
+        });
+    }
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,6 +255,57 @@ mod tests {
     fn test_db_path_is_valid() -> Result<()> {
         let path = db_path()?;
         assert!(path.ends_with("decay/snapshots.db"));
+        Ok(())
+    }
+
+    fn setup_full_db() -> Result<Connection> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), version TEXT NOT NULL);
+             CREATE TABLE dimension_scores (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, dimension TEXT NOT NULL, score INTEGER);",
+        )?;
+        Ok(conn)
+    }
+
+    #[test]
+    fn test_time_series_empty() -> Result<()> {
+        let conn = setup_full_db()?;
+        let series = get_dimension_time_series(&conn, "/tmp/project", None)?;
+        assert!(series.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn test_time_series_multiple_snapshots() -> Result<()> {
+        let conn = setup_full_db()?;
+        for i in 1..=3 {
+            conn.execute("INSERT INTO snapshots (project_path, version) VALUES ('/tmp/p', '0.1.0')", [])?;
+            let sid = conn.last_insert_rowid();
+            conn.execute("INSERT INTO dimension_scores (snapshot_id, dimension, score) VALUES (?1, 'structural', ?2)", rusqlite::params![sid, 80 + i])?;
+            conn.execute("INSERT INTO dimension_scores (snapshot_id, dimension, score) VALUES (?1, 'complexity', ?2)", rusqlite::params![sid, 70 + i])?;
+        }
+        let series = get_dimension_time_series(&conn, "/tmp/p", None)?;
+        assert_eq!(series.len(), 3);
+        // Ordered oldest → newest
+        assert!(series[0].snapshot_id < series[1].snapshot_id);
+        assert_eq!(series[0].scores.get("structural").unwrap(), &Some(81));
+        assert_eq!(series[2].scores.get("structural").unwrap(), &Some(83));
+        Ok(())
+    }
+
+    #[test]
+    fn test_time_series_limit() -> Result<()> {
+        let conn = setup_full_db()?;
+        for _ in 0..10 {
+            conn.execute("INSERT INTO snapshots (project_path, version) VALUES ('/tmp/p', '0.1.0')", [])?;
+            let sid = conn.last_insert_rowid();
+            conn.execute("INSERT INTO dimension_scores (snapshot_id, dimension, score) VALUES (?1, 'structural', 80)", [sid])?;
+        }
+        let series = get_dimension_time_series(&conn, "/tmp/p", Some(3))?;
+        assert_eq!(series.len(), 3);
+        // Should be the 3 most recent, ordered oldest → newest
+        assert_eq!(series[0].snapshot_id, 8);
+        assert_eq!(series[2].snapshot_id, 10);
         Ok(())
     }
 }

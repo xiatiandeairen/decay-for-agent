@@ -59,6 +59,24 @@ pub fn compare_dimensions(
     result
 }
 
+/// Extract a single dimension's score sequence from snapshot time series.
+/// Returns (snapshot_id, score) pairs, skipping snapshots where the dimension is absent or None.
+pub fn dimension_series(
+    snapshots: &[crate::db::SnapshotScores],
+    dimension: &str,
+) -> Vec<(i64, i32)> {
+    snapshots
+        .iter()
+        .filter_map(|s| {
+            s.scores
+                .get(dimension)
+                .copied()
+                .flatten()
+                .map(|score| (s.snapshot_id, score))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,5 +135,37 @@ mod tests {
         assert_eq!(format!("{}", Delta::Down(3)), "↓3");
         assert_eq!(format!("{}", Delta::Unchanged), "→");
         assert_eq!(format!("{}", Delta::NA), "N/A");
+    }
+
+    #[test]
+    fn test_dimension_series() {
+        use crate::db::SnapshotScores;
+
+        let snapshots = vec![
+            SnapshotScores {
+                snapshot_id: 1,
+                created_at: "2026-01-01".into(),
+                scores: [("structural".into(), Some(80)), ("complexity".into(), Some(70))].into(),
+            },
+            SnapshotScores {
+                snapshot_id: 2,
+                created_at: "2026-01-02".into(),
+                scores: [("structural".into(), Some(75)), ("complexity".into(), None)].into(),
+            },
+            SnapshotScores {
+                snapshot_id: 3,
+                created_at: "2026-01-03".into(),
+                scores: [("structural".into(), Some(82))].into(),
+            },
+        ];
+
+        let series = dimension_series(&snapshots, "structural");
+        assert_eq!(series, vec![(1, 80), (2, 75), (3, 82)]);
+
+        let complexity = dimension_series(&snapshots, "complexity");
+        assert_eq!(complexity, vec![(1, 70)]); // snapshot 2 has None, snapshot 3 missing
+
+        let absent = dimension_series(&snapshots, "fragility");
+        assert!(absent.is_empty());
     }
 }

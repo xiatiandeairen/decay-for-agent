@@ -80,3 +80,5 @@
   - [tech](.know/docs/requirements/action-sorting/tech.md) | 2026-04-15
 - [agent-protocol](.know/docs/requirements/agent-protocol/prd.md) | 2026-04-15
   - [tech](.know/docs/requirements/agent-protocol/tech.md) | 2026-04-15
+- [trend-engine](.know/docs/requirements/trend-engine/prd.md) | 2026-04-15
+  - [tech](.know/docs/requirements/trend-engine/tech.md) | 2026-04-15

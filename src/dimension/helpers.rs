@@ -2,6 +2,75 @@
 ///
 /// Eliminates repeated pattern-scanning loops across dimensions.
 
+/// Detected context of a source file, used to downgrade false positives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileContext {
+    /// Normal production code.
+    Production,
+    /// Test file or test module.
+    Test,
+    /// FFI / bindings / extern block code.
+    FFI,
+    /// Parser / lexer / AST code.
+    Parser,
+    /// Builder pattern code.
+    Builder,
+}
+
+/// Detect the context of a source file based on path and content.
+pub fn detect_file_context(path: &str, lines: &[String]) -> FileContext {
+    let lower_path = path.to_lowercase();
+
+    // Test files
+    if lower_path.contains("/test/") || lower_path.contains("/tests/")
+        || lower_path.contains("_test.") || lower_path.contains(".test.")
+        || lower_path.contains("/spec/") || lower_path.starts_with("spec/")
+        || lower_path.contains("_spec.")
+    {
+        return FileContext::Test;
+    }
+
+    // FFI / bindings
+    if lower_path.contains("/ffi/") || lower_path.contains("/bindings/")
+        || lower_path.contains("/sys/") || lower_path.contains("_ffi.")
+        || lower_path.contains("_bindings.")
+    {
+        return FileContext::FFI;
+    }
+
+    // Parser / lexer / AST
+    if lower_path.contains("/parser") || lower_path.contains("/lexer")
+        || lower_path.contains("/ast/") || lower_path.contains("_parser.")
+        || lower_path.contains("_lexer.")
+    {
+        return FileContext::Parser;
+    }
+
+    // Content-based detection for FFI: ≥3 extern "C" blocks
+    let extern_c_count = lines.iter()
+        .filter(|l| {
+            let t = l.trim();
+            t.contains("extern \"C\"") || t.contains("extern \"c\"")
+        })
+        .count();
+    if extern_c_count >= 3 {
+        return FileContext::FFI;
+    }
+
+    // Content-based detection for builder pattern
+    let has_build = lines.iter().any(|l| l.contains("fn build("));
+    let has_new = lines.iter().any(|l| l.contains("fn new("));
+    let has_self_return = lines.iter().any(|l| {
+        let t = l.trim();
+        t.contains("-> Self") || t.contains("-> &mut Self") || t.contains("-> &Self")
+    });
+    if has_build && has_new && has_self_return {
+        return FileContext::Builder;
+    }
+
+    FileContext::Production
+}
+
 /// A single pattern match with location info.
 #[derive(Debug, Clone)]
 pub struct PatternHit {
@@ -257,5 +326,56 @@ mod tests {
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].line_no, 1);
         assert_eq!(hits[1].line_no, 3);
+    }
+
+    #[test]
+    fn test_detect_file_context_production() {
+        let ctx = detect_file_context("src/main.rs", &["fn main() {}".into()]);
+        assert_eq!(ctx, FileContext::Production);
+    }
+
+    #[test]
+    fn test_detect_file_context_test() {
+        assert_eq!(detect_file_context("src/tests/foo.rs", &[]), FileContext::Test);
+        assert_eq!(detect_file_context("src/foo_test.rs", &[]), FileContext::Test);
+        assert_eq!(detect_file_context("spec/helper.rb", &[]), FileContext::Test);
+    }
+
+    #[test]
+    fn test_detect_file_context_ffi_path() {
+        assert_eq!(detect_file_context("src/ffi/bindings.rs", &[]), FileContext::FFI);
+        assert_eq!(detect_file_context("src/sys/raw.rs", &[]), FileContext::FFI);
+    }
+
+    #[test]
+    fn test_detect_file_context_ffi_content() {
+        let lines: Vec<String> = vec![
+            r#"extern "C" { fn foo(); }"#.into(),
+            r#"extern "C" { fn bar(); }"#.into(),
+            r#"extern "C" { fn baz(); }"#.into(),
+        ];
+        assert_eq!(detect_file_context("src/lib.rs", &lines), FileContext::FFI);
+    }
+
+    #[test]
+    fn test_detect_file_context_parser() {
+        assert_eq!(detect_file_context("src/parser/expr.rs", &[]), FileContext::Parser);
+        assert_eq!(detect_file_context("src/lexer.rs", &[]), FileContext::Parser);
+    }
+
+    #[test]
+    fn test_detect_file_context_builder() {
+        let lines: Vec<String> = vec![
+            "pub fn new() -> Self {".into(),
+            "    Self { x: 0 }".into(),
+            "}".into(),
+            "pub fn build(self) -> Widget {".into(),
+            "    Widget { x: self.x }".into(),
+            "}".into(),
+            "pub fn x(mut self, x: i32) -> Self {".into(),
+            "    self.x = x; self".into(),
+            "}".into(),
+        ];
+        assert_eq!(detect_file_context("src/widget_builder.rs", &lines), FileContext::Builder);
     }
 }

@@ -52,17 +52,23 @@ impl Dimension for Reliability {
                 score -= 15;
             }
         }
-        for (path, count) in &analysis.unsafe_details {
+        for (path, count, ctx) in &analysis.unsafe_details {
             if *count > UNSAFE_PER_FILE_WARN {
+                // FFI context: downgrade to Info — unsafe is expected
+                let (level, priority) = if *ctx == helpers::FileContext::FFI {
+                    (Level::Info, Priority::Low)
+                } else {
+                    (Level::Warning, Priority::High)
+                };
                 issues.push(Issue::with_actions(
-                    Level::Warning, name.clone(),
+                    level, name.clone(),
                     format!("{path} has {count} unsafe/eval occurrences"),
                     vec![Action {
                         dimension: name.clone(), action_type: ActionType::Replace,
                         target: Target::file(path),
                         suggestion: format!("minimize unsafe code in {path}, prefer safe abstractions"),
                         reason: format!("{path} has {count} unsafe/eval"),
-                        priority: Priority::High, effort: Effort::Medium,
+                        priority, effort: Effort::Medium,
                     }],
                 ));
             }
@@ -134,7 +140,7 @@ struct Analysis {
     unsafe_count: usize,
     injection_patterns: usize,
     hardcoded_secrets: usize,
-    unsafe_details: Vec<(String, usize)>,
+    unsafe_details: Vec<(String, usize, helpers::FileContext)>, // (path, count, context)
     injection_details: Vec<(String, String, u32)>, // (path, pattern, line_no)
     secret_details: Vec<(String, String, u32)>,   // (path, kind, line_no)
 }
@@ -167,7 +173,8 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
         secret_details.extend(sec_det);
 
         if file_unsafe > 0 {
-            unsafe_details.push((sf.path.clone(), file_unsafe));
+            let ctx = helpers::detect_file_context(&sf.path, &sf.lines);
+            unsafe_details.push((sf.path.clone(), file_unsafe, ctx));
         }
     }
 

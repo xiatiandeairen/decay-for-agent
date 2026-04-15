@@ -53,9 +53,15 @@ impl Dimension for Performance {
         } else if analysis.deep_nests > DEEP_NEST_WARN {
             score -= 15;
         }
-        for (path, line_no, depth) in &analysis.nest_details {
-            let priority = if *depth >= 4 { Priority::Critical } else { Priority::High };
-            let level = if *depth >= 4 { Level::Critical } else { Level::Warning };
+        for (path, line_no, depth, ctx) in &analysis.nest_details {
+            // Parser context: downgrade — nested loops are expected in parsers
+            let (level, priority) = if *ctx == helpers::FileContext::Parser {
+                (Level::Info, Priority::Low)
+            } else if *depth >= 4 {
+                (Level::Critical, Priority::Critical)
+            } else {
+                (Level::Warning, Priority::High)
+            };
             let ln = *line_no as u32;
             issues.push(Issue::with_actions(
                 level, name.clone(), format!("{path}:{line_no} has {depth}-level nested loop"),
@@ -78,17 +84,23 @@ impl Dimension for Performance {
                 score -= 10;
             }
         }
-        for (path, count) in &analysis.clone_details {
+        for (path, count, ctx) in &analysis.clone_details {
             if *count > 10 {
+                // Builder context: downgrade — cloning is idiomatic in builder patterns
+                let (level, priority) = if *ctx == helpers::FileContext::Builder {
+                    (Level::Info, Priority::Low)
+                } else {
+                    (Level::Warning, Priority::Medium)
+                };
                 issues.push(Issue::with_actions(
-                    Level::Warning, name.clone(),
+                    level, name.clone(),
                     format!("{path} has {count} clone/copy calls"),
                     vec![Action {
                         dimension: name.clone(), action_type: ActionType::Refactor,
                         target: Target::file(path),
                         suggestion: format!("reduce cloning in {path}, prefer references or Cow"),
                         reason: format!("{path} has {count} clones"),
-                        priority: Priority::Medium, effort: Effort::Medium,
+                        priority, effort: Effort::Medium,
                     }],
                 ));
             }
@@ -120,8 +132,8 @@ struct Analysis {
     deep_nests: usize,
     clone_count: usize,
     blocking_calls: usize,
-    nest_details: Vec<(String, usize, usize)>, // (path, line, depth)
-    clone_details: Vec<(String, usize)>,
+    nest_details: Vec<(String, usize, usize, helpers::FileContext)>, // (path, line, depth, ctx)
+    clone_details: Vec<(String, usize, helpers::FileContext)>, // (path, count, ctx)
     blocking_details: Vec<(String, String)>,
 }
 
@@ -149,6 +161,7 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
     for sf in source_files {
         file_count += 1;
         total_lines += sf.line_count;
+        let ctx = helpers::detect_file_context(&sf.path, &sf.lines);
 
         // Use helpers for clone pattern scanning
         let clone_hits = helpers::count_pattern_matches(&sf.lines, clone_patterns);
@@ -185,7 +198,7 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
                 loop_depth += 1;
                 if loop_depth >= DEEP_NEST_DEPTH {
                     deep_nests += 1;
-                    nest_details.push((sf.path.clone(), i + 1, loop_depth));
+                    nest_details.push((sf.path.clone(), i + 1, loop_depth, ctx));
                 }
             }
 
@@ -202,7 +215,7 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
         }
 
         if file_clones > 0 {
-            clone_details.push((sf.path.clone(), file_clones));
+            clone_details.push((sf.path.clone(), file_clones, ctx));
         }
     }
 

@@ -1,4 +1,5 @@
 mod action;
+mod aggregate;
 mod classify;
 mod collector;
 mod config;

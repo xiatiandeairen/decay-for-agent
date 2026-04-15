@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::env;
 
-use crate::{action, diagnose, dimension, trend};
+use crate::{action, aggregate, diagnose, dimension, trend};
 
 pub struct MarkdownCtx<'a> {
     pub snapshot_id: i64,
@@ -16,6 +16,7 @@ pub struct MarkdownCtx<'a> {
     pub trajectory: &'a Option<trend::Trajectory>,
     pub collectors: &'a HashMap<String, HashMap<String, String>>,
     pub issues: &'a [diagnose::Issue],
+    pub aggregated_issues: &'a [aggregate::AggregatedIssue],
     pub actions: &'a [action::Action],
 }
 
@@ -33,6 +34,7 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         trajectory,
         collectors,
         issues,
+        aggregated_issues,
         actions,
     } = ctx;
 
@@ -182,6 +184,23 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         sections.join("\n")
     };
 
+    let aggregated_section = if aggregated_issues.is_empty() {
+        String::new()
+    } else {
+        let mut s = String::from("## Root Cause Analysis\n\n");
+        for agg in *aggregated_issues {
+            s.push_str(&format!(
+                "### {} `{}`\n\n- **Affected**: {} files ({})\n- **Approach**: {}\n\n",
+                agg.root_cause,
+                agg.category,
+                agg.issue_count,
+                agg.affected_files.join(", "),
+                agg.suggested_approach,
+            ));
+        }
+        s
+    };
+
     let actions_section = if actions.is_empty() {
         String::new()
     } else {
@@ -291,6 +310,7 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
          \n\
          {issues_section}\n\
          \n\
+         {aggregated_section}\
          {actions_section}\
          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
         version = env!("CARGO_PKG_VERSION"),

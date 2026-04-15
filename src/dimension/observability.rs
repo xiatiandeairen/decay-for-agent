@@ -166,7 +166,8 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
             }
         }
 
-        let unwrap_hits = helpers::count_pattern_matches(&sf.lines, unwrap_patterns);
+        let test_mask = helpers::mark_test_lines(&sf.lines);
+        let unwrap_hits = helpers::count_pattern_matches_filtered(&sf.lines, unwrap_patterns, Some(&test_mask));
         let file_unwraps = unwrap_hits.len();
         let file_unwrap_lines: Vec<u32> = unwrap_hits.iter().map(|h| h.line_no).collect();
         unwrap_panic_count += file_unwraps;
@@ -241,6 +242,22 @@ mod tests {
         let dim = Observability;
         let score = dim.evaluate(&store)?.score.unwrap();
         assert!(score > 70, "project with logging should score >70, got {score}");
+        Ok(())
+    }
+
+    #[test]
+    fn test_unwraps_in_test_code_ignored() -> Result<()> {
+        let dir = TempDir::new()?;
+        let store = test_support::setup_store(&dir);
+        let content = "use log::info;\nfn main() {\n    info!(\"ok\");\n}\n#[cfg(test)]\nmod tests {\n    fn test_it() {\n        let a = x.unwrap();\n        let b = y.unwrap();\n        let c = z.unwrap();\n        let d = w.unwrap();\n        let e = v.unwrap();\n        let f = u.unwrap();\n    }\n}\n";
+        test_support::add_file(&store, &dir, "src/main.rs", content);
+        let dim = Observability;
+        let result = dim.evaluate(&store)?;
+        // Test unwraps should not generate issues
+        assert!(
+            !result.issues.iter().any(|i| i.message.contains("unwrap/panic")),
+            "unwraps in test code should not trigger issues"
+        );
         Ok(())
     }
 

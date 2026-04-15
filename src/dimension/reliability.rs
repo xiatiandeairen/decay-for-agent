@@ -201,15 +201,28 @@ fn detect_injection_and_secrets(
         }
         let line_no = (i + 1) as u32;
 
-        // SQL injection
+        // SQL injection — skip error messages and logging that happen to mention SQL keywords
         if (trimmed.contains("format!(") || trimmed.contains("f\""))
             && (trimmed.to_uppercase().contains("SELECT ")
                 || trimmed.to_uppercase().contains("INSERT ")
                 || trimmed.to_uppercase().contains("DELETE ")
                 || trimmed.to_uppercase().contains("UPDATE "))
         {
-            injection_count += 1;
-            injection_details.push((file_path.to_string(), "SQL string concatenation".to_string(), line_no));
+            let lower = trimmed.to_lowercase();
+            let is_error_context = lower.contains("bail!")
+                || lower.contains("anyhow!")
+                || lower.contains("panic!")
+                || lower.contains("eprintln!")
+                || lower.contains("error!")
+                || lower.contains("warn!")
+                || lower.contains("\"failed")
+                || lower.contains("\"error")
+                || lower.contains("\"unable")
+                || lower.contains("\"could not");
+            if !is_error_context {
+                injection_count += 1;
+                injection_details.push((file_path.to_string(), "SQL string concatenation".to_string(), line_no));
+            }
         }
 
         // Shell injection
@@ -249,6 +262,19 @@ mod tests {
         let score = dim.evaluate(&store)?.score.unwrap();
         assert!(score > 80, "safe project should score >80, got {score}");
         Ok(())
+    }
+
+    #[test]
+    fn test_sql_injection_false_positive() {
+        let lines: Vec<String> = vec![
+            r#"bail!("failed to DELETE user {id}");"#.into(),
+            r#"eprintln!("error: SELECT from {} failed", table);"#.into(),
+            r#"let query = format!("SELECT * FROM users WHERE id = {}", id);"#.into(),
+        ];
+        let (count, details, _, _) = detect_injection_and_secrets(&lines, "test.rs");
+        // Only the real SQL injection (line 3) should be detected, not error messages
+        assert_eq!(count, 1);
+        assert_eq!(details[0].2, 3); // line 3
     }
 
     #[test]

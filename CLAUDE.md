@@ -92,3 +92,5 @@
   - [tech](.know/docs/requirements/dimension-correlation/tech.md) | 2026-04-15
 - [trajectory-report](.know/docs/requirements/trajectory-report/prd.md) | 2026-04-15
   - [tech](.know/docs/requirements/trajectory-report/tech.md) | 2026-04-15
+- [detection-precision](.know/docs/requirements/detection-precision/prd.md) | 2026-04-15
+  - [tech](.know/docs/requirements/detection-precision/tech.md) | 2026-04-15

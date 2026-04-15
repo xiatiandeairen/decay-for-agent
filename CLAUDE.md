@@ -90,3 +90,5 @@
   - [tech](.know/docs/requirements/threshold-forecast/tech.md) | 2026-04-15
 - [dimension-correlation](.know/docs/requirements/dimension-correlation/prd.md) | 2026-04-15
   - [tech](.know/docs/requirements/dimension-correlation/tech.md) | 2026-04-15
+- [trajectory-report](.know/docs/requirements/trajectory-report/prd.md) | 2026-04-15
+  - [tech](.know/docs/requirements/trajectory-report/tech.md) | 2026-04-15

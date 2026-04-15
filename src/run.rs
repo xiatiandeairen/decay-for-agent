@@ -27,6 +27,8 @@ pub struct Report {
     pub forecasts: Vec<trend::Forecast>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub correlations: Vec<trend::Correlation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trajectory: Option<trend::Trajectory>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub time_series: Vec<db::SnapshotScores>,
     pub collectors: HashMap<String, HashMap<String, String>>,
@@ -57,10 +59,15 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
     let trend_data = db::get_previous_dimension_scores(store.conn(), &project_path_str, snapshot_id)?
         .map(|prev| trend::compare_dimensions(&scores, &prev));
     let time_series = db::get_dimension_time_series(store.conn(), &project_path_str, None)?;
-    let velocities = trend::calculate_velocities(&time_series);
-    let regressions = trend::detect_regressions(&time_series, 2.0);
-    let forecasts = trend::forecast_breaches(&time_series, 60);
-    let correlations = trend::analyze_correlations(&time_series);
+    let trajectory = if time_series.len() >= 3 {
+        Some(trend::build_trajectory(&time_series, 2.0, 60))
+    } else {
+        None
+    };
+    let velocities = trajectory.as_ref().map_or_else(Vec::new, |t| t.velocities.clone());
+    let regressions = trajectory.as_ref().map_or_else(Vec::new, |t| t.regressions.clone());
+    let forecasts = trajectory.as_ref().map_or_else(Vec::new, |t| t.forecasts.clone());
+    let correlations = trajectory.as_ref().map_or_else(Vec::new, |t| t.correlations.clone());
 
     let critical_count = all_issues
         .iter()
@@ -74,7 +81,7 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
             scores: scores.clone(), composite: comp,
             trend: trend_data,
             issues: all_issues, actions: all_actions,
-            velocities, regressions, forecasts, correlations,
+            velocities, regressions, forecasts, correlations, trajectory,
             time_series, collectors: collector_stats,
         },
         &scores, comp, critical_count, snapshot_id, &project_path,
@@ -171,6 +178,7 @@ fn output(
             regressions: &report.regressions,
             forecasts: &report.forecasts,
             correlations: &report.correlations,
+            trajectory: &report.trajectory,
             collectors: &report.collectors,
             issues: &report.issues,
             actions: &report.actions,
@@ -189,6 +197,7 @@ fn output(
             &report.regressions,
             &report.forecasts,
             &report.correlations,
+            &report.trajectory,
             &dimensions,
             &report.issues,
             snapshot_id,

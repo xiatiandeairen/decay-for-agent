@@ -13,6 +13,7 @@ pub struct MarkdownCtx<'a> {
     pub regressions: &'a [trend::Regression],
     pub forecasts: &'a [trend::Forecast],
     pub correlations: &'a [trend::Correlation],
+    pub trajectory: &'a Option<trend::Trajectory>,
     pub collectors: &'a HashMap<String, HashMap<String, String>>,
     pub issues: &'a [diagnose::Issue],
     pub actions: &'a [action::Action],
@@ -29,6 +30,7 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         regressions,
         forecasts,
         correlations,
+        trajectory,
         collectors,
         issues,
         actions,
@@ -195,54 +197,58 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         "| Dimension | Score | Trend |\n|-----------|------:|-------|\n"
     };
 
-    let regressions_section = if regressions.is_empty() {
-        String::new()
-    } else {
-        let mut s = String::from("## Regressions\n\n");
-        for r in *regressions {
-            s.push_str(&format!(
-                "- **{}** ({severity}): {prev} → {curr} (−{drop}, threshold: {thresh:.1})\n",
-                r.dimension,
-                severity = r.severity,
-                prev = r.previous_score,
-                curr = r.current_score,
-                drop = r.drop,
-                thresh = r.threshold,
-            ));
-        }
-        s.push('\n');
-        s
-    };
+    let trajectory_section = match trajectory {
+        Some(traj) => {
+            let mut s = format!("## Health Trajectory ({})\n\n", traj.overall_direction);
 
-    let forecasts_section = if forecasts.is_empty() {
-        String::new()
-    } else {
-        let mut s = String::from("## Forecasts\n\n");
-        for f in *forecasts {
-            s.push_str(&format!(
-                "- **{}** will breach {} in ~{} snapshots (current: {}, slope: {:.1}/snap, R²={:.2})\n",
-                f.dimension, f.threshold, f.snapshots_until_breach,
-                f.current_score, f.slope, f.r_squared,
-            ));
-        }
-        s.push('\n');
-        s
-    };
+            if !regressions.is_empty() {
+                s.push_str("### Regressions\n\n");
+                for r in *regressions {
+                    s.push_str(&format!(
+                        "- **{}** ({severity}): {prev} → {curr} (−{drop}, threshold: {thresh:.1})\n",
+                        r.dimension,
+                        severity = r.severity,
+                        prev = r.previous_score,
+                        curr = r.current_score,
+                        drop = r.drop,
+                        thresh = r.threshold,
+                    ));
+                }
+                s.push('\n');
+            }
 
-    let correlations_section = if correlations.is_empty() {
-        String::new()
-    } else {
-        let mut s = String::from("## Correlations\n\n");
-        for c in *correlations {
-            let sign = if c.coefficient > 0.0 { "+" } else { "" };
-            s.push_str(&format!(
-                "- **{}** ↔ **{}**: {sign}{:.2} ({strength})\n",
-                c.dim_a, c.dim_b, c.coefficient,
-                strength = c.strength,
-            ));
+            if !forecasts.is_empty() {
+                s.push_str("### Forecasts\n\n");
+                for f in *forecasts {
+                    s.push_str(&format!(
+                        "- **{}** will breach {} in ~{} snapshots (current: {}, slope: {:.1}/snap, R²={:.2})\n",
+                        f.dimension, f.threshold, f.snapshots_until_breach,
+                        f.current_score, f.slope, f.r_squared,
+                    ));
+                }
+                s.push('\n');
+            }
+
+            if !correlations.is_empty() {
+                s.push_str("### Correlations\n\n");
+                for c in *correlations {
+                    let sign = if c.coefficient > 0.0 { "+" } else { "" };
+                    s.push_str(&format!(
+                        "- **{}** ↔ **{}**: {sign}{:.2} ({strength})\n",
+                        c.dim_a, c.dim_b, c.coefficient,
+                        strength = c.strength,
+                    ));
+                }
+                s.push('\n');
+            }
+
+            if regressions.is_empty() && forecasts.is_empty() && correlations.is_empty() {
+                s.push_str("No regressions, forecasts, or correlations detected.\n\n");
+            }
+
+            s
         }
-        s.push('\n');
-        s
+        None => String::new(),
     };
 
     let project_name = std::path::Path::new(project_path)
@@ -264,9 +270,7 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
          {scores_header}\
          {scores_rows}\n\
          \n\
-         {regressions_section}\
-         {forecasts_section}\
-         {correlations_section}\
+         {trajectory_section}\
          ## Scan\n\
          \n\
          | Metric | Value |\n\
@@ -297,6 +301,7 @@ pub fn render_terminal(
     regressions: &[trend::Regression],
     forecasts: &[trend::Forecast],
     correlations: &[trend::Correlation],
+    trajectory: &Option<trend::Trajectory>,
     dimensions: &[Box<dyn dimension::Dimension>],
     issues: &[diagnose::Issue],
     snapshot_id: i64,
@@ -341,6 +346,16 @@ pub fn render_terminal(
     }
     println!("{}", health_parts.join(" "));
 
+    if let Some(traj) = trajectory {
+        println!(
+            "Trajectory: {} | {} velocities, {} regressions, {} forecasts, {} correlations",
+            traj.overall_direction,
+            traj.velocities.len(),
+            traj.regressions.len(),
+            traj.forecasts.len(),
+            traj.correlations.len(),
+        );
+    }
     for r in regressions {
         eprintln!(
             "⚠ REGRESSION: {} {} → {} (−{}, threshold: {:.1})",

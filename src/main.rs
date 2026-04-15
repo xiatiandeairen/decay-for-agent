@@ -10,6 +10,7 @@ mod dimension;
 mod filter;
 mod filter_pipeline;
 mod git;
+mod patch;
 mod git_pipeline;
 mod profile;
 mod render;

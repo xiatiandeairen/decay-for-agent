@@ -12,6 +12,7 @@ pub struct MarkdownCtx<'a> {
     pub velocities: &'a [trend::Velocity],
     pub regressions: &'a [trend::Regression],
     pub forecasts: &'a [trend::Forecast],
+    pub correlations: &'a [trend::Correlation],
     pub collectors: &'a HashMap<String, HashMap<String, String>>,
     pub issues: &'a [diagnose::Issue],
     pub actions: &'a [action::Action],
@@ -27,6 +28,7 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         velocities,
         regressions,
         forecasts,
+        correlations,
         collectors,
         issues,
         actions,
@@ -227,6 +229,22 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         s
     };
 
+    let correlations_section = if correlations.is_empty() {
+        String::new()
+    } else {
+        let mut s = String::from("## Correlations\n\n");
+        for c in *correlations {
+            let sign = if c.coefficient > 0.0 { "+" } else { "" };
+            s.push_str(&format!(
+                "- **{}** ↔ **{}**: {sign}{:.2} ({strength})\n",
+                c.dim_a, c.dim_b, c.coefficient,
+                strength = c.strength,
+            ));
+        }
+        s.push('\n');
+        s
+    };
+
     let project_name = std::path::Path::new(project_path)
         .file_name()
         .unwrap_or_default()
@@ -248,6 +266,7 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
          \n\
          {regressions_section}\
          {forecasts_section}\
+         {correlations_section}\
          ## Scan\n\
          \n\
          | Metric | Value |\n\
@@ -277,6 +296,7 @@ pub fn render_terminal(
     velocities: &[trend::Velocity],
     regressions: &[trend::Regression],
     forecasts: &[trend::Forecast],
+    correlations: &[trend::Correlation],
     dimensions: &[Box<dyn dimension::Dimension>],
     issues: &[diagnose::Issue],
     snapshot_id: i64,
@@ -332,6 +352,13 @@ pub fn render_terminal(
             "⚡ FORECAST: {} will breach {} in ~{} snapshots (R²={:.2})",
             f.dimension, f.threshold, f.snapshots_until_breach, f.r_squared
         );
+    }
+    if !correlations.is_empty() {
+        let pairs: Vec<String> = correlations
+            .iter()
+            .map(|c| format!("{} ↔ {} ({:.2})", c.dim_a, c.dim_b, c.coefficient))
+            .collect();
+        println!("Correlations: {}", pairs.join(", "));
     }
 
     diagnose::print_issues(issues);

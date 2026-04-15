@@ -88,3 +88,5 @@
   - [tech](.know/docs/requirements/regression-detection/tech.md) | 2026-04-15
 - [threshold-forecast](.know/docs/requirements/threshold-forecast/prd.md) | 2026-04-15
   - [tech](.know/docs/requirements/threshold-forecast/tech.md) | 2026-04-15
+- [dimension-correlation](.know/docs/requirements/dimension-correlation/prd.md) | 2026-04-15
+  - [tech](.know/docs/requirements/dimension-correlation/tech.md) | 2026-04-15

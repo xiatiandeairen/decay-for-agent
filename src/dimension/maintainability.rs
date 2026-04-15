@@ -4,6 +4,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use anyhow::Result;
 use log::debug;
 
+use super::helpers;
 use super::{Dimension, DimensionResult};
 use crate::action::{Action, ActionType, Effort, Priority, Target};
 use crate::data_store::{DataStore, SourceFile};
@@ -181,7 +182,7 @@ fn analyze_files(source_files: &[SourceFile]) -> Analysis {
 
     for sf in source_files {
         // Skip auto-generated and non-source files
-        if is_generated_file(&sf.path) {
+        if helpers::is_generated_file(&sf.path) {
             continue;
         }
 
@@ -221,54 +222,10 @@ fn analyze_files(source_files: &[SourceFile]) -> Analysis {
             }
         }
 
-        // Build block fingerprints for duplicate detection
-        let normalized: Vec<u64> = sf.lines
-            .iter()
-            .map(|l| {
-                let trimmed = l.trim();
-                if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with('#') {
-                    0
-                } else {
-                    let mut hasher = DefaultHasher::new();
-                    trimmed.hash(&mut hasher);
-                    hasher.finish()
-                }
-            })
-            .collect();
-
-        for start in 0..normalized.len().saturating_sub(MIN_DUP_BLOCK) {
-            // Skip blocks starting with blank/comment lines
-            if normalized[start] == 0 {
-                continue;
-            }
-            let block: Vec<u64> = normalized[start..start + MIN_DUP_BLOCK].to_vec();
-            if block.iter().any(|h| *h == 0) {
-                continue;
-            }
-            let mut hasher = DefaultHasher::new();
-            block.hash(&mut hasher);
-            let fingerprint = hasher.finish();
-            block_index
-                .entry(fingerprint)
-                .or_default()
-                .push((sf.path.clone(), start));
-        }
+        index_block_fingerprints(&sf.lines, &sf.path, &mut block_index);
     }
 
-    // Count files with duplicates (blocks appearing in >1 file)
-    let mut files_with_dups_set: HashMap<String, usize> = HashMap::new();
-    for (_fp, locations) in &block_index {
-        let unique_files: std::collections::HashSet<&str> =
-            locations.iter().map(|(f, _)| f.as_str()).collect();
-        if unique_files.len() > 1 {
-            for f in &unique_files {
-                *files_with_dups_set.entry(f.to_string()).or_default() += 1;
-            }
-        }
-    }
-
-    let files_with_dups = files_with_dups_set.len();
-    let dup_details: Vec<(String, usize)> = files_with_dups_set.into_iter().collect();
+    let (files_with_dups, dup_details) = count_cross_file_duplicates(&block_index);
 
     Analysis {
         file_count,
@@ -284,26 +241,61 @@ fn analyze_files(source_files: &[SourceFile]) -> Analysis {
     }
 }
 
-/// Check if a file is auto-generated or non-source.
-fn is_generated_file(path: &str) -> bool {
-    let lower = path.to_lowercase();
-    // Lock files
-    if lower.ends_with(".lock") || lower.ends_with("lock.json") {
-        return true;
+/// Build block fingerprints for duplicate detection across files.
+fn index_block_fingerprints(
+    lines: &[String],
+    file_path: &str,
+    block_index: &mut HashMap<u64, Vec<(String, usize)>>,
+) {
+    let normalized: Vec<u64> = lines
+        .iter()
+        .map(|l| {
+            let trimmed = l.trim();
+            if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with('#') {
+                0
+            } else {
+                let mut hasher = DefaultHasher::new();
+                trimmed.hash(&mut hasher);
+                hasher.finish()
+            }
+        })
+        .collect();
+
+    for start in 0..normalized.len().saturating_sub(MIN_DUP_BLOCK) {
+        if normalized[start] == 0 {
+            continue;
+        }
+        let block: Vec<u64> = normalized[start..start + MIN_DUP_BLOCK].to_vec();
+        if block.iter().any(|h| *h == 0) {
+            continue;
+        }
+        let mut hasher = DefaultHasher::new();
+        block.hash(&mut hasher);
+        let fingerprint = hasher.finish();
+        block_index
+            .entry(fingerprint)
+            .or_default()
+            .push((file_path.to_string(), start));
     }
-    // Common generated files
-    if lower.ends_with(".min.js") || lower.ends_with(".min.css") {
-        return true;
+}
+
+/// Count files with duplicate blocks appearing in more than one file.
+fn count_cross_file_duplicates(
+    block_index: &HashMap<u64, Vec<(String, usize)>>,
+) -> (usize, Vec<(String, usize)>) {
+    let mut files_with_dups_set: HashMap<String, usize> = HashMap::new();
+    for locations in block_index.values() {
+        let unique_files: std::collections::HashSet<&str> =
+            locations.iter().map(|(f, _)| f.as_str()).collect();
+        if unique_files.len() > 1 {
+            for f in &unique_files {
+                *files_with_dups_set.entry(f.to_string()).or_default() += 1;
+            }
+        }
     }
-    // Markdown/docs — skip for maintainability analysis
-    if lower.ends_with(".md") || lower.ends_with(".txt") || lower.ends_with(".rst") {
-        return true;
-    }
-    // JSON/YAML config — not source code
-    if lower.ends_with(".json") || lower.ends_with(".yaml") || lower.ends_with(".yml") || lower.ends_with(".toml") {
-        return true;
-    }
-    false
+    let files_with_dups = files_with_dups_set.len();
+    let dup_details: Vec<(String, usize)> = files_with_dups_set.into_iter().collect();
+    (files_with_dups, dup_details)
 }
 
 /// Detect function definitions and return (name, line_number) pairs.
@@ -380,41 +372,15 @@ fn extract_func_name(line: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_store::DataStore;
-    use rusqlite::Connection;
-    use std::fs;
+    use crate::dimension::test_support;
     use tempfile::TempDir;
-
-    fn setup_store(dir: &TempDir) -> DataStore {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), version TEXT NOT NULL);
-             CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, depth INTEGER NOT NULL);
-             CREATE TABLE git_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, change_count INTEGER NOT NULL, lines_added INTEGER NOT NULL, lines_deleted INTEGER NOT NULL, last_modified TEXT NOT NULL);",
-        ).unwrap();
-        conn.execute("INSERT INTO snapshots (project_path, version) VALUES (?1, '0.1.0')", [dir.path().to_string_lossy().to_string()]).unwrap();
-        let sid = conn.last_insert_rowid();
-        DataStore::new(conn, sid, dir.path().to_string_lossy().to_string())
-    }
-
-    fn add_file(store: &DataStore, dir: &TempDir, rel_path: &str, content: &str) {
-        fs::create_dir_all(dir.path().join(rel_path).parent().unwrap()).unwrap();
-        fs::write(dir.path().join(rel_path), content).unwrap();
-        let size = content.len() as i64;
-        let depth = rel_path.matches('/').count() + 1;
-        store.conn().execute(
-            "INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![store.snapshot_id(), rel_path, size, depth],
-        )
-        .unwrap();
-    }
 
     #[test]
     fn test_healthy_project() -> Result<()> {
         let dir = TempDir::new()?;
-        let store = setup_store(&dir);
-        add_file(&store, &dir, "src/main.rs", "fn main() {\n    println!(\"hello\");\n}\n");
-        add_file(&store, &dir, "src/lib.rs", "pub fn greet() {\n    println!(\"hi\");\n}\n");
+        let store = test_support::setup_store(&dir);
+        test_support::add_file(&store, &dir, "src/main.rs", "fn main() {\n    println!(\"hello\");\n}\n");
+        test_support::add_file(&store, &dir, "src/lib.rs", "pub fn greet() {\n    println!(\"hi\");\n}\n");
 
         let dim = Maintainability;
         let result = dim.evaluate(&store)?;
@@ -428,10 +394,10 @@ mod tests {
     #[test]
     fn test_long_file_detected() -> Result<()> {
         let dir = TempDir::new()?;
-        let store = setup_store(&dir);
+        let store = test_support::setup_store(&dir);
         let long_content = (0..400).map(|i| format!("let x{i} = {i};")).collect::<Vec<_>>().join("\n");
-        add_file(&store, &dir, "src/big.rs", &long_content);
-        add_file(&store, &dir, "src/small.rs", "fn main() {}\n");
+        test_support::add_file(&store, &dir, "src/big.rs", &long_content);
+        test_support::add_file(&store, &dir, "src/small.rs", "fn main() {}\n");
 
         let dim = Maintainability;
         let issues = dim.evaluate(&store)?.issues;
@@ -442,9 +408,9 @@ mod tests {
     #[test]
     fn test_todo_detected() -> Result<()> {
         let dir = TempDir::new()?;
-        let store = setup_store(&dir);
+        let store = test_support::setup_store(&dir);
         let content = "fn main() {\n    // TODO: fix this\n    // FIXME: and this\n}\n";
-        add_file(&store, &dir, "src/main.rs", content);
+        test_support::add_file(&store, &dir, "src/main.rs", content);
 
         let dim = Maintainability;
         let issues = dim.evaluate(&store)?.issues;

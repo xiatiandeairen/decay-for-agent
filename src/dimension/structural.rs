@@ -127,22 +127,11 @@ impl Dimension for Structural {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_store::DataStore;
-    use rusqlite::Connection;
-
-    fn setup_store() -> DataStore {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), version TEXT NOT NULL);
-             CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, depth INTEGER NOT NULL);",
-        ).unwrap();
-        conn.execute("INSERT INTO snapshots (project_path, version) VALUES ('/tmp', '0.1.0')", []).unwrap();
-        DataStore::new(conn, 1, "/tmp".to_string())
-    }
+    use crate::dimension::test_support;
 
     #[test]
     fn test_healthy() -> Result<()> {
-        let store = setup_store();
+        let store = test_support::setup_db_store();
         for i in 0..10 {
             store.conn().execute(
                 "INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (1, ?1, 1000, 2)",
@@ -160,7 +149,7 @@ mod tests {
 
     #[test]
     fn test_unhealthy() -> Result<()> {
-        let store = setup_store();
+        let store = test_support::setup_db_store();
         for i in 0..600 {
             store.conn().execute(
                 "INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (1, ?1, 1000, 9)",

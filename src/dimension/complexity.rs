@@ -53,12 +53,12 @@ impl Dimension for Complexity {
         // Query large files once for both score and diagnose
         let mut stmt = conn
             .prepare(
-                &format!("SELECT path, size_bytes FROM files WHERE snapshot_id = ?1 AND size_bytes > {LARGE_FILE_BYTES} ORDER BY size_bytes DESC"),
+                "SELECT path, size_bytes FROM files WHERE snapshot_id = ?1 AND size_bytes > ?2 ORDER BY size_bytes DESC",
             )
             .with_context(|| format!("complexity: failed to prepare large files query for snapshot {snapshot_id}"))?;
 
         let large_files: Vec<(String, i64)> = stmt
-            .query_map([snapshot_id], |row| Ok((row.get(0)?, row.get(1)?)))
+            .query_map(rusqlite::params![snapshot_id, LARGE_FILE_BYTES], |row| Ok((row.get(0)?, row.get(1)?)))
             .with_context(|| format!("complexity: failed to query large files for snapshot {snapshot_id}"))?
             .collect::<std::result::Result<Vec<_>, _>>()
             .with_context(|| format!("complexity: failed to collect large files for snapshot {snapshot_id}"))?;
@@ -138,23 +138,11 @@ impl Dimension for Complexity {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_store::DataStore;
-    use rusqlite::Connection;
-
-    fn setup_store() -> DataStore {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), version TEXT NOT NULL);
-             CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, depth INTEGER NOT NULL);
-             CREATE TABLE git_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, change_count INTEGER NOT NULL, lines_added INTEGER NOT NULL, lines_deleted INTEGER NOT NULL, last_modified TEXT NOT NULL);",
-        ).unwrap();
-        conn.execute("INSERT INTO snapshots (project_path, version) VALUES ('/tmp', '0.1.0')", []).unwrap();
-        DataStore::new(conn, 1, "/tmp".to_string())
-    }
+    use crate::dimension::test_support;
 
     #[test]
     fn test_healthy() -> Result<()> {
-        let store = setup_store();
+        let store = test_support::setup_db_store();
         for i in 0..20 {
             store.conn().execute(
                 "INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (1, ?1, 3000, 2)",
@@ -169,7 +157,7 @@ mod tests {
 
     #[test]
     fn test_large_file_warning() -> Result<()> {
-        let store = setup_store();
+        let store = test_support::setup_db_store();
         store.conn().execute(
             "INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (1, 'big.rs', 20000, 1)",
             [],

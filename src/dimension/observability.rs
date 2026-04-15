@@ -1,6 +1,7 @@
 use anyhow::Result;
 use log::debug;
 
+use super::helpers;
 use super::{Dimension, DimensionResult};
 use crate::action::{Action, ActionType, Effort, Priority, Target};
 use crate::data_store::{DataStore, SourceFile};
@@ -144,11 +145,11 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
     let mut hardcoded_configs = 0;
     let mut unwrap_details = Vec::new();
 
-    let log_patterns = ["log::", "tracing::", "slog::", "env_logger", "log4", "logger.",
+    let log_patterns: &[&str] = &["log::", "tracing::", "slog::", "env_logger", "log4", "logger.",
         "logging.", "console.log", "console.error", "console.warn", "print!", "println!",
         "eprintln!", "debug!", "info!", "warn!", "error!"];
 
-    let unwrap_patterns = [".unwrap()", ".expect(", "panic!(", "unreachable!(", "unimplemented!(",
+    let unwrap_patterns: &[&str] = &[".unwrap()", ".expect(", "panic!(", "unreachable!(", "unimplemented!(",
         "todo!("];
 
     let catch_patterns = ["catch", "except", "rescue"];
@@ -157,54 +158,23 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
         file_count += 1;
         total_lines += sf.line_count;
 
-        let mut file_unwraps = 0;
-        let mut file_unwrap_lines: Vec<u32> = Vec::new();
-
-        for (i, line) in sf.lines.iter().enumerate() {
-            let trimmed = line.trim();
-
-            // Check logging
-            if !has_logging {
-                for pat in &log_patterns {
-                    if trimmed.contains(pat) {
-                        has_logging = true;
-                        break;
-                    }
-                }
-            }
-
-            // Unwrap/panic count
-            for pat in &unwrap_patterns {
-                if trimmed.contains(pat) {
-                    unwrap_panic_count += 1;
-                    file_unwraps += 1;
-                    file_unwrap_lines.push((i + 1) as u32);
-                }
-            }
-
-            // Catch blocks
-            for pat in &catch_patterns {
-                if trimmed.starts_with(pat) || trimmed.contains(&format!("}} {pat}")) || trimmed.contains(&format!("{pat} ")) {
-                    total_catches += 1;
-                    // Check if next non-empty line is just closing brace (empty catch)
-                    let next_content = sf.lines.get(i + 1).map(|l| l.trim()).unwrap_or("");
-                    if next_content == "}" || next_content == "pass" || next_content.is_empty() {
-                        empty_catches += 1;
-                    }
-                }
-            }
-
-            // Hardcoded config patterns
-            if (trimmed.contains("http://") || trimmed.contains("https://"))
-                && !trimmed.starts_with("//")
-                && !trimmed.starts_with('#')
-                && !trimmed.starts_with("///")
-                && !trimmed.contains("example.com")
-                && !trimmed.contains("localhost")
-            {
-                hardcoded_configs += 1;
+        // Use helpers for pattern scanning (replaces nested loops)
+        if !has_logging {
+            let log_hits = helpers::count_pattern_matches(&sf.lines, log_patterns);
+            if !log_hits.is_empty() {
+                has_logging = true;
             }
         }
+
+        let unwrap_hits = helpers::count_pattern_matches(&sf.lines, unwrap_patterns);
+        let file_unwraps = unwrap_hits.len();
+        let file_unwrap_lines: Vec<u32> = unwrap_hits.iter().map(|h| h.line_no).collect();
+        unwrap_panic_count += file_unwraps;
+
+        let (catches, empties, configs) = analyze_catch_and_config(&sf.lines, &catch_patterns);
+        total_catches += catches;
+        empty_catches += empties;
+        hardcoded_configs += configs;
 
         if file_unwraps > 0 {
             unwrap_details.push((sf.path.clone(), file_unwraps, file_unwrap_lines));
@@ -223,37 +193,51 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
     }
 }
 
+/// Detect catch blocks (with empty-catch check) and hardcoded config URLs.
+/// Returns (total_catches, empty_catches, hardcoded_configs).
+fn analyze_catch_and_config(lines: &[String], catch_patterns: &[&str]) -> (usize, usize, usize) {
+    let mut total_catches = 0;
+    let mut empty_catches = 0;
+    let mut hardcoded_configs = 0;
+
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if helpers::is_comment(trimmed) {
+            continue;
+        }
+
+        for pat in catch_patterns {
+            if trimmed.starts_with(pat) || trimmed.contains(&format!("}} {pat}")) || trimmed.contains(&format!("{pat} ")) {
+                total_catches += 1;
+                let next_content = lines.get(i + 1).map(|l| l.trim()).unwrap_or("");
+                if next_content == "}" || next_content == "pass" || next_content.is_empty() {
+                    empty_catches += 1;
+                }
+            }
+        }
+
+        if (trimmed.contains("http://") || trimmed.contains("https://"))
+            && !trimmed.contains("example.com")
+            && !trimmed.contains("localhost")
+        {
+            hardcoded_configs += 1;
+        }
+    }
+
+    (total_catches, empty_catches, hardcoded_configs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_store::DataStore;
-    use rusqlite::Connection;
-    use std::fs;
+    use crate::dimension::test_support;
     use tempfile::TempDir;
-
-    fn setup_store(dir: &TempDir) -> DataStore {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), version TEXT NOT NULL);
-             CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, depth INTEGER NOT NULL);
-             CREATE TABLE git_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, change_count INTEGER NOT NULL, lines_added INTEGER NOT NULL, lines_deleted INTEGER NOT NULL, last_modified TEXT NOT NULL);",
-        ).unwrap();
-        conn.execute("INSERT INTO snapshots (project_path, version) VALUES (?1, '0.1.0')", [dir.path().to_string_lossy().to_string()]).unwrap();
-        let sid = conn.last_insert_rowid();
-        DataStore::new(conn, sid, dir.path().to_string_lossy().to_string())
-    }
-
-    fn add_file(store: &DataStore, dir: &TempDir, path: &str, content: &str) {
-        fs::create_dir_all(dir.path().join(path).parent().unwrap()).unwrap();
-        fs::write(dir.path().join(path), content).unwrap();
-        store.conn().execute("INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (?1, ?2, ?3, 1)", rusqlite::params![store.snapshot_id(), path, content.len()]).unwrap();
-    }
 
     #[test]
     fn test_healthy_with_logging() -> Result<()> {
         let dir = TempDir::new()?;
-        let store = setup_store(&dir);
-        add_file(&store, &dir, "src/main.rs", "use log::info;\nfn main() {\n    info!(\"starting\");\n}\n");
+        let store = test_support::setup_store(&dir);
+        test_support::add_file(&store, &dir, "src/main.rs", "use log::info;\nfn main() {\n    info!(\"starting\");\n}\n");
         let dim = Observability;
         let score = dim.evaluate(&store)?.score.unwrap();
         assert!(score > 70, "project with logging should score >70, got {score}");
@@ -263,9 +247,9 @@ mod tests {
     #[test]
     fn test_many_unwraps() -> Result<()> {
         let dir = TempDir::new()?;
-        let store = setup_store(&dir);
+        let store = test_support::setup_store(&dir);
         let content = (0..20).map(|i| format!("let x{i} = val.unwrap();")).collect::<Vec<_>>().join("\n");
-        add_file(&store, &dir, "src/main.rs", &content);
+        test_support::add_file(&store, &dir,"src/main.rs", &content);
         let dim = Observability;
         let issues = dim.evaluate(&store)?.issues;
         assert!(issues.iter().any(|i| i.message.contains("unwrap/panic")));

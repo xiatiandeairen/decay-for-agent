@@ -1,6 +1,7 @@
 use anyhow::Result;
 use log::debug;
 
+use super::helpers;
 use super::{Dimension, DimensionResult};
 use crate::action::{Action, ActionType, Effort, Priority, Target};
 use crate::data_store::{DataStore, SourceFile};
@@ -148,57 +149,22 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
     let mut injection_details = Vec::new();
     let mut secret_details: Vec<(String, String, u32)> = Vec::new();
 
-    let unsafe_patterns = ["unsafe {", "unsafe{", "eval(", "exec(", "Function("];
+    let unsafe_patterns: &[&str] = &["unsafe {", "unsafe{", "eval(", "exec(", "Function("];
 
     for sf in source_files {
         file_count += 1;
         total_lines += sf.line_count;
-        let mut file_unsafe = 0;
 
-        for (i, line) in sf.lines.iter().enumerate() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("//") || trimmed.starts_with('#') {
-                continue;
-            }
-            let line_no = (i + 1) as u32;
+        // Use helpers for unsafe pattern scanning
+        let unsafe_hits = helpers::count_pattern_matches(&sf.lines, unsafe_patterns);
+        let file_unsafe = unsafe_hits.len();
+        unsafe_count += file_unsafe;
 
-            // Unsafe/eval
-            for pat in &unsafe_patterns {
-                if trimmed.contains(pat) {
-                    unsafe_count += 1;
-                    file_unsafe += 1;
-                }
-            }
-
-            // SQL injection: string concatenation in SQL context
-            if (trimmed.contains("format!(") || trimmed.contains("f\""))
-                && (trimmed.to_uppercase().contains("SELECT ")
-                    || trimmed.to_uppercase().contains("INSERT ")
-                    || trimmed.to_uppercase().contains("DELETE ")
-                    || trimmed.to_uppercase().contains("UPDATE "))
-            {
-                injection_patterns += 1;
-                injection_details.push((sf.path.clone(), "SQL string concatenation".to_string(), line_no));
-            }
-
-            // Shell injection
-            if (trimmed.contains("Command::new") || trimmed.contains("subprocess") || trimmed.contains("os.system"))
-                && (trimmed.contains("format!(") || trimmed.contains("f\"") || trimmed.contains("+ "))
-            {
-                injection_patterns += 1;
-                injection_details.push((sf.path.clone(), "shell command injection risk".to_string(), line_no));
-            }
-
-            // Hardcoded secrets
-            let lower = trimmed.to_lowercase();
-            if (lower.contains("password") || lower.contains("secret") || lower.contains("api_key") || lower.contains("apikey"))
-                && (lower.contains("= \"") || lower.contains("= '"))
-                && !lower.contains("env") && !lower.contains("config") && !lower.contains("example")
-            {
-                hardcoded_secrets += 1;
-                secret_details.push((sf.path.clone(), "hardcoded credential detected".to_string(), line_no));
-            }
-        }
+        let (inj, inj_det, sec, sec_det) = detect_injection_and_secrets(&sf.lines, &sf.path);
+        injection_patterns += inj;
+        injection_details.extend(inj_det);
+        hardcoded_secrets += sec;
+        secret_details.extend(sec_det);
 
         if file_unsafe > 0 {
             unsafe_details.push((sf.path.clone(), file_unsafe));
@@ -217,37 +183,68 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
     }
 }
 
+/// Detect SQL/shell injection risks and hardcoded secrets in source lines.
+/// Returns (injection_count, injection_details, secret_count, secret_details).
+fn detect_injection_and_secrets(
+    lines: &[String],
+    file_path: &str,
+) -> (usize, Vec<(String, String, u32)>, usize, Vec<(String, String, u32)>) {
+    let mut injection_count = 0;
+    let mut injection_details = Vec::new();
+    let mut secret_count = 0;
+    let mut secret_details = Vec::new();
+
+    for (i, line) in lines.iter().enumerate() {
+        let trimmed = line.trim();
+        if helpers::is_comment(trimmed) {
+            continue;
+        }
+        let line_no = (i + 1) as u32;
+
+        // SQL injection
+        if (trimmed.contains("format!(") || trimmed.contains("f\""))
+            && (trimmed.to_uppercase().contains("SELECT ")
+                || trimmed.to_uppercase().contains("INSERT ")
+                || trimmed.to_uppercase().contains("DELETE ")
+                || trimmed.to_uppercase().contains("UPDATE "))
+        {
+            injection_count += 1;
+            injection_details.push((file_path.to_string(), "SQL string concatenation".to_string(), line_no));
+        }
+
+        // Shell injection
+        if (trimmed.contains("Command::new") || trimmed.contains("subprocess") || trimmed.contains("os.system"))
+            && (trimmed.contains("format!(") || trimmed.contains("f\"") || trimmed.contains("+ "))
+        {
+            injection_count += 1;
+            injection_details.push((file_path.to_string(), "shell command injection risk".to_string(), line_no));
+        }
+
+        // Hardcoded secrets
+        let lower = trimmed.to_lowercase();
+        if (lower.contains("password") || lower.contains("secret") || lower.contains("api_key") || lower.contains("apikey"))
+            && (lower.contains("= \"") || lower.contains("= '"))
+            && !lower.contains("env") && !lower.contains("config") && !lower.contains("example")
+        {
+            secret_count += 1;
+            secret_details.push((file_path.to_string(), "hardcoded credential detected".to_string(), line_no));
+        }
+    }
+
+    (injection_count, injection_details, secret_count, secret_details)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_store::DataStore;
-    use rusqlite::Connection;
-    use std::fs;
+    use crate::dimension::test_support;
     use tempfile::TempDir;
-
-    fn setup_store(dir: &TempDir) -> DataStore {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), version TEXT NOT NULL);
-             CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, depth INTEGER NOT NULL);
-             CREATE TABLE git_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, change_count INTEGER NOT NULL, lines_added INTEGER NOT NULL, lines_deleted INTEGER NOT NULL, last_modified TEXT NOT NULL);",
-        ).unwrap();
-        conn.execute("INSERT INTO snapshots (project_path, version) VALUES (?1, '0.1.0')", [dir.path().to_string_lossy().to_string()]).unwrap();
-        let sid = conn.last_insert_rowid();
-        DataStore::new(conn, sid, dir.path().to_string_lossy().to_string())
-    }
-
-    fn add_file(store: &DataStore, dir: &TempDir, path: &str, content: &str) {
-        fs::create_dir_all(dir.path().join(path).parent().unwrap()).unwrap();
-        fs::write(dir.path().join(path), content).unwrap();
-        store.conn().execute("INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (?1, ?2, ?3, 1)", rusqlite::params![store.snapshot_id(), path, content.len()]).unwrap();
-    }
 
     #[test]
     fn test_safe_project() -> Result<()> {
         let dir = TempDir::new()?;
-        let store = setup_store(&dir);
-        add_file(&store, &dir, "src/main.rs", "fn main() {\n    let x = 42;\n}\n");
+        let store = test_support::setup_store(&dir);
+        test_support::add_file(&store, &dir, "src/main.rs", "fn main() {\n    let x = 42;\n}\n");
         let dim = Reliability;
         let score = dim.evaluate(&store)?.score.unwrap();
         assert!(score > 80, "safe project should score >80, got {score}");
@@ -257,9 +254,9 @@ mod tests {
     #[test]
     fn test_unsafe_code() -> Result<()> {
         let dir = TempDir::new()?;
-        let store = setup_store(&dir);
+        let store = test_support::setup_store(&dir);
         let content = (0..10).map(|_| "unsafe { std::ptr::null() };").collect::<Vec<_>>().join("\n");
-        add_file(&store, &dir, "src/main.rs", &content);
+        test_support::add_file(&store, &dir, "src/main.rs", &content);
         let dim = Reliability;
         let score = dim.evaluate(&store)?.score.unwrap();
         assert!(score < 80, "unsafe project should score <80, got {score}");

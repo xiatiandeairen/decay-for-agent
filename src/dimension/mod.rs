@@ -1,11 +1,14 @@
 pub mod complexity;
 pub mod fragility;
+pub mod helpers;
 pub mod maintainability;
 pub mod observability;
 pub mod performance;
 pub mod quality;
 pub mod reliability;
 pub mod structural;
+#[cfg(test)]
+pub mod test_support;
 
 use anyhow::Result;
 

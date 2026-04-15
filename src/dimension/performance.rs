@@ -1,6 +1,7 @@
 use anyhow::Result;
 use log::debug;
 
+use super::helpers;
 use super::{Dimension, DimensionResult};
 use crate::action::{Action, ActionType, Effort, Priority, Target};
 use crate::data_store::{DataStore, SourceFile};
@@ -134,31 +135,48 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
     let mut clone_details = Vec::new();
     let mut blocking_details: Vec<(String, String)> = Vec::new();
 
-    let clone_patterns = [".clone()", ".copy()", ".deepcopy(", ".to_owned()", "Clone::clone"];
-    let blocking_patterns = [
+    let clone_patterns: &[&str] = &[".clone()", ".copy()", ".deepcopy(", ".to_owned()", "Clone::clone"];
+    let blocking_pattern_pairs = [
         ("thread::sleep", "thread::sleep"),
         ("time.sleep", "time.sleep"),
         ("Sleep(", "Sleep"),
         ("std::thread::sleep", "std::thread::sleep"),
         (".block_on(", "block_on"),
     ];
+    let blocking_pats: Vec<&str> = blocking_pattern_pairs.iter().map(|(p, _)| *p).collect();
     let loop_keywords = ["for ", "while ", "loop {", "loop{"];
 
     for sf in source_files {
         file_count += 1;
         total_lines += sf.line_count;
 
-        let mut file_clones = 0;
+        // Use helpers for clone pattern scanning
+        let clone_hits = helpers::count_pattern_matches(&sf.lines, clone_patterns);
+        let file_clones = clone_hits.len();
+        clone_count += file_clones;
+
+        // Use helpers for blocking call scanning
+        let blocking_hits = helpers::count_pattern_matches(&sf.lines, &blocking_pats);
+        for hit in &blocking_hits {
+            // Map back to label
+            let label = blocking_pattern_pairs.iter()
+                .find(|(p, _)| *p == hit.pattern)
+                .map(|(_, l)| *l)
+                .unwrap_or(&hit.pattern);
+            blocking_calls += 1;
+            blocking_details.push((sf.path.clone(), label.to_string()));
+        }
+
+        // Loop nesting tracking needs stateful brace analysis — keep inline
         let mut loop_depth: usize = 0;
-        let mut brace_stack: Vec<bool> = Vec::new(); // true = loop brace
+        let mut brace_stack: Vec<bool> = Vec::new();
 
         for (i, line) in sf.lines.iter().enumerate() {
             let trimmed = line.trim();
-            if trimmed.starts_with("//") || trimmed.starts_with('#') {
+            if helpers::is_comment(trimmed) {
                 continue;
             }
 
-            // Track loop nesting via braces
             let is_loop_start = loop_keywords.iter().any(|kw| trimmed.starts_with(kw) || trimmed.contains(&format!(" {kw}")));
             let opens = trimmed.matches('{').count();
             let closes = trimmed.matches('}').count();
@@ -179,22 +197,6 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
                     if was_loop && loop_depth > 0 {
                         loop_depth -= 1;
                     }
-                }
-            }
-
-            // Clone/copy
-            for pat in &clone_patterns {
-                if trimmed.contains(pat) {
-                    clone_count += 1;
-                    file_clones += 1;
-                }
-            }
-
-            // Blocking calls
-            for (pat, label) in &blocking_patterns {
-                if trimmed.contains(pat) {
-                    blocking_calls += 1;
-                    blocking_details.push((sf.path.clone(), label.to_string()));
                 }
             }
         }
@@ -219,34 +221,14 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_store::DataStore;
-    use rusqlite::Connection;
-    use std::fs;
+    use crate::dimension::test_support;
     use tempfile::TempDir;
-
-    fn setup_store(dir: &TempDir) -> DataStore {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), version TEXT NOT NULL);
-             CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, depth INTEGER NOT NULL);
-             CREATE TABLE git_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, change_count INTEGER NOT NULL, lines_added INTEGER NOT NULL, lines_deleted INTEGER NOT NULL, last_modified TEXT NOT NULL);",
-        ).unwrap();
-        conn.execute("INSERT INTO snapshots (project_path, version) VALUES (?1, '0.1.0')", [dir.path().to_string_lossy().to_string()]).unwrap();
-        let sid = conn.last_insert_rowid();
-        DataStore::new(conn, sid, dir.path().to_string_lossy().to_string())
-    }
-
-    fn add_file(store: &DataStore, dir: &TempDir, path: &str, content: &str) {
-        fs::create_dir_all(dir.path().join(path).parent().unwrap()).unwrap();
-        fs::write(dir.path().join(path), content).unwrap();
-        store.conn().execute("INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (?1, ?2, ?3, 1)", rusqlite::params![store.snapshot_id(), path, content.len()]).unwrap();
-    }
 
     #[test]
     fn test_clean_performance() -> Result<()> {
         let dir = TempDir::new()?;
-        let store = setup_store(&dir);
-        add_file(&store, &dir, "src/main.rs", "fn main() {\n    let x = 42;\n}\n");
+        let store = test_support::setup_store(&dir);
+        test_support::add_file(&store, &dir, "src/main.rs", "fn main() {\n    let x = 42;\n}\n");
         let dim = Performance;
         let score = dim.evaluate(&store)?.score.unwrap();
         assert!(score > 80, "clean project should score >80, got {score}");
@@ -256,9 +238,9 @@ mod tests {
     #[test]
     fn test_many_clones() -> Result<()> {
         let dir = TempDir::new()?;
-        let store = setup_store(&dir);
+        let store = test_support::setup_store(&dir);
         let content = (0..30).map(|i| format!("let x{i} = data.clone();")).collect::<Vec<_>>().join("\n");
-        add_file(&store, &dir, "src/main.rs", &content);
+        test_support::add_file(&store, &dir, "src/main.rs", &content);
         let dim = Performance;
         let issues = dim.evaluate(&store)?.issues;
         assert!(issues.iter().any(|i| i.message.contains("clone/copy")));

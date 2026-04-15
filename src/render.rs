@@ -217,38 +217,25 @@ pub fn render_terminal(
         println!("Git: {commits} commits, {analyzed} files changed (last 90 days)");
     }
 
-    match trend_data {
-        Some(t) => {
-            let mut health_parts = vec![format!("Health: {comp}/100")];
-            if let Some(cd) = t.get("composite") {
-                health_parts[0] = format!("Health: {comp}/100 ({cd})");
-            }
-            for dim in dimensions {
-                let name = dim.name();
-                let score_str = scores
-                    .get(name)
-                    .and_then(|s| *s)
-                    .map_or("N/A".to_string(), |v| v.to_string());
-                let trend_str = t
-                    .get(name)
-                    .map_or(String::new(), |d| format!(" ({d})"));
-                health_parts.push(format!("{name}: {score_str}{trend_str}"));
-            }
-            println!("{}", health_parts.join(" "));
-        }
-        None => {
-            let mut health_parts = vec![format!("Health: {comp}/100")];
-            for dim in dimensions {
-                let name = dim.name();
-                let score_str = scores
-                    .get(name)
-                    .and_then(|s| *s)
-                    .map_or("N/A".to_string(), |v| v.to_string());
-                health_parts.push(format!("{name}: {score_str}"));
-            }
-            println!("{}", health_parts.join(" "));
-        }
+    let mut health_parts = Vec::new();
+    let comp_trend = trend_data.as_ref().and_then(|t| t.get("composite"));
+    match comp_trend {
+        Some(cd) => health_parts.push(format!("Health: {comp}/100 ({cd})")),
+        None => health_parts.push(format!("Health: {comp}/100")),
     }
+    for dim in dimensions {
+        let name = dim.name();
+        let score_str = scores
+            .get(name)
+            .and_then(|s| *s)
+            .map_or("N/A".to_string(), |v| v.to_string());
+        let trend_str = trend_data
+            .as_ref()
+            .and_then(|t| t.get(name))
+            .map_or(String::new(), |d| format!(" ({d})"));
+        health_parts.push(format!("{name}: {score_str}{trend_str}"));
+    }
+    println!("{}", health_parts.join(" "));
 
     diagnose::print_issues(issues);
 

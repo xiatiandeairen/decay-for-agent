@@ -3,6 +3,7 @@ use std::path::Path;
 use anyhow::Result;
 use log::debug;
 
+use super::helpers;
 use super::{Dimension, DimensionResult};
 use crate::action::{Action, ActionType, Effort, Priority, Target};
 use crate::data_store::{DataStore, SourceFile};
@@ -140,28 +141,21 @@ fn analyze(files: &[SourceFile]) -> Analysis {
     let mut source_names: Vec<String> = Vec::new();
     let mut test_names: Vec<String> = Vec::new();
 
-    let assert_patterns = ["assert", "expect(", "should.", ".toBe(", ".toEqual(",
+    let assert_patterns: &[&str] = &["assert", "expect(", "should.", ".toBe(", ".toEqual(",
         ".to_equal(", "assert_eq!", "assert_ne!", "assert!(", "#[test]",
         "@test", "@Test", "def test_"];
 
     for sf in files {
         if is_test_file(&sf.path) {
-            // Dedicated test file: entire file counts as test
             test_files += 1;
             test_lines += sf.line_count;
             test_names.push(sf.path.clone());
 
-            for line in &sf.lines {
-                let trimmed = line.trim();
-                for pat in &assert_patterns {
-                    if trimmed.contains(pat) {
-                        assert_count += 1;
-                        break;
-                    }
-                }
-            }
+            // Count lines with assertions (deduplicate per line)
+            let hits = helpers::count_pattern_matches(&sf.lines, assert_patterns);
+            let unique_lines: std::collections::HashSet<u32> = hits.iter().map(|h| h.line_no).collect();
+            assert_count += unique_lines.len();
         } else {
-            // Source file (may contain inline tests like #[cfg(test)])
             source_files += 1;
             source_names.push(sf.path.clone());
 
@@ -174,15 +168,10 @@ fn analyze(files: &[SourceFile]) -> Analysis {
 
                 // Count assertions only in the test section
                 let test_start = sf.line_count - tst_lines;
-                for line in sf.lines.iter().skip(test_start) {
-                    let trimmed = line.trim();
-                    for pat in &assert_patterns {
-                        if trimmed.contains(pat) {
-                            assert_count += 1;
-                            break;
-                        }
-                    }
-                }
+                let test_section: Vec<String> = sf.lines.iter().skip(test_start).cloned().collect();
+                let hits = helpers::count_pattern_matches(&test_section, assert_patterns);
+                let unique_lines: std::collections::HashSet<u32> = hits.iter().map(|h| h.line_no).collect();
+                assert_count += unique_lines.len();
             }
         }
     }
@@ -239,34 +228,14 @@ fn split_inline_test_lines(lines: &[String]) -> (usize, usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_store::DataStore;
-    use rusqlite::Connection;
-    use std::fs;
+    use crate::dimension::test_support;
     use tempfile::TempDir;
-
-    fn setup_store(dir: &TempDir) -> DataStore {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), version TEXT NOT NULL);
-             CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, depth INTEGER NOT NULL);
-             CREATE TABLE git_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, change_count INTEGER NOT NULL, lines_added INTEGER NOT NULL, lines_deleted INTEGER NOT NULL, last_modified TEXT NOT NULL);",
-        ).unwrap();
-        conn.execute("INSERT INTO snapshots (project_path, version) VALUES (?1, '0.1.0')", [dir.path().to_string_lossy().to_string()]).unwrap();
-        let sid = conn.last_insert_rowid();
-        DataStore::new(conn, sid, dir.path().to_string_lossy().to_string())
-    }
-
-    fn add_file(store: &DataStore, dir: &TempDir, path: &str, content: &str) {
-        fs::create_dir_all(dir.path().join(path).parent().unwrap()).unwrap();
-        fs::write(dir.path().join(path), content).unwrap();
-        store.conn().execute("INSERT INTO files (snapshot_id, path, size_bytes, depth) VALUES (?1, ?2, ?3, 1)", rusqlite::params![store.snapshot_id(), path, content.len()]).unwrap();
-    }
 
     #[test]
     fn test_no_tests() -> Result<()> {
         let dir = TempDir::new()?;
-        let store = setup_store(&dir);
-        add_file(&store, &dir, "src/main.rs", "fn main() {}\n");
+        let store = test_support::setup_store(&dir);
+        test_support::add_file(&store, &dir, "src/main.rs", "fn main() {}\n");
         let dim = QualityAssurance;
         let result = dim.evaluate(&store)?;
         let score = result.score.unwrap();
@@ -279,9 +248,9 @@ mod tests {
     #[test]
     fn test_with_tests() -> Result<()> {
         let dir = TempDir::new()?;
-        let store = setup_store(&dir);
-        add_file(&store, &dir, "src/lib.rs", "pub fn add(a: i32, b: i32) -> i32 { a + b }\n");
-        add_file(&store, &dir, "tests/test_lib.rs", "#[test]\nfn test_add() {\n    assert_eq!(add(1, 2), 3);\n}\n");
+        let store = test_support::setup_store(&dir);
+        test_support::add_file(&store, &dir, "src/lib.rs", "pub fn add(a: i32, b: i32) -> i32 { a + b }\n");
+        test_support::add_file(&store, &dir, "tests/test_lib.rs", "#[test]\nfn test_add() {\n    assert_eq!(add(1, 2), 3);\n}\n");
         let dim = QualityAssurance;
         let score = dim.evaluate(&store)?.score.unwrap();
         assert!(score > 50, "project with tests should score >50, got {score}");

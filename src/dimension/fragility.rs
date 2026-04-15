@@ -95,12 +95,12 @@ impl Dimension for Fragility {
         // High churn files (>MAX_CHURN_WARN lines), excluding lock files
         let mut stmt = conn
             .prepare(
-                &format!("SELECT path, (lines_added + lines_deleted) as churn FROM git_changes WHERE snapshot_id = ?1 AND (lines_added + lines_deleted) > {MAX_CHURN_WARN} AND path NOT LIKE '%.lock' AND path NOT LIKE '%lock.json' ORDER BY churn DESC"),
+                "SELECT path, (lines_added + lines_deleted) as churn FROM git_changes WHERE snapshot_id = ?1 AND (lines_added + lines_deleted) > ?2 AND path NOT LIKE '%.lock' AND path NOT LIKE '%lock.json' ORDER BY churn DESC",
             )
             .with_context(|| format!("fragility: failed to prepare churn query for snapshot {snapshot_id}"))?;
 
         let high_churn: Vec<(String, i64)> = stmt
-            .query_map([snapshot_id], |row| Ok((row.get(0)?, row.get(1)?)))
+            .query_map(rusqlite::params![snapshot_id, MAX_CHURN_WARN], |row| Ok((row.get(0)?, row.get(1)?)))
             .with_context(|| format!("fragility: failed to query high churn for snapshot {snapshot_id}"))?
             .collect::<std::result::Result<Vec<_>, _>>()
             .with_context(|| format!("fragility: failed to collect high churn for snapshot {snapshot_id}"))?;
@@ -152,23 +152,11 @@ impl Dimension for Fragility {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_store::DataStore;
-    use rusqlite::Connection;
-
-    fn setup_store() -> DataStore {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), version TEXT NOT NULL);
-             CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, depth INTEGER NOT NULL);
-             CREATE TABLE git_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, change_count INTEGER NOT NULL, lines_added INTEGER NOT NULL, lines_deleted INTEGER NOT NULL, last_modified TEXT NOT NULL);",
-        ).unwrap();
-        conn.execute("INSERT INTO snapshots (project_path, version) VALUES ('/tmp', '0.1.0')", []).unwrap();
-        DataStore::new(conn, 1, "/tmp".to_string())
-    }
+    use crate::dimension::test_support;
 
     #[test]
     fn test_no_git() -> Result<()> {
-        let store = setup_store();
+        let store = test_support::setup_db_store();
         let dim = Fragility;
         let score = dim.evaluate(&store)?.score;
         assert_eq!(score, None);
@@ -177,7 +165,7 @@ mod tests {
 
     #[test]
     fn test_even_churn() -> Result<()> {
-        let store = setup_store();
+        let store = test_support::setup_db_store();
         for i in 0..10 {
             store.conn().execute(
                 "INSERT INTO git_changes (snapshot_id, path, change_count, lines_added, lines_deleted, last_modified) VALUES (1, ?1, 5, 50, 30, '2026-04-01')",
@@ -192,7 +180,7 @@ mod tests {
 
     #[test]
     fn test_high_churn_critical() -> Result<()> {
-        let store = setup_store();
+        let store = test_support::setup_db_store();
         store.conn().execute(
             "INSERT INTO git_changes (snapshot_id, path, change_count, lines_added, lines_deleted, last_modified) VALUES (1, 'hot.rs', 20, 400, 200, '2026-04-01')",
             [],

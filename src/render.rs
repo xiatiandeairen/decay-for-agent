@@ -10,6 +10,7 @@ pub struct MarkdownCtx<'a> {
     pub composite: i32,
     pub trend_data: &'a Option<HashMap<String, trend::Delta>>,
     pub velocities: &'a [trend::Velocity],
+    pub regressions: &'a [trend::Regression],
     pub collectors: &'a HashMap<String, HashMap<String, String>>,
     pub issues: &'a [diagnose::Issue],
     pub actions: &'a [action::Action],
@@ -23,6 +24,7 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         composite,
         trend_data,
         velocities,
+        regressions,
         collectors,
         issues,
         actions,
@@ -189,6 +191,25 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         "| Dimension | Score | Trend |\n|-----------|------:|-------|\n"
     };
 
+    let regressions_section = if regressions.is_empty() {
+        String::new()
+    } else {
+        let mut s = String::from("## Regressions\n\n");
+        for r in *regressions {
+            s.push_str(&format!(
+                "- **{}** ({severity}): {prev} → {curr} (−{drop}, threshold: {thresh:.1})\n",
+                r.dimension,
+                severity = r.severity,
+                prev = r.previous_score,
+                curr = r.current_score,
+                drop = r.drop,
+                thresh = r.threshold,
+            ));
+        }
+        s.push('\n');
+        s
+    };
+
     let project_name = std::path::Path::new(project_path)
         .file_name()
         .unwrap_or_default()
@@ -208,6 +229,7 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
          {scores_header}\
          {scores_rows}\n\
          \n\
+         {regressions_section}\
          ## Scan\n\
          \n\
          | Metric | Value |\n\
@@ -235,6 +257,7 @@ pub fn render_terminal(
     comp: i32,
     trend_data: &Option<HashMap<String, trend::Delta>>,
     velocities: &[trend::Velocity],
+    regressions: &[trend::Regression],
     dimensions: &[Box<dyn dimension::Dimension>],
     issues: &[diagnose::Issue],
     snapshot_id: i64,
@@ -278,6 +301,13 @@ pub fn render_terminal(
         health_parts.push(format!("{name}: {score_str}{trend_str}{vel_str}"));
     }
     println!("{}", health_parts.join(" "));
+
+    for r in regressions {
+        eprintln!(
+            "⚠ REGRESSION: {} {} → {} (−{}, threshold: {:.1})",
+            r.dimension, r.previous_score, r.current_score, r.drop, r.threshold
+        );
+    }
 
     diagnose::print_issues(issues);
 

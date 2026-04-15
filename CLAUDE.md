@@ -84,3 +84,5 @@
   - [tech](.know/docs/requirements/trend-engine/tech.md) | 2026-04-15
 - [velocity](.know/docs/requirements/velocity/prd.md) | 2026-04-15
   - [tech](.know/docs/requirements/velocity/tech.md) | 2026-04-15
+- [regression-detection](.know/docs/requirements/regression-detection/prd.md) | 2026-04-15
+  - [tech](.know/docs/requirements/regression-detection/tech.md) | 2026-04-15

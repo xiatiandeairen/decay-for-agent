@@ -1,7 +1,7 @@
 use anyhow::Result;
 use log::debug;
 
-use super::Dimension;
+use super::{Dimension, DimensionResult};
 use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
@@ -32,14 +32,17 @@ impl Dimension for Performance {
         "performance"
     }
 
-    fn score(&self, store: &DataStore) -> Result<Option<i32>> {
+    fn evaluate(&self, store: &DataStore) -> Result<DimensionResult> {
         let source_files = store.source_files();
+        let name = self.name().to_string();
+
         if source_files.is_empty() {
-            return Ok(Some(100));
+            return Ok(DimensionResult { name, score: Some(100), issues: vec![] });
         }
 
         let analysis = analyze(source_files);
         let mut score: i32 = 100;
+        let mut issues = Vec::new();
         debug!("performance: {} files, {} lines", analysis.file_count, analysis.total_lines);
 
         // Deep nested loops
@@ -47,6 +50,14 @@ impl Dimension for Performance {
             score -= 30;
         } else if analysis.deep_nests > DEEP_NEST_WARN {
             score -= 15;
+        }
+        for (path, line_no, depth) in &analysis.nest_details {
+            issues.push(Issue {
+                level: if *depth >= 4 { Level::Critical } else { Level::Warning },
+                category: name.clone(),
+                message: format!("{path}:{line_no} has {depth}-level nested loop"),
+                prescription: Some("extract inner loops into separate functions or use iterators".to_string()),
+            });
         }
 
         // Clone/copy density
@@ -58,6 +69,16 @@ impl Dimension for Performance {
                 score -= 10;
             }
         }
+        for (path, count) in &analysis.clone_details {
+            if *count > 10 {
+                issues.push(Issue {
+                    level: Level::Warning,
+                    category: name.clone(),
+                    message: format!("{path} has {count} clone/copy calls"),
+                    prescription: Some(format!("reduce cloning in {path}, prefer references or Cow")),
+                });
+            }
+        }
 
         // Sync blocking calls
         if analysis.blocking_calls > BLOCKING_CALLS_CRIT {
@@ -65,53 +86,20 @@ impl Dimension for Performance {
         } else if analysis.blocking_calls > BLOCKING_CALLS_WARN {
             score -= 10;
         }
-
-        Ok(Some(score.max(0)))
-    }
-
-    fn diagnose(&self, store: &DataStore) -> Result<Vec<Issue>> {
-        let source_files = store.source_files();
-        if source_files.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let analysis = analyze(source_files);
-        let mut issues = Vec::new();
-        let cat = self.name().to_string();
-
-        // Deep nested loops
-        for (path, line_no, depth) in &analysis.nest_details {
-            issues.push(Issue {
-                level: if *depth >= 4 { Level::Critical } else { Level::Warning },
-                category: cat.clone(),
-                message: format!("{path}:{line_no} has {depth}-level nested loop"),
-                prescription: Some("extract inner loops into separate functions or use iterators".to_string()),
-            });
-        }
-
-        // High clone density files
-        for (path, count) in &analysis.clone_details {
-            if *count > 10 {
-                issues.push(Issue {
-                    level: Level::Warning,
-                    category: cat.clone(),
-                    message: format!("{path} has {count} clone/copy calls"),
-                    prescription: Some(format!("reduce cloning in {path}, prefer references or Cow")),
-                });
-            }
-        }
-
-        // Blocking calls
         for (path, call) in &analysis.blocking_details {
             issues.push(Issue {
                 level: Level::Info,
-                category: cat.clone(),
+                category: name.clone(),
                 message: format!("{path}: blocking call {call}"),
                 prescription: Some("consider async alternatives for I/O-bound operations".to_string()),
             });
         }
 
-        Ok(issues)
+        Ok(DimensionResult {
+            name: self.name().to_string(),
+            score: Some(score.max(0)),
+            issues,
+        })
     }
 }
 
@@ -250,7 +238,7 @@ mod tests {
         let store = setup_store(&dir);
         add_file(&store, &dir, "src/main.rs", "fn main() {\n    let x = 42;\n}\n");
         let dim = Performance;
-        let score = dim.score(&store)?.unwrap();
+        let score = dim.evaluate(&store)?.score.unwrap();
         assert!(score > 80, "clean project should score >80, got {score}");
         Ok(())
     }
@@ -262,7 +250,7 @@ mod tests {
         let content = (0..30).map(|i| format!("let x{i} = data.clone();")).collect::<Vec<_>>().join("\n");
         add_file(&store, &dir, "src/main.rs", &content);
         let dim = Performance;
-        let issues = dim.diagnose(&store)?;
+        let issues = dim.evaluate(&store)?.issues;
         assert!(issues.iter().any(|i| i.message.contains("clone/copy")));
         Ok(())
     }

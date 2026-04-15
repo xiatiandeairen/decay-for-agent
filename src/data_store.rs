@@ -152,13 +152,23 @@ fn parse_dependencies(project_path: &str) -> DependencyInfo {
         };
     }
 
-    // Node: rough count from package.json
+    // Node: parse package.json with serde_json
     if let Ok(content) = std::fs::read_to_string(base.join("package.json")) {
-        let count = content.matches("\":").count().saturating_sub(5);
-        return DependencyInfo {
-            direct_count: count,
-            names: vec![],
-        };
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+            let deps = v.get("dependencies").and_then(|d| d.as_object());
+            let dev_deps = v.get("devDependencies").and_then(|d| d.as_object());
+            let mut names = Vec::new();
+            if let Some(d) = deps {
+                names.extend(d.keys().cloned());
+            }
+            if let Some(d) = dev_deps {
+                names.extend(d.keys().cloned());
+            }
+            return DependencyInfo {
+                direct_count: names.len(),
+                names,
+            };
+        }
     }
 
     DependencyInfo {

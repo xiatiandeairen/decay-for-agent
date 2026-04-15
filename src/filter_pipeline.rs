@@ -291,6 +291,12 @@ fn is_any_language_ext(ext: &str) -> bool {
     ext_to_group(ext).is_some()
 }
 
+/// Check if a file extension belongs to any known language group.
+/// This is the single source of truth for "is this a source code file".
+pub fn is_known_source_ext(ext: &str) -> bool {
+    ext_to_group(ext).is_some()
+}
+
 /// Detect primary languages from a list of file paths.
 /// Returns language group names with ≥10% share.
 pub fn detect_primary_languages(paths: &[String]) -> Vec<String> {

@@ -40,12 +40,11 @@ struct Cli {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    let mut log_builder = env_logger::Builder::from_default_env();
     if cli.debug {
-        unsafe {
-            std::env::set_var("RUST_LOG", "debug");
-        }
+        log_builder.filter_level(log::LevelFilter::Debug);
     }
-    env_logger::init();
+    log_builder.init();
 
     let has_critical = run::run(cli.json, cli.markdown, cli.quiet)?;
 

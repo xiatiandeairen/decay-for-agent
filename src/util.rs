@@ -1,22 +1,18 @@
 use std::path::Path;
 
+use crate::filter_pipeline;
+
 // --- Path utilities ---
 
-/// Source code file extensions recognized by decay.
-const SOURCE_EXTENSIONS: &[&str] = &[
-    "rs", "swift", "py", "js", "ts", "tsx", "jsx", "mjs", "go", "java",
-    "kt", "kts", "rb", "php", "c", "cpp", "cc", "h", "hpp", "m", "mm", "cs",
-    "sh", "bash", "zsh",
-];
-
 /// Check if a file path has a recognized source code extension.
+/// Delegates to filter_pipeline::LANGUAGE_GROUPS as the single source of truth.
 pub fn is_source_file(path: &str) -> bool {
     let ext = Path::new(path)
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or("")
         .to_lowercase();
-    SOURCE_EXTENSIONS.contains(&ext.as_str())
+    filter_pipeline::is_known_source_ext(&ext)
 }
 
 /// Normalize a path to always use forward slashes (for DB storage).

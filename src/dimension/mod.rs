@@ -24,20 +24,13 @@ pub struct DimensionResult {
 ///
 /// Dimensions pull data from DataStore (lazy-loaded, cached).
 /// DB-only dimensions use store.conn(); file-based dimensions use store.source_files().
+///
+/// `evaluate()` is the single entry point — it computes score and issues in one pass,
+/// avoiding redundant DB queries or file traversals.
 pub trait Dimension: Send + Sync {
     fn name(&self) -> &'static str;
 
-    fn score(&self, store: &DataStore) -> Result<Option<i32>>;
-
-    fn diagnose(&self, store: &DataStore) -> Result<Vec<Issue>>;
-
-    fn evaluate(&self, store: &DataStore) -> Result<DimensionResult> {
-        Ok(DimensionResult {
-            name: self.name().to_string(),
-            score: self.score(store)?,
-            issues: self.diagnose(store)?,
-        })
-    }
+    fn evaluate(&self, store: &DataStore) -> Result<DimensionResult>;
 }
 
 /// Registry of all enabled dimensions.

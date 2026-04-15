@@ -4,7 +4,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use anyhow::Result;
 use log::debug;
 
-use super::Dimension;
+use super::{Dimension, DimensionResult};
 use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
@@ -43,14 +43,17 @@ impl Dimension for Maintainability {
         "maintainability"
     }
 
-    fn score(&self, store: &DataStore) -> Result<Option<i32>> {
+    fn evaluate(&self, store: &DataStore) -> Result<DimensionResult> {
         let source_files = store.source_files();
+        let name = self.name().to_string();
+
         if source_files.is_empty() {
-            return Ok(Some(100));
+            return Ok(DimensionResult { name, score: Some(100), issues: vec![] });
         }
 
-        let mut score: i32 = 100;
         let analysis = analyze_files(source_files);
+        let mut score: i32 = 100;
+        let mut issues = Vec::new();
         debug!("maintainability: {} files analyzed", analysis.file_count);
 
         // Duplicate code ratio
@@ -60,6 +63,16 @@ impl Dimension for Maintainability {
                 score -= 35;
             } else if dup_ratio > DUP_FILE_RATIO_WARN {
                 score -= 15;
+            }
+        }
+        for (path, dup_count) in &analysis.dup_details {
+            if *dup_count > 0 {
+                issues.push(Issue {
+                    level: Level::Warning,
+                    category: name.clone(),
+                    message: format!("{path} has {dup_count} duplicate block(s) shared with other files"),
+                    prescription: Some(format!("extract shared logic from {path} into a common module")),
+                });
             }
         }
 
@@ -72,6 +85,15 @@ impl Dimension for Maintainability {
                 score -= 15;
             }
         }
+        for (path, lines) in &analysis.long_file_details {
+            let level = if *lines > 600 { Level::Critical } else { Level::Warning };
+            issues.push(Issue {
+                level,
+                category: name.clone(),
+                message: format!("{path} has {lines} lines"),
+                prescription: Some(format!("split {path} into smaller modules")),
+            });
+        }
 
         // Long function ratio
         if analysis.total_functions > 0 {
@@ -82,56 +104,6 @@ impl Dimension for Maintainability {
                 score -= 10;
             }
         }
-
-        // TODO/FIXME density
-        if analysis.total_lines > 0 {
-            let density = analysis.todo_count as f64 / (analysis.total_lines as f64 / 10000.0);
-            if density > TODO_DENSITY_WARN {
-                score -= 5;
-            }
-        }
-
-        Ok(Some(score.max(0)))
-    }
-
-    fn diagnose(&self, store: &DataStore) -> Result<Vec<Issue>> {
-        let source_files = store.source_files();
-        if source_files.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let mut issues = Vec::new();
-        let name = self.name().to_string();
-        let analysis = analyze_files(source_files);
-
-        // Report duplicate blocks
-        for (path, dup_count) in &analysis.dup_details {
-            if *dup_count > 0 {
-                issues.push(Issue {
-                    level: Level::Warning,
-                    category: name.clone(),
-                    message: format!("{path} has {dup_count} duplicate block(s) shared with other files"),
-                    prescription: Some(format!("extract shared logic from {path} into a common module")),
-                });
-            }
-        }
-
-        // Report long files
-        for (path, lines) in &analysis.long_file_details {
-            let level = if *lines > 600 {
-                Level::Critical
-            } else {
-                Level::Warning
-            };
-            issues.push(Issue {
-                level,
-                category: name.clone(),
-                message: format!("{path} has {lines} lines"),
-                prescription: Some(format!("split {path} into smaller modules")),
-            });
-        }
-
-        // Report long functions
         for (path, func_name, lines) in &analysis.long_func_details {
             issues.push(Issue {
                 level: Level::Warning,
@@ -141,7 +113,13 @@ impl Dimension for Maintainability {
             });
         }
 
-        // Report TODO/FIXME count
+        // TODO/FIXME density
+        if analysis.total_lines > 0 {
+            let density = analysis.todo_count as f64 / (analysis.total_lines as f64 / 10000.0);
+            if density > TODO_DENSITY_WARN {
+                score -= 5;
+            }
+        }
         if analysis.todo_count > 0 {
             issues.push(Issue {
                 level: Level::Info,
@@ -151,7 +129,11 @@ impl Dimension for Maintainability {
             });
         }
 
-        Ok(issues)
+        Ok(DimensionResult {
+            name: self.name().to_string(),
+            score: Some(score.max(0)),
+            issues,
+        })
     }
 }
 
@@ -419,9 +401,10 @@ mod tests {
         add_file(&store, &dir, "src/lib.rs", "pub fn greet() {\n    println!(\"hi\");\n}\n");
 
         let dim = Maintainability;
-        let score = dim.score(&store)?.unwrap();
+        let result = dim.evaluate(&store)?;
+        let score = result.score.unwrap();
         assert!(score > 80, "healthy project should score >80, got {score}");
-        let issues = dim.diagnose(&store)?;
+        let issues = result.issues;
         assert!(issues.is_empty() || issues.iter().all(|i| i.level == Level::Info));
         Ok(())
     }
@@ -435,7 +418,7 @@ mod tests {
         add_file(&store, &dir, "src/small.rs", "fn main() {}\n");
 
         let dim = Maintainability;
-        let issues = dim.diagnose(&store)?;
+        let issues = dim.evaluate(&store)?.issues;
         assert!(issues.iter().any(|i| i.message.contains("big.rs") && i.message.contains("400")));
         Ok(())
     }
@@ -448,7 +431,7 @@ mod tests {
         add_file(&store, &dir, "src/main.rs", content);
 
         let dim = Maintainability;
-        let issues = dim.diagnose(&store)?;
+        let issues = dim.evaluate(&store)?.issues;
         assert!(issues.iter().any(|i| i.message.contains("TODO/FIXME")));
         Ok(())
     }

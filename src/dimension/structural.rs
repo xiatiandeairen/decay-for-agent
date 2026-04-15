@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use log::debug;
-use super::Dimension;
+use super::{Dimension, DimensionResult};
 use crate::data_store::DataStore;
 use crate::diagnose::{Issue, Level};
 
@@ -28,12 +28,15 @@ impl Dimension for Structural {
         "structural"
     }
 
-    fn score(&self, store: &DataStore) -> Result<Option<i32>> {
+    fn evaluate(&self, store: &DataStore) -> Result<DimensionResult> {
         let conn = store.conn();
         let snapshot_id = store.snapshot_id();
         let mut score: i32 = 100;
-        debug!("structural: file_count query starting");
+        let mut issues = Vec::new();
+        let name = self.name().to_string();
+        debug!("structural: evaluating");
 
+        // Query once, use for both score and diagnose
         let file_count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM files WHERE snapshot_id = ?1",
@@ -44,64 +47,14 @@ impl Dimension for Structural {
 
         if file_count > FILE_COUNT_CRIT {
             score -= 40;
-        } else if file_count > FILE_COUNT_WARN {
-            score -= 20;
-        }
-
-        let max_depth: i64 = conn
-            .query_row(
-                "SELECT COALESCE(MAX(depth), 0) FROM files WHERE snapshot_id = ?1",
-                [snapshot_id],
-                |row| row.get(0),
-            )
-            .with_context(|| format!("structural: failed to get max depth for snapshot {snapshot_id}"))?;
-
-        if max_depth > DEPTH_CRIT {
-            score -= 30;
-        } else if max_depth > DEPTH_WARN {
-            score -= 15;
-        }
-
-        let top_dirs: i64 = conn
-            .query_row(
-                "SELECT COUNT(DISTINCT CASE
-                    WHEN INSTR(path, '/') > 0 THEN SUBSTR(path, 1, INSTR(path, '/') - 1)
-                    ELSE path
-                 END) FROM files WHERE snapshot_id = ?1",
-                [snapshot_id],
-                |row| row.get(0),
-            )
-            .with_context(|| format!("structural: failed to count top-level dirs for snapshot {snapshot_id}"))?;
-
-        if top_dirs > TOP_DIRS_WARN {
-            score -= 15;
-        }
-
-        Ok(Some(score.max(0)))
-    }
-
-    fn diagnose(&self, store: &DataStore) -> Result<Vec<Issue>> {
-        let conn = store.conn();
-        let snapshot_id = store.snapshot_id();
-        let mut issues = Vec::new();
-        let name = self.name().to_string();
-
-        let file_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM files WHERE snapshot_id = ?1",
-                [snapshot_id],
-                |row| row.get(0),
-            )
-            .with_context(|| format!("structural: failed to count files for snapshot {snapshot_id}"))?;
-
-        if file_count > 1000 {
             issues.push(Issue {
                 level: Level::Critical,
                 category: name.clone(),
                 message: format!("{file_count} files in project"),
                 prescription: Some("split into sub-modules by responsibility".into()),
             });
-        } else if file_count > 500 {
+        } else if file_count > FILE_COUNT_WARN {
+            score -= 20;
             issues.push(Issue {
                 level: Level::Warning,
                 category: name.clone(),
@@ -118,7 +71,12 @@ impl Dimension for Structural {
             )
             .with_context(|| format!("structural: failed to get max depth for snapshot {snapshot_id}"))?;
 
-        if max_depth > 5 {
+        if max_depth > DEPTH_CRIT {
+            score -= 30;
+        } else if max_depth > DEPTH_WARN {
+            score -= 15;
+        }
+        if max_depth > DEPTH_WARN {
             issues.push(Issue {
                 level: Level::Warning,
                 category: name.clone(),
@@ -138,7 +96,8 @@ impl Dimension for Structural {
             )
             .with_context(|| format!("structural: failed to count top-level dirs for snapshot {snapshot_id}"))?;
 
-        if top_dirs > 15 {
+        if top_dirs > TOP_DIRS_WARN {
+            score -= 15;
             issues.push(Issue {
                 level: Level::Info,
                 category: name,
@@ -147,7 +106,11 @@ impl Dimension for Structural {
             });
         }
 
-        Ok(issues)
+        Ok(DimensionResult {
+            name: self.name().to_string(),
+            score: Some(score.max(0)),
+            issues,
+        })
     }
 }
 
@@ -177,9 +140,10 @@ mod tests {
             )?;
         }
         let dim = Structural;
-        let score = dim.score(&store)?.unwrap();
+        let result = dim.evaluate(&store)?;
+        let score = result.score.unwrap();
         assert!(score > 80, "healthy project should score >80, got {score}");
-        let issues = dim.diagnose(&store)?;
+        let issues = result.issues;
         assert!(issues.is_empty());
         Ok(())
     }
@@ -194,7 +158,7 @@ mod tests {
             )?;
         }
         let dim = Structural;
-        let score = dim.score(&store)?.unwrap();
+        let score = dim.evaluate(&store)?.score.unwrap();
         assert!(score < 60, "unhealthy project should score <60, got {score}");
         Ok(())
     }

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use log::debug;
 
-use super::Dimension;
+use super::{Dimension, DimensionResult};
 use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
@@ -23,14 +23,17 @@ impl Dimension for Observability {
         "observability"
     }
 
-    fn score(&self, store: &DataStore) -> Result<Option<i32>> {
+    fn evaluate(&self, store: &DataStore) -> Result<DimensionResult> {
         let source_files = store.source_files();
+        let name = self.name().to_string();
+
         if source_files.is_empty() {
-            return Ok(Some(100));
+            return Ok(DimensionResult { name, score: Some(100), issues: vec![] });
         }
 
         let analysis = analyze(source_files);
         let mut score: i32 = 100;
+        let mut issues = Vec::new();
         debug!("observability: {} files, {} lines", analysis.file_count, analysis.total_lines);
 
         // Unwrap/panic density
@@ -42,10 +45,26 @@ impl Dimension for Observability {
                 score -= 15;
             }
         }
+        for (path, count) in &analysis.unwrap_details {
+            if *count > 5 {
+                issues.push(Issue {
+                    level: Level::Warning,
+                    category: name.clone(),
+                    message: format!("{path} has {count} unwrap/panic calls"),
+                    prescription: Some(format!("replace unwrap/panic in {path} with proper error handling")),
+                });
+            }
+        }
 
         // No logging framework
         if !analysis.has_logging {
             score -= 20;
+            issues.push(Issue {
+                level: Level::Warning,
+                category: name.clone(),
+                message: "no logging framework detected in project".to_string(),
+                prescription: Some("add structured logging (e.g. log/tracing/slog for Rust, logging for Python)".to_string()),
+            });
         }
 
         // Error swallowing
@@ -55,65 +74,33 @@ impl Dimension for Observability {
                 score -= 15;
             }
         }
-
-        // Hardcoded config
-        if analysis.hardcoded_configs > HARDCODED_CONFIG_WARN {
-            score -= 10;
-        }
-
-        Ok(Some(score.max(0)))
-    }
-
-    fn diagnose(&self, store: &DataStore) -> Result<Vec<Issue>> {
-        let source_files = store.source_files();
-        if source_files.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let analysis = analyze(source_files);
-        let mut issues = Vec::new();
-        let cat = self.name().to_string();
-
-        // Report files with high unwrap/panic density
-        for (path, count) in &analysis.unwrap_details {
-            if *count > 5 {
-                issues.push(Issue {
-                    level: Level::Warning,
-                    category: cat.clone(),
-                    message: format!("{path} has {count} unwrap/panic calls"),
-                    prescription: Some(format!("replace unwrap/panic in {path} with proper error handling")),
-                });
-            }
-        }
-
-        if !analysis.has_logging {
-            issues.push(Issue {
-                level: Level::Warning,
-                category: cat.clone(),
-                message: "no logging framework detected in project".to_string(),
-                prescription: Some("add structured logging (e.g. log/tracing/slog for Rust, logging for Python)".to_string()),
-            });
-        }
-
         if analysis.empty_catches > 0 {
             issues.push(Issue {
                 level: Level::Warning,
-                category: cat.clone(),
+                category: name.clone(),
                 message: format!("{} empty catch/except blocks detected", analysis.empty_catches),
                 prescription: Some("handle or log errors instead of silently swallowing them".to_string()),
             });
         }
 
+        // Hardcoded config
+        if analysis.hardcoded_configs > HARDCODED_CONFIG_WARN {
+            score -= 10;
+        }
         if analysis.hardcoded_configs > 0 {
             issues.push(Issue {
                 level: Level::Info,
-                category: cat,
+                category: name,
                 message: format!("{} hardcoded configuration values detected", analysis.hardcoded_configs),
                 prescription: Some("externalize configuration using environment variables or config files".to_string()),
             });
         }
 
-        Ok(issues)
+        Ok(DimensionResult {
+            name: self.name().to_string(),
+            score: Some(score.max(0)),
+            issues,
+        })
     }
 }
 
@@ -247,7 +234,7 @@ mod tests {
         let store = setup_store(&dir);
         add_file(&store, &dir, "src/main.rs", "use log::info;\nfn main() {\n    info!(\"starting\");\n}\n");
         let dim = Observability;
-        let score = dim.score(&store)?.unwrap();
+        let score = dim.evaluate(&store)?.score.unwrap();
         assert!(score > 70, "project with logging should score >70, got {score}");
         Ok(())
     }
@@ -259,7 +246,7 @@ mod tests {
         let content = (0..20).map(|i| format!("let x{i} = val.unwrap();")).collect::<Vec<_>>().join("\n");
         add_file(&store, &dir, "src/main.rs", &content);
         let dim = Observability;
-        let issues = dim.diagnose(&store)?;
+        let issues = dim.evaluate(&store)?.issues;
         assert!(issues.iter().any(|i| i.message.contains("unwrap/panic")));
         Ok(())
     }

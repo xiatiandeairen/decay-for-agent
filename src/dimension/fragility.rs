@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use log::debug;
 
-use super::Dimension;
+use super::{Dimension, DimensionResult};
 use crate::data_store::DataStore;
 use crate::diagnose::{Issue, Level};
 
@@ -23,9 +23,11 @@ impl Dimension for Fragility {
         "fragility"
     }
 
-    fn score(&self, store: &DataStore) -> Result<Option<i32>> {
+    fn evaluate(&self, store: &DataStore) -> Result<DimensionResult> {
         let conn = store.conn();
         let snapshot_id = store.snapshot_id();
+        let mut issues = Vec::new();
+        let name = self.name().to_string();
 
         let file_count: i64 = conn
             .query_row(
@@ -36,12 +38,13 @@ impl Dimension for Fragility {
             .with_context(|| format!("fragility: failed to count git_changes for snapshot {snapshot_id}"))?;
 
         if file_count == 0 {
-            return Ok(None);
+            return Ok(DimensionResult { name, score: None, issues });
         }
 
         let mut score: i32 = 100;
-        debug!("fragility: scoring starting");
+        debug!("fragility: evaluating");
 
+        // Total churn (shared by score + diagnose)
         let total_churn: i64 = conn
             .query_row(
                 "SELECT COALESCE(SUM(lines_added + lines_deleted), 0) FROM git_changes WHERE snapshot_id = ?1",
@@ -51,9 +54,10 @@ impl Dimension for Fragility {
             .with_context(|| format!("fragility: failed to sum churn for snapshot {snapshot_id}"))?;
 
         if total_churn == 0 {
-            return Ok(Some(100));
+            return Ok(DimensionResult { name, score: Some(100), issues });
         }
 
+        // Churn concentration (shared by score + diagnose)
         let top_n = (file_count as f64 * 0.1).ceil().max(1.0) as i64;
         let top_churn: i64 = conn
             .query_row(
@@ -73,44 +77,20 @@ impl Dimension for Fragility {
         } else if concentration > CHURN_CONCENTRATION_WARN {
             score -= 25;
         }
-
-        let max_churn: i64 = conn
-            .query_row(
-                "SELECT COALESCE(MAX(lines_added + lines_deleted), 0) FROM git_changes WHERE snapshot_id = ?1",
-                [snapshot_id],
-                |row| row.get(0),
-            )
-            .with_context(|| format!("fragility: failed to get max churn for snapshot {snapshot_id}"))?;
-
-        if max_churn > MAX_CHURN_WARN {
-            score -= 15;
+        if concentration > CHURN_CONCENTRATION_WARN {
+            let pct = (concentration * 100.0) as i32;
+            issues.push(Issue {
+                level: Level::Warning,
+                category: name.clone(),
+                message: format!("top 10% files account for {pct}% of churn"),
+                prescription: Some("distribute changes across more files".into()),
+            });
         }
 
-        Ok(Some(score.max(0)))
-    }
-
-    fn diagnose(&self, store: &DataStore) -> Result<Vec<Issue>> {
-        let conn = store.conn();
-        let snapshot_id = store.snapshot_id();
-        let mut issues = Vec::new();
-        let name = self.name().to_string();
-
-        let file_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM git_changes WHERE snapshot_id = ?1",
-                [snapshot_id],
-                |row| row.get(0),
-            )
-            .with_context(|| format!("fragility: failed to count git_changes for snapshot {snapshot_id}"))?;
-
-        if file_count == 0 {
-            return Ok(issues);
-        }
-
-        // High churn files (>500 lines), excluding lock files
+        // High churn files (>MAX_CHURN_WARN lines), excluding lock files
         let mut stmt = conn
             .prepare(
-                "SELECT path, (lines_added + lines_deleted) as churn FROM git_changes WHERE snapshot_id = ?1 AND (lines_added + lines_deleted) > 500 AND path NOT LIKE '%.lock' AND path NOT LIKE '%lock.json' ORDER BY churn DESC",
+                &format!("SELECT path, (lines_added + lines_deleted) as churn FROM git_changes WHERE snapshot_id = ?1 AND (lines_added + lines_deleted) > {MAX_CHURN_WARN} AND path NOT LIKE '%.lock' AND path NOT LIKE '%lock.json' ORDER BY churn DESC"),
             )
             .with_context(|| format!("fragility: failed to prepare churn query for snapshot {snapshot_id}"))?;
 
@@ -120,6 +100,10 @@ impl Dimension for Fragility {
             .collect::<std::result::Result<Vec<_>, _>>()
             .with_context(|| format!("fragility: failed to collect high churn for snapshot {snapshot_id}"))?;
 
+        if !high_churn.is_empty() {
+            score -= 15;
+        }
+
         for (path, churn) in &high_churn {
             issues.push(Issue {
                 level: Level::Critical,
@@ -127,41 +111,6 @@ impl Dimension for Fragility {
                 message: format!("{path} has {churn} lines churn"),
                 prescription: Some(format!("split {path} to isolate unstable logic")),
             });
-        }
-
-        // Churn concentration
-        let total_churn: i64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(lines_added + lines_deleted), 0) FROM git_changes WHERE snapshot_id = ?1",
-                [snapshot_id],
-                |row| row.get(0),
-            )
-            .with_context(|| format!("fragility: failed to sum churn for snapshot {snapshot_id}"))?;
-
-        if total_churn > 0 {
-            let top_n = (file_count as f64 * 0.1).ceil().max(1.0) as i64;
-            let top_churn: i64 = conn
-                .query_row(
-                    "SELECT COALESCE(SUM(churn), 0) FROM (
-                        SELECT (lines_added + lines_deleted) as churn
-                        FROM git_changes WHERE snapshot_id = ?1
-                        ORDER BY churn DESC LIMIT ?2
-                    )",
-                    rusqlite::params![snapshot_id, top_n],
-                    |row| row.get(0),
-                )
-                .with_context(|| format!("fragility: failed to get top churn for snapshot {snapshot_id}"))?;
-
-            let concentration = top_churn as f64 / total_churn as f64;
-            if concentration > 0.5 {
-                let pct = (concentration * 100.0) as i32;
-                issues.push(Issue {
-                    level: Level::Warning,
-                    category: name.clone(),
-                    message: format!("top 10% files account for {pct}% of churn"),
-                    prescription: Some("distribute changes across more files".into()),
-                });
-            }
         }
 
         // Frequently changed files (>10 changes), excluding lock files
@@ -186,7 +135,11 @@ impl Dimension for Fragility {
             });
         }
 
-        Ok(issues)
+        Ok(DimensionResult {
+            name: self.name().to_string(),
+            score: Some(score.max(0)),
+            issues,
+        })
     }
 }
 
@@ -211,7 +164,7 @@ mod tests {
     fn test_no_git() -> Result<()> {
         let store = setup_store();
         let dim = Fragility;
-        let score = dim.score(&store)?;
+        let score = dim.evaluate(&store)?.score;
         assert_eq!(score, None);
         Ok(())
     }
@@ -226,7 +179,7 @@ mod tests {
             )?;
         }
         let dim = Fragility;
-        let score = dim.score(&store)?.unwrap();
+        let score = dim.evaluate(&store)?.score.unwrap();
         assert!(score > 70, "evenly spread churn should score >70, got {score}");
         Ok(())
     }
@@ -239,7 +192,7 @@ mod tests {
             [],
         )?;
         let dim = Fragility;
-        let issues = dim.diagnose(&store)?;
+        let issues = dim.evaluate(&store)?.issues;
         assert!(issues.iter().any(|i| i.level == Level::Critical && i.message.contains("hot.rs")));
         Ok(())
     }

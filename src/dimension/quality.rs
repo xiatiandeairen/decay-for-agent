@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::Result;
 use log::debug;
 
-use super::Dimension;
+use super::{Dimension, DimensionResult};
 use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
@@ -30,14 +30,17 @@ impl Dimension for QualityAssurance {
         "quality_assurance"
     }
 
-    fn score(&self, store: &DataStore) -> Result<Option<i32>> {
+    fn evaluate(&self, store: &DataStore) -> Result<DimensionResult> {
         let source_files = store.source_files();
+        let name = self.name().to_string();
+
         if source_files.is_empty() {
-            return Ok(Some(100));
+            return Ok(DimensionResult { name, score: Some(100), issues: vec![] });
         }
 
         let analysis = analyze(source_files);
         let mut score: i32 = 100;
+        let mut issues = Vec::new();
         debug!("quality_assurance: {} source, {} test files", analysis.source_files, analysis.test_files);
 
         // Test file ratio
@@ -46,8 +49,21 @@ impl Dimension for QualityAssurance {
             let test_ratio = analysis.test_files as f64 / total as f64;
             if test_ratio == 0.0 {
                 score -= 40;
+                issues.push(Issue {
+                    level: Level::Critical,
+                    category: name.clone(),
+                    message: "no test files found in project".to_string(),
+                    prescription: Some("add tests for critical paths and public APIs".to_string()),
+                });
             } else if test_ratio < TEST_FILE_RATIO_WARN {
                 score -= 25;
+                let pct = (test_ratio * 100.0) as i32;
+                issues.push(Issue {
+                    level: Level::Warning,
+                    category: name.clone(),
+                    message: format!("only {pct}% of files are tests"),
+                    prescription: Some("increase test coverage, focus on complex and critical modules".to_string()),
+                });
             } else if test_ratio < TEST_FILE_RATIO_GOOD {
                 score -= 10;
             }
@@ -58,6 +74,12 @@ impl Dimension for QualityAssurance {
             let line_ratio = analysis.test_lines as f64 / analysis.source_lines as f64;
             if line_ratio < TEST_LINE_RATIO_WARN {
                 score -= 20;
+                issues.push(Issue {
+                    level: Level::Warning,
+                    category: name.clone(),
+                    message: format!("test/source line ratio is {:.1}% (very low)", line_ratio * 100.0),
+                    prescription: Some("add more tests to improve confidence in changes".to_string()),
+                });
             } else if line_ratio < TEST_LINE_RATIO_GOOD {
                 score -= 10;
             }
@@ -71,63 +93,21 @@ impl Dimension for QualityAssurance {
             }
         }
 
-        Ok(Some(score.max(0)))
-    }
-
-    fn diagnose(&self, store: &DataStore) -> Result<Vec<Issue>> {
-        let source_files = store.source_files();
-        if source_files.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let analysis = analyze(source_files);
-        let mut issues = Vec::new();
-        let cat = self.name().to_string();
-
-        let total = analysis.source_files + analysis.test_files;
-        if total > 0 {
-            let test_ratio = analysis.test_files as f64 / total as f64;
-            if test_ratio == 0.0 {
-                issues.push(Issue {
-                    level: Level::Critical,
-                    category: cat.clone(),
-                    message: "no test files found in project".to_string(),
-                    prescription: Some("add tests for critical paths and public APIs".to_string()),
-                });
-            } else if test_ratio < 0.10 {
-                let pct = (test_ratio * 100.0) as i32;
-                issues.push(Issue {
-                    level: Level::Warning,
-                    category: cat.clone(),
-                    message: format!("only {pct}% of files are tests"),
-                    prescription: Some("increase test coverage, focus on complex and critical modules".to_string()),
-                });
-            }
-        }
-
-        if analysis.source_lines > 0 && analysis.test_lines > 0 {
-            let line_ratio = analysis.test_lines as f64 / analysis.source_lines as f64;
-            if line_ratio < 0.1 {
-                issues.push(Issue {
-                    level: Level::Warning,
-                    category: cat.clone(),
-                    message: format!("test/source line ratio is {:.1}% (very low)", line_ratio * 100.0),
-                    prescription: Some("add more tests to improve confidence in changes".to_string()),
-                });
-            }
-        }
-
         // Report source files without corresponding test files
         for path in &analysis.untested_source_files {
             issues.push(Issue {
                 level: Level::Info,
-                category: cat.clone(),
+                category: name.clone(),
                 message: format!("{path} has no corresponding test file"),
                 prescription: None,
             });
         }
 
-        Ok(issues)
+        Ok(DimensionResult {
+            name: self.name().to_string(),
+            score: Some(score.max(0)),
+            issues,
+        })
     }
 }
 
@@ -154,12 +134,12 @@ fn analyze(files: &[SourceFile]) -> Analysis {
         "@test", "@Test", "def test_"];
 
     for sf in files {
-        if is_test_file(&sf.path) || is_inline_test_module(&sf.content) {
+        if is_test_file(&sf.path) {
+            // Dedicated test file: entire file counts as test
             test_files += 1;
             test_lines += sf.line_count;
             test_names.push(sf.path.clone());
 
-            // Count assertions
             for line in &sf.lines {
                 let trimmed = line.trim();
                 for pat in &assert_patterns {
@@ -170,9 +150,29 @@ fn analyze(files: &[SourceFile]) -> Analysis {
                 }
             }
         } else {
+            // Source file (may contain inline tests like #[cfg(test)])
             source_files += 1;
-            source_lines += sf.line_count;
             source_names.push(sf.path.clone());
+
+            let (src_lines, tst_lines) = split_inline_test_lines(&sf.lines);
+            source_lines += src_lines;
+            if tst_lines > 0 {
+                test_files += 1;
+                test_lines += tst_lines;
+                test_names.push(sf.path.clone());
+
+                // Count assertions only in the test section
+                let test_start = sf.line_count - tst_lines;
+                for line in sf.lines.iter().skip(test_start) {
+                    let trimmed = line.trim();
+                    for pat in &assert_patterns {
+                        if trimmed.contains(pat) {
+                            assert_count += 1;
+                            break;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -213,9 +213,16 @@ fn is_test_file(path: &str) -> bool {
         || lower.starts_with("test_") || lower.contains("/test_")
 }
 
-fn is_inline_test_module(content: &str) -> bool {
-    // Rust: #[cfg(test)] mod tests
-    content.contains("#[cfg(test)]")
+/// Split a source file's lines into (source_lines, test_lines).
+/// Detects Rust inline test modules (#[cfg(test)]) and counts lines after the marker as test lines.
+fn split_inline_test_lines(lines: &[String]) -> (usize, usize) {
+    // Find #[cfg(test)] marker — lines from there to end are test lines
+    for (i, line) in lines.iter().enumerate() {
+        if line.trim() == "#[cfg(test)]" {
+            return (i, lines.len() - i);
+        }
+    }
+    (lines.len(), 0)
 }
 
 #[cfg(test)]
@@ -250,9 +257,10 @@ mod tests {
         let store = setup_store(&dir);
         add_file(&store, &dir, "src/main.rs", "fn main() {}\n");
         let dim = QualityAssurance;
-        let score = dim.score(&store)?.unwrap();
+        let result = dim.evaluate(&store)?;
+        let score = result.score.unwrap();
         assert!(score < 50, "no-test project should score <50, got {score}");
-        let issues = dim.diagnose(&store)?;
+        let issues = result.issues;
         assert!(issues.iter().any(|i| i.level == Level::Critical && i.message.contains("no test")));
         Ok(())
     }
@@ -264,7 +272,7 @@ mod tests {
         add_file(&store, &dir, "src/lib.rs", "pub fn add(a: i32, b: i32) -> i32 { a + b }\n");
         add_file(&store, &dir, "tests/test_lib.rs", "#[test]\nfn test_add() {\n    assert_eq!(add(1, 2), 3);\n}\n");
         let dim = QualityAssurance;
-        let score = dim.score(&store)?.unwrap();
+        let score = dim.evaluate(&store)?.score.unwrap();
         assert!(score > 50, "project with tests should score >50, got {score}");
         Ok(())
     }

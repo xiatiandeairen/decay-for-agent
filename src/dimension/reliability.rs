@@ -1,7 +1,7 @@
 use anyhow::Result;
 use log::debug;
 
-use super::Dimension;
+use super::{Dimension, DimensionResult};
 use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
@@ -28,14 +28,17 @@ impl Dimension for Reliability {
         "reliability"
     }
 
-    fn score(&self, store: &DataStore) -> Result<Option<i32>> {
+    fn evaluate(&self, store: &DataStore) -> Result<DimensionResult> {
         let source_files = store.source_files();
+        let name = self.name().to_string();
+
         if source_files.is_empty() {
-            return Ok(Some(100));
+            return Ok(DimensionResult { name, score: Some(100), issues: vec![] });
         }
 
         let analysis = analyze(source_files);
         let mut score: i32 = 100;
+        let mut issues = Vec::new();
         debug!("reliability: {} files, {} lines", analysis.file_count, analysis.total_lines);
 
         // Unsafe/eval density
@@ -47,14 +50,40 @@ impl Dimension for Reliability {
                 score -= 15;
             }
         }
+        for (path, count) in &analysis.unsafe_details {
+            if *count > UNSAFE_PER_FILE_WARN {
+                issues.push(Issue {
+                    level: Level::Warning,
+                    category: name.clone(),
+                    message: format!("{path} has {count} unsafe/eval occurrences"),
+                    prescription: Some(format!("minimize unsafe code in {path}, prefer safe abstractions")),
+                });
+            }
+        }
 
         // SQL/shell injection patterns
         let injection_penalty = (analysis.injection_patterns * 20).min(40) as i32;
         score -= injection_penalty;
+        for (path, pattern) in &analysis.injection_details {
+            issues.push(Issue {
+                level: Level::Critical,
+                category: name.clone(),
+                message: format!("{path}: potential {pattern}"),
+                prescription: Some("use parameterized queries or safe command execution".to_string()),
+            });
+        }
 
         // Hardcoded secrets
         let secret_penalty = (analysis.hardcoded_secrets * 15).min(30) as i32;
         score -= secret_penalty;
+        for (path, kind) in &analysis.secret_details {
+            issues.push(Issue {
+                level: Level::Critical,
+                category: name.clone(),
+                message: format!("{path}: {kind}"),
+                prescription: Some("use environment variables or secret management for credentials".to_string()),
+            });
+        }
 
         // Dependency count
         let dep_count = store.dependencies().direct_count;
@@ -63,64 +92,20 @@ impl Dimension for Reliability {
         } else if dep_count > DEP_COUNT_WARN {
             score -= 10;
         }
-
-        Ok(Some(score.max(0)))
-    }
-
-    fn diagnose(&self, store: &DataStore) -> Result<Vec<Issue>> {
-        let source_files = store.source_files();
-        if source_files.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let analysis = analyze(source_files);
-        let mut issues = Vec::new();
-        let cat = self.name().to_string();
-
-        // Report files with unsafe/eval
-        for (path, count) in &analysis.unsafe_details {
-            if *count > UNSAFE_PER_FILE_WARN {
-                issues.push(Issue {
-                    level: Level::Warning,
-                    category: cat.clone(),
-                    message: format!("{path} has {count} unsafe/eval occurrences"),
-                    prescription: Some(format!("minimize unsafe code in {path}, prefer safe abstractions")),
-                });
-            }
-        }
-
-        // Injection patterns
-        for (path, pattern) in &analysis.injection_details {
-            issues.push(Issue {
-                level: Level::Critical,
-                category: cat.clone(),
-                message: format!("{path}: potential {pattern}"),
-                prescription: Some("use parameterized queries or safe command execution".to_string()),
-            });
-        }
-
-        // Hardcoded secrets
-        for (path, kind) in &analysis.secret_details {
-            issues.push(Issue {
-                level: Level::Critical,
-                category: cat.clone(),
-                message: format!("{path}: {kind}"),
-                prescription: Some("use environment variables or secret management for credentials".to_string()),
-            });
-        }
-
-        // Dependency count
-        let dep_count = store.dependencies().direct_count;
         if dep_count > DEP_COUNT_WARN {
             issues.push(Issue {
                 level: Level::Info,
-                category: cat,
+                category: name,
                 message: format!("{dep_count} direct dependencies"),
                 prescription: Some("audit dependencies for necessity, remove unused ones".to_string()),
             });
         }
 
-        Ok(issues)
+        Ok(DimensionResult {
+            name: self.name().to_string(),
+            score: Some(score.max(0)),
+            issues,
+        })
     }
 }
 
@@ -245,7 +230,7 @@ mod tests {
         let store = setup_store(&dir);
         add_file(&store, &dir, "src/main.rs", "fn main() {\n    let x = 42;\n}\n");
         let dim = Reliability;
-        let score = dim.score(&store)?.unwrap();
+        let score = dim.evaluate(&store)?.score.unwrap();
         assert!(score > 80, "safe project should score >80, got {score}");
         Ok(())
     }
@@ -257,7 +242,7 @@ mod tests {
         let content = (0..10).map(|_| "unsafe { std::ptr::null() };").collect::<Vec<_>>().join("\n");
         add_file(&store, &dir, "src/main.rs", &content);
         let dim = Reliability;
-        let score = dim.score(&store)?.unwrap();
+        let score = dim.evaluate(&store)?.score.unwrap();
         assert!(score < 80, "unsafe project should score <80, got {score}");
         Ok(())
     }

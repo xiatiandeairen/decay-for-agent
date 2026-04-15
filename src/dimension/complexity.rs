@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use log::debug;
 
-use super::Dimension;
+use super::{Dimension, DimensionResult};
 use crate::data_store::DataStore;
 use crate::diagnose::{Issue, Level};
 
@@ -29,11 +29,13 @@ impl Dimension for Complexity {
         "complexity"
     }
 
-    fn score(&self, store: &DataStore) -> Result<Option<i32>> {
+    fn evaluate(&self, store: &DataStore) -> Result<DimensionResult> {
         let conn = store.conn();
         let snapshot_id = store.snapshot_id();
         let mut score: i32 = 100;
-        debug!("complexity: scoring starting");
+        let mut issues = Vec::new();
+        let name = self.name().to_string();
+        debug!("complexity: evaluating");
 
         let file_count: i64 = conn
             .query_row(
@@ -44,24 +46,31 @@ impl Dimension for Complexity {
             .with_context(|| format!("complexity: failed to count files for snapshot {snapshot_id}"))?;
 
         if file_count == 0 {
-            return Ok(Some(100));
+            return Ok(DimensionResult { name, score: Some(100), issues });
         }
 
-        let large_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM files WHERE snapshot_id = ?1 AND size_bytes > ?2",
-                rusqlite::params![snapshot_id, LARGE_FILE_BYTES],
-                |row| row.get(0),
+        // Query large files once for both score and diagnose
+        let mut stmt = conn
+            .prepare(
+                &format!("SELECT path, size_bytes FROM files WHERE snapshot_id = ?1 AND size_bytes > {LARGE_FILE_BYTES} ORDER BY size_bytes DESC"),
             )
-            .with_context(|| format!("complexity: failed to count large files for snapshot {snapshot_id}"))?;
+            .with_context(|| format!("complexity: failed to prepare large files query for snapshot {snapshot_id}"))?;
 
-        let large_ratio = large_count as f64 / file_count as f64;
+        let large_files: Vec<(String, i64)> = stmt
+            .query_map([snapshot_id], |row| Ok((row.get(0)?, row.get(1)?)))
+            .with_context(|| format!("complexity: failed to query large files for snapshot {snapshot_id}"))?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .with_context(|| format!("complexity: failed to collect large files for snapshot {snapshot_id}"))?;
+
+        // Score: large file ratio
+        let large_ratio = large_files.len() as f64 / file_count as f64;
         if large_ratio > LARGE_RATIO_CRIT {
             score -= 45;
         } else if large_ratio > LARGE_RATIO_WARN {
             score -= 25;
         }
 
+        // Score: avg size
         let avg_size: f64 = conn
             .query_row(
                 "SELECT COALESCE(AVG(size_bytes), 0) FROM files WHERE snapshot_id = ?1",
@@ -74,42 +83,16 @@ impl Dimension for Complexity {
             score -= 15;
         }
 
-        let max_size: i64 = conn
-            .query_row(
-                "SELECT COALESCE(MAX(size_bytes), 0) FROM files WHERE snapshot_id = ?1",
-                [snapshot_id],
-                |row| row.get(0),
-            )
-            .with_context(|| format!("complexity: failed to get max file size for snapshot {snapshot_id}"))?;
-
+        // Score: max size
+        let max_size: i64 = large_files.iter().map(|(_, s)| *s).max().unwrap_or(0);
         if max_size > MAX_SIZE_WARN {
             score -= 10;
         }
 
-        Ok(Some(score.max(0)))
-    }
-
-    fn diagnose(&self, store: &DataStore) -> Result<Vec<Issue>> {
-        let conn = store.conn();
-        let snapshot_id = store.snapshot_id();
-        let mut issues = Vec::new();
-        let name = self.name().to_string();
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT path, size_bytes FROM files WHERE snapshot_id = ?1 AND size_bytes > 15360 ORDER BY size_bytes DESC",
-            )
-            .with_context(|| format!("complexity: failed to prepare large files query for snapshot {snapshot_id}"))?;
-
-        let large_files: Vec<(String, i64)> = stmt
-            .query_map([snapshot_id], |row| Ok((row.get(0)?, row.get(1)?)))
-            .with_context(|| format!("complexity: failed to query large files for snapshot {snapshot_id}"))?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .with_context(|| format!("complexity: failed to collect large files for snapshot {snapshot_id}"))?;
-
+        // Diagnose: individual large files
         for (path, size) in &large_files {
             let size_kb = size / 1024;
-            if *size > 51200 {
+            if *size > MAX_SIZE_WARN {
                 issues.push(Issue {
                     level: Level::Critical,
                     category: name.clone(),
@@ -126,28 +109,22 @@ impl Dimension for Complexity {
             }
         }
 
-        let file_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM files WHERE snapshot_id = ?1",
-                [snapshot_id],
-                |row| row.get(0),
-            )
-            .with_context(|| format!("complexity: failed to count files for snapshot {snapshot_id}"))?;
-
-        if file_count > 0 {
-            let ratio = large_files.len() as f64 / file_count as f64;
-            if ratio > 0.2 {
-                let pct = (ratio * 100.0) as i32;
-                issues.push(Issue {
-                    level: Level::Info,
-                    category: name,
-                    message: format!("{pct}% of files exceed 15KB"),
-                    prescription: None,
-                });
-            }
+        // Diagnose: ratio info
+        if large_ratio > LARGE_RATIO_WARN {
+            let pct = (large_ratio * 100.0) as i32;
+            issues.push(Issue {
+                level: Level::Info,
+                category: name,
+                message: format!("{pct}% of files exceed 15KB"),
+                prescription: None,
+            });
         }
 
-        Ok(issues)
+        Ok(DimensionResult {
+            name: self.name().to_string(),
+            score: Some(score.max(0)),
+            issues,
+        })
     }
 }
 
@@ -178,7 +155,7 @@ mod tests {
             )?;
         }
         let dim = Complexity;
-        let score = dim.score(&store)?.unwrap();
+        let score = dim.evaluate(&store)?.score.unwrap();
         assert!(score > 80, "healthy complexity should score >80, got {score}");
         Ok(())
     }
@@ -191,7 +168,7 @@ mod tests {
             [],
         )?;
         let dim = Complexity;
-        let issues = dim.diagnose(&store)?;
+        let issues = dim.evaluate(&store)?.issues;
         assert!(!issues.is_empty());
         assert!(issues.iter().any(|i| i.level == Level::Warning && i.message.contains("big.rs")));
         Ok(())

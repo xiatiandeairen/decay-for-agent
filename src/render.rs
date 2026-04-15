@@ -11,6 +11,7 @@ pub struct MarkdownCtx<'a> {
     pub trend_data: &'a Option<HashMap<String, trend::Delta>>,
     pub velocities: &'a [trend::Velocity],
     pub regressions: &'a [trend::Regression],
+    pub forecasts: &'a [trend::Forecast],
     pub collectors: &'a HashMap<String, HashMap<String, String>>,
     pub issues: &'a [diagnose::Issue],
     pub actions: &'a [action::Action],
@@ -25,6 +26,7 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         trend_data,
         velocities,
         regressions,
+        forecasts,
         collectors,
         issues,
         actions,
@@ -210,6 +212,21 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         s
     };
 
+    let forecasts_section = if forecasts.is_empty() {
+        String::new()
+    } else {
+        let mut s = String::from("## Forecasts\n\n");
+        for f in *forecasts {
+            s.push_str(&format!(
+                "- **{}** will breach {} in ~{} snapshots (current: {}, slope: {:.1}/snap, R²={:.2})\n",
+                f.dimension, f.threshold, f.snapshots_until_breach,
+                f.current_score, f.slope, f.r_squared,
+            ));
+        }
+        s.push('\n');
+        s
+    };
+
     let project_name = std::path::Path::new(project_path)
         .file_name()
         .unwrap_or_default()
@@ -230,6 +247,7 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
          {scores_rows}\n\
          \n\
          {regressions_section}\
+         {forecasts_section}\
          ## Scan\n\
          \n\
          | Metric | Value |\n\
@@ -258,6 +276,7 @@ pub fn render_terminal(
     trend_data: &Option<HashMap<String, trend::Delta>>,
     velocities: &[trend::Velocity],
     regressions: &[trend::Regression],
+    forecasts: &[trend::Forecast],
     dimensions: &[Box<dyn dimension::Dimension>],
     issues: &[diagnose::Issue],
     snapshot_id: i64,
@@ -306,6 +325,12 @@ pub fn render_terminal(
         eprintln!(
             "⚠ REGRESSION: {} {} → {} (−{}, threshold: {:.1})",
             r.dimension, r.previous_score, r.current_score, r.drop, r.threshold
+        );
+    }
+    for f in forecasts {
+        eprintln!(
+            "⚡ FORECAST: {} will breach {} in ~{} snapshots (R²={:.2})",
+            f.dimension, f.threshold, f.snapshots_until_breach, f.r_squared
         );
     }
 

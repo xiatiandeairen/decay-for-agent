@@ -24,6 +24,8 @@ pub struct Report {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub regressions: Vec<trend::Regression>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub forecasts: Vec<trend::Forecast>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub time_series: Vec<db::SnapshotScores>,
     pub collectors: HashMap<String, HashMap<String, String>>,
 }
@@ -55,6 +57,7 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
     let time_series = db::get_dimension_time_series(store.conn(), &project_path_str, None)?;
     let velocities = trend::calculate_velocities(&time_series);
     let regressions = trend::detect_regressions(&time_series, 2.0);
+    let forecasts = trend::forecast_breaches(&time_series, 60);
 
     let critical_count = all_issues
         .iter()
@@ -68,7 +71,7 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
             scores: scores.clone(), composite: comp,
             trend: trend_data,
             issues: all_issues, actions: all_actions,
-            velocities, regressions, time_series, collectors: collector_stats,
+            velocities, regressions, forecasts, time_series, collectors: collector_stats,
         },
         &scores, comp, critical_count, snapshot_id, &project_path,
     );
@@ -162,6 +165,7 @@ fn output(
             trend_data: &report.trend,
             velocities: &report.velocities,
             regressions: &report.regressions,
+            forecasts: &report.forecasts,
             collectors: &report.collectors,
             issues: &report.issues,
             actions: &report.actions,
@@ -178,6 +182,7 @@ fn output(
             &report.trend,
             &report.velocities,
             &report.regressions,
+            &report.forecasts,
             &dimensions,
             &report.issues,
             snapshot_id,

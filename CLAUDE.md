@@ -86,3 +86,5 @@
   - [tech](.know/docs/requirements/velocity/tech.md) | 2026-04-15
 - [regression-detection](.know/docs/requirements/regression-detection/prd.md) | 2026-04-15
   - [tech](.know/docs/requirements/regression-detection/tech.md) | 2026-04-15
+- [threshold-forecast](.know/docs/requirements/threshold-forecast/prd.md) | 2026-04-15
+  - [tech](.know/docs/requirements/threshold-forecast/tech.md) | 2026-04-15

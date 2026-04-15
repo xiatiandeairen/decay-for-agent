@@ -54,17 +54,14 @@ impl Dimension for Reliability {
         for (path, count) in &analysis.unsafe_details {
             if *count > UNSAFE_PER_FILE_WARN {
                 issues.push(Issue::with_actions(
-                    Level::Warning,
-                    name.clone(),
+                    Level::Warning, name.clone(),
                     format!("{path} has {count} unsafe/eval occurrences"),
-                    Some(format!("minimize unsafe code in {path}, prefer safe abstractions")),
                     vec![Action {
-                        dimension: name.clone(),
-                        action_type: ActionType::Replace,
-                        target: Target { file: path.clone(), line_range: None, symbol: None },
-                        reason: format!("{path} has {count} unsafe/eval, replace with safe abstractions"),
-                        priority: Priority::High,
-                        effort: Effort::Medium,
+                        dimension: name.clone(), action_type: ActionType::Replace,
+                        target: Target::file(path),
+                        suggestion: format!("minimize unsafe code in {path}, prefer safe abstractions"),
+                        reason: format!("{path} has {count} unsafe/eval"),
+                        priority: Priority::High, effort: Effort::Medium,
                     }],
                 ));
             }
@@ -75,17 +72,13 @@ impl Dimension for Reliability {
         score -= injection_penalty;
         for (path, pattern, line_no) in &analysis.injection_details {
             issues.push(Issue::with_actions(
-                Level::Critical,
-                name.clone(),
-                format!("{path}:{line_no}: potential {pattern}"),
-                Some("use parameterized queries or safe command execution".to_string()),
+                Level::Critical, name.clone(), format!("{path}:{line_no}: potential {pattern}"),
                 vec![Action {
-                    dimension: name.clone(),
-                    action_type: ActionType::Replace,
-                    target: Target { file: path.clone(), line_range: Some((*line_no, *line_no)), symbol: None },
-                    reason: format!("{path}:{line_no}: potential {pattern}, use parameterized queries"),
-                    priority: Priority::Critical,
-                    effort: Effort::Small,
+                    dimension: name.clone(), action_type: ActionType::Replace,
+                    target: Target::at(path.as_str(), (*line_no, *line_no), None),
+                    suggestion: "use parameterized queries or safe command execution".into(),
+                    reason: format!("{path}:{line_no}: potential {pattern}"),
+                    priority: Priority::Critical, effort: Effort::Small,
                 }],
             ));
         }
@@ -95,17 +88,13 @@ impl Dimension for Reliability {
         score -= secret_penalty;
         for (path, kind, line_no) in &analysis.secret_details {
             issues.push(Issue::with_actions(
-                Level::Critical,
-                name.clone(),
-                format!("{path}:{line_no}: {kind}"),
-                Some("use environment variables or secret management for credentials".to_string()),
+                Level::Critical, name.clone(), format!("{path}:{line_no}: {kind}"),
                 vec![Action {
-                    dimension: name.clone(),
-                    action_type: ActionType::Replace,
-                    target: Target { file: path.clone(), line_range: Some((*line_no, *line_no)), symbol: None },
-                    reason: format!("{path}:{line_no}: {kind}, use env vars or secret management"),
-                    priority: Priority::Critical,
-                    effort: Effort::Small,
+                    dimension: name.clone(), action_type: ActionType::Replace,
+                    target: Target::at(path.as_str(), (*line_no, *line_no), None),
+                    suggestion: "use environment variables or secret management for credentials".into(),
+                    reason: format!("{path}:{line_no}: {kind}"),
+                    priority: Priority::Critical, effort: Effort::Small,
                 }],
             ));
         }
@@ -119,17 +108,13 @@ impl Dimension for Reliability {
         }
         if dep_count > DEP_COUNT_WARN {
             issues.push(Issue::with_actions(
-                Level::Info,
-                name,
-                format!("{dep_count} direct dependencies"),
-                Some("audit dependencies for necessity, remove unused ones".to_string()),
+                Level::Info, name, format!("{dep_count} direct dependencies"),
                 vec![Action {
-                    dimension: "reliability".into(),
-                    action_type: ActionType::Remove,
-                    target: Target { file: ".".into(), line_range: None, symbol: None },
-                    reason: format!("{dep_count} direct dependencies, audit and remove unused"),
-                    priority: Priority::Medium,
-                    effort: Effort::Small,
+                    dimension: "reliability".into(), action_type: ActionType::Remove,
+                    target: Target::file("."),
+                    suggestion: "audit dependencies for necessity, remove unused ones".into(),
+                    reason: format!("{dep_count} direct dependencies"),
+                    priority: Priority::Medium, effort: Effort::Small,
                 }],
             ));
         }

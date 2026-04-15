@@ -68,23 +68,45 @@ pub enum Effort {
     Large,
 }
 
+impl fmt::Display for Effort {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Effort::Small => write!(f, "S"),
+            Effort::Medium => write!(f, "M"),
+            Effort::Large => write!(f, "L"),
+        }
+    }
+}
+
 /// Where the action should be applied.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct Target {
     /// File or directory path (always present).
     pub file: String,
-    /// Line range within the file (M3: precision upgrade).
+    /// Line range within the file.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub line_range: Option<(u32, u32)>,
-    /// Function or module name (M3: precision upgrade).
+    /// Function or module name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub symbol: Option<String>,
 }
 
+impl Target {
+    /// Target a file or directory without line-level precision.
+    pub fn file(path: impl Into<String>) -> Self {
+        Self { file: path.into(), line_range: None, symbol: None }
+    }
+
+    /// Target a specific location within a file.
+    pub fn at(path: impl Into<String>, line_range: (u32, u32), symbol: Option<String>) -> Self {
+        Self { file: path.into(), line_range: Some(line_range), symbol }
+    }
+}
+
 /// A structured, agent-consumable prescription.
 ///
-/// Replaces free-text prescriptions with typed actions that include
-/// what to do, where, why, how urgent, and how much effort.
+/// Each action describes what to do (`suggestion`), why (`reason`),
+/// where (`target`), how urgent (`priority`), and how much work (`effort`).
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct Action {
     /// Source dimension that generated this action.
@@ -93,7 +115,9 @@ pub struct Action {
     pub action_type: ActionType,
     /// Where to apply the change.
     pub target: Target,
-    /// Why this action is needed.
+    /// Human-friendly instruction (e.g. "split into sub-modules").
+    pub suggestion: String,
+    /// Why this action is needed (e.g. "1200 files exceed threshold").
     pub reason: String,
     /// How urgently this should be addressed.
     pub priority: Priority,
@@ -106,9 +130,33 @@ impl fmt::Display for Action {
         write!(
             f,
             "[{}] {} {} — {}",
-            self.priority, self.action_type, self.target.file, self.reason
+            self.priority, self.action_type, self.target.file, self.suggestion
         )
     }
+}
+
+/// Collect all actions from issues, sort by priority+effort, then dedup.
+///
+/// Sort first guarantees same-type actions are adjacent for dedup.
+/// Order: priority asc (Critical first) → effort asc (Small first).
+pub fn collect_sorted(issues: &[crate::diagnose::Issue]) -> Vec<Action> {
+    let mut actions: Vec<Action> = issues
+        .iter()
+        .flat_map(|i| i.actions.iter().cloned())
+        .collect();
+    actions.sort_by(|a, b| {
+        a.priority
+            .cmp(&b.priority)
+            .then(a.effort.cmp(&b.effort))
+            .then(a.dimension.cmp(&b.dimension))
+            .then(a.target.file.cmp(&b.target.file))
+    });
+    actions.dedup_by(|b, a| {
+        a.dimension == b.dimension
+            && a.target.file == b.target.file
+            && a.action_type == b.action_type
+    });
+    actions
 }
 
 #[cfg(test)]
@@ -119,11 +167,8 @@ mod tests {
         Action {
             dimension: "structural".into(),
             action_type: ActionType::Split,
-            target: Target {
-                file: "src/".into(),
-                line_range: None,
-                symbol: None,
-            },
+            target: Target::file("src/"),
+            suggestion: "split into sub-modules".into(),
             reason: "1200 files exceed threshold".into(),
             priority: Priority::Critical,
             effort: Effort::Large,
@@ -137,8 +182,8 @@ mod tests {
         assert!(json.contains("\"action_type\": \"split\""));
         assert!(json.contains("\"priority\": \"critical\""));
         assert!(json.contains("\"effort\": \"large\""));
+        assert!(json.contains("\"suggestion\": \"split into sub-modules\""));
         assert!(json.contains("\"file\": \"src/\""));
-        // Optional fields should be absent when None
         assert!(!json.contains("line_range"));
         assert!(!json.contains("symbol"));
     }
@@ -146,11 +191,7 @@ mod tests {
     #[test]
     fn serialize_action_with_location() {
         let action = Action {
-            target: Target {
-                file: "src/main.rs".into(),
-                line_range: Some((10, 50)),
-                symbol: Some("handle_request".into()),
-            },
+            target: Target::at("src/main.rs", (10, 50), Some("handle_request".into())),
             ..sample_action()
         };
         let json = serde_json::to_string_pretty(&action).unwrap();
@@ -167,16 +208,23 @@ mod tests {
     }
 
     #[test]
-    fn display_format() {
-        let action = sample_action();
-        let display = format!("{action}");
-        assert_eq!(display, "[CRITICAL] SPLIT src/ — 1200 files exceed threshold");
-    }
-
-    #[test]
     fn effort_ordering() {
         assert!(Effort::Small < Effort::Medium);
         assert!(Effort::Medium < Effort::Large);
+    }
+
+    #[test]
+    fn effort_display() {
+        assert_eq!(format!("{}", Effort::Small), "S");
+        assert_eq!(format!("{}", Effort::Medium), "M");
+        assert_eq!(format!("{}", Effort::Large), "L");
+    }
+
+    #[test]
+    fn display_format() {
+        let action = sample_action();
+        let display = format!("{action}");
+        assert_eq!(display, "[CRITICAL] SPLIT src/ — split into sub-modules");
     }
 
     #[test]
@@ -202,6 +250,48 @@ mod tests {
     }
 
     #[test]
+    fn collect_sorted_dedup() {
+        use crate::diagnose::Issue;
+
+        let issues = vec![
+            Issue::with_actions(
+                crate::diagnose::Level::Warning,
+                "complexity",
+                "file A big",
+                vec![Action {
+                    dimension: "complexity".into(),
+                    action_type: ActionType::Split,
+                    target: Target::file("src/a.rs"),
+                    suggestion: "split A".into(),
+                    reason: "A is big".into(),
+                    priority: Priority::High,
+                    effort: Effort::Medium,
+                }],
+            ),
+            Issue::with_actions(
+                crate::diagnose::Level::Critical,
+                "maintainability",
+                "file A long",
+                vec![Action {
+                    dimension: "complexity".into(),
+                    action_type: ActionType::Split,
+                    target: Target::file("src/a.rs"),
+                    suggestion: "split A".into(),
+                    reason: "A is long".into(),
+                    priority: Priority::Critical,
+                    effort: Effort::Medium,
+                }],
+            ),
+        ];
+
+        let sorted = collect_sorted(&issues);
+        // Should dedup: same dimension + file + action_type
+        assert_eq!(sorted.len(), 1);
+        // Should keep the Critical one (sorted first)
+        assert_eq!(sorted[0].priority, Priority::Critical);
+    }
+
+    #[test]
     fn action_type_display() {
         assert_eq!(format!("{}", ActionType::Split), "SPLIT");
         assert_eq!(format!("{}", ActionType::Extract), "EXTRACT");
@@ -210,5 +300,17 @@ mod tests {
         assert_eq!(format!("{}", ActionType::Replace), "REPLACE");
         assert_eq!(format!("{}", ActionType::Move), "MOVE");
         assert_eq!(format!("{}", ActionType::Refactor), "REFACTOR");
+    }
+
+    #[test]
+    fn target_constructors() {
+        let t1 = Target::file("src/main.rs");
+        assert_eq!(t1.file, "src/main.rs");
+        assert!(t1.line_range.is_none());
+        assert!(t1.symbol.is_none());
+
+        let t2 = Target::at("src/lib.rs", (10, 50), Some("foo".into()));
+        assert_eq!(t2.line_range, Some((10, 50)));
+        assert_eq!(t2.symbol.as_deref(), Some("foo"));
     }
 }

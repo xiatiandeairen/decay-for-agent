@@ -10,6 +10,7 @@ mod filter_pipeline;
 mod git;
 mod git_pipeline;
 mod profile;
+mod render;
 mod run;
 mod scan;
 mod trend;

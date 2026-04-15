@@ -69,17 +69,14 @@ impl Dimension for Maintainability {
         for (path, dup_count) in &analysis.dup_details {
             if *dup_count > 0 {
                 issues.push(Issue::with_actions(
-                    Level::Warning,
-                    name.clone(),
+                    Level::Warning, name.clone(),
                     format!("{path} has {dup_count} duplicate block(s) shared with other files"),
-                    Some(format!("extract shared logic from {path} into a common module")),
                     vec![Action {
-                        dimension: name.clone(),
-                        action_type: ActionType::Extract,
-                        target: Target { file: path.clone(), line_range: None, symbol: None },
-                        reason: format!("{path} has {dup_count} duplicate blocks, extract into common module"),
-                        priority: Priority::High,
-                        effort: Effort::Medium,
+                        dimension: name.clone(), action_type: ActionType::Extract,
+                        target: Target::file(path),
+                        suggestion: format!("extract shared logic from {path} into a common module"),
+                        reason: format!("{path} has {dup_count} duplicate blocks"),
+                        priority: Priority::High, effort: Effort::Medium,
                     }],
                 ));
             }
@@ -98,17 +95,13 @@ impl Dimension for Maintainability {
             let level = if *lines > 600 { Level::Critical } else { Level::Warning };
             let priority = if *lines > 600 { Priority::Critical } else { Priority::High };
             issues.push(Issue::with_actions(
-                level,
-                name.clone(),
-                format!("{path} has {lines} lines"),
-                Some(format!("split {path} into smaller modules")),
+                level, name.clone(), format!("{path} has {lines} lines"),
                 vec![Action {
-                    dimension: name.clone(),
-                    action_type: ActionType::Split,
-                    target: Target { file: path.clone(), line_range: None, symbol: None },
-                    reason: format!("{path} has {lines} lines, split into smaller modules"),
-                    priority,
-                    effort: Effort::Medium,
+                    dimension: name.clone(), action_type: ActionType::Split,
+                    target: Target::file(path),
+                    suggestion: format!("split {path} into smaller modules"),
+                    reason: format!("{path} has {lines} lines"),
+                    priority, effort: Effort::Medium,
                 }],
             ));
         }
@@ -126,17 +119,14 @@ impl Dimension for Maintainability {
             let start = *start_line as u32;
             let end = start + *lines as u32;
             issues.push(Issue::with_actions(
-                Level::Warning,
-                name.clone(),
+                Level::Warning, name.clone(),
                 format!("{func_name} in {path} is {lines} lines long"),
-                Some(format!("break {func_name} into smaller functions")),
                 vec![Action {
-                    dimension: name.clone(),
-                    action_type: ActionType::Extract,
-                    target: Target { file: path.clone(), line_range: Some((start, end)), symbol: Some(func_name.clone()) },
-                    reason: format!("{func_name} is {lines} lines, break into smaller functions"),
-                    priority: Priority::High,
-                    effort: Effort::Small,
+                    dimension: name.clone(), action_type: ActionType::Extract,
+                    target: Target::at(path.as_str(), (start, end), Some(func_name.clone())),
+                    suggestion: format!("break {func_name} into smaller functions"),
+                    reason: format!("{func_name} is {lines} lines"),
+                    priority: Priority::High, effort: Effort::Small,
                 }],
             ));
         }
@@ -150,10 +140,8 @@ impl Dimension for Maintainability {
         }
         if analysis.todo_count > 0 {
             issues.push(Issue::new(
-                Level::Info,
-                name,
+                Level::Info, name,
                 format!("{} TODO/FIXME comments across project", analysis.todo_count),
-                None,
             ));
         }
 

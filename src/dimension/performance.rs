@@ -57,17 +57,13 @@ impl Dimension for Performance {
             let level = if *depth >= 4 { Level::Critical } else { Level::Warning };
             let ln = *line_no as u32;
             issues.push(Issue::with_actions(
-                level,
-                name.clone(),
-                format!("{path}:{line_no} has {depth}-level nested loop"),
-                Some("extract inner loops into separate functions or use iterators".to_string()),
+                level, name.clone(), format!("{path}:{line_no} has {depth}-level nested loop"),
                 vec![Action {
-                    dimension: name.clone(),
-                    action_type: ActionType::Extract,
-                    target: Target { file: path.clone(), line_range: Some((ln, ln)), symbol: None },
-                    reason: format!("{depth}-level nested loop at line {line_no}, extract into functions"),
-                    priority,
-                    effort: Effort::Small,
+                    dimension: name.clone(), action_type: ActionType::Extract,
+                    target: Target::at(path.as_str(), (ln, ln), None),
+                    suggestion: "extract inner loops into separate functions or use iterators".into(),
+                    reason: format!("{depth}-level nested loop at line {line_no}"),
+                    priority, effort: Effort::Small,
                 }],
             ));
         }
@@ -84,17 +80,14 @@ impl Dimension for Performance {
         for (path, count) in &analysis.clone_details {
             if *count > 10 {
                 issues.push(Issue::with_actions(
-                    Level::Warning,
-                    name.clone(),
+                    Level::Warning, name.clone(),
                     format!("{path} has {count} clone/copy calls"),
-                    Some(format!("reduce cloning in {path}, prefer references or Cow")),
                     vec![Action {
-                        dimension: name.clone(),
-                        action_type: ActionType::Refactor,
-                        target: Target { file: path.clone(), line_range: None, symbol: None },
-                        reason: format!("{path} has {count} clones, prefer references or Cow"),
-                        priority: Priority::Medium,
-                        effort: Effort::Medium,
+                        dimension: name.clone(), action_type: ActionType::Refactor,
+                        target: Target::file(path),
+                        suggestion: format!("reduce cloning in {path}, prefer references or Cow"),
+                        reason: format!("{path} has {count} clones"),
+                        priority: Priority::Medium, effort: Effort::Medium,
                     }],
                 ));
             }
@@ -108,10 +101,7 @@ impl Dimension for Performance {
         }
         for (path, call) in &analysis.blocking_details {
             issues.push(Issue::new(
-                Level::Info,
-                name.clone(),
-                format!("{path}: blocking call {call}"),
-                Some("consider async alternatives for I/O-bound operations".to_string()),
+                Level::Info, name.clone(), format!("{path}: blocking call {call}"),
             ));
         }
 

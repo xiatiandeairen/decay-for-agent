@@ -81,17 +81,13 @@ impl Dimension for Fragility {
         if concentration > CHURN_CONCENTRATION_WARN {
             let pct = (concentration * 100.0) as i32;
             issues.push(Issue::with_actions(
-                Level::Warning,
-                name.clone(),
-                format!("top 10% files account for {pct}% of churn"),
-                Some("distribute changes across more files".into()),
+                Level::Warning, name.clone(), format!("top 10% files account for {pct}% of churn"),
                 vec![Action {
-                    dimension: name.clone(),
-                    action_type: ActionType::Refactor,
-                    target: Target { file: ".".into(), line_range: None, symbol: None },
-                    reason: format!("top 10% files account for {pct}% of churn, distribute changes"),
-                    priority: Priority::High,
-                    effort: Effort::Large,
+                    dimension: name.clone(), action_type: ActionType::Refactor,
+                    target: Target::file("."),
+                    suggestion: "distribute changes across more files".into(),
+                    reason: format!("top 10% files account for {pct}% of churn"),
+                    priority: Priority::High, effort: Effort::Large,
                 }],
             ));
         }
@@ -115,17 +111,13 @@ impl Dimension for Fragility {
 
         for (path, churn) in &high_churn {
             issues.push(Issue::with_actions(
-                Level::Critical,
-                name.clone(),
-                format!("{path} has {churn} lines churn"),
-                Some(format!("split {path} to isolate unstable logic")),
+                Level::Critical, name.clone(), format!("{path} has {churn} lines churn"),
                 vec![Action {
-                    dimension: name.clone(),
-                    action_type: ActionType::Split,
-                    target: Target { file: path.clone(), line_range: None, symbol: None },
-                    reason: format!("{path} has {churn} lines churn, isolate unstable logic"),
-                    priority: Priority::Critical,
-                    effort: Effort::Medium,
+                    dimension: name.clone(), action_type: ActionType::Split,
+                    target: Target::file(path),
+                    suggestion: format!("split {path} to isolate unstable logic"),
+                    reason: format!("{path} has {churn} lines churn"),
+                    priority: Priority::Critical, effort: Effort::Medium,
                 }],
             ));
         }
@@ -145,10 +137,7 @@ impl Dimension for Fragility {
 
         for (path, count) in &frequent {
             issues.push(Issue::new(
-                Level::Info,
-                name.clone(),
-                format!("{path} changed {count} times"),
-                None,
+                Level::Info, name.clone(), format!("{path} changed {count} times"),
             ));
         }
 

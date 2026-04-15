@@ -51,18 +51,18 @@ impl Dimension for Observability {
                 let line_range = lines.first().and_then(|first| {
                     lines.last().map(|last| (*first, *last))
                 });
+                let target = match line_range {
+                    Some(range) => Target::at(path.as_str(), range, None),
+                    None => Target::file(path),
+                };
                 issues.push(Issue::with_actions(
-                    Level::Warning,
-                    name.clone(),
+                    Level::Warning, name.clone(),
                     format!("{path} has {count} unwrap/panic calls"),
-                    Some(format!("replace unwrap/panic in {path} with proper error handling")),
                     vec![Action {
-                        dimension: name.clone(),
-                        action_type: ActionType::Replace,
-                        target: Target { file: path.clone(), line_range, symbol: None },
-                        reason: format!("{path} has {count} unwrap/panic calls, replace with proper error handling"),
-                        priority: Priority::High,
-                        effort: Effort::Medium,
+                        dimension: name.clone(), action_type: ActionType::Replace, target,
+                        suggestion: format!("replace unwrap/panic in {path} with proper error handling"),
+                        reason: format!("{path} has {count} unwrap/panic calls"),
+                        priority: Priority::High, effort: Effort::Medium,
                     }],
                 ));
             }
@@ -72,17 +72,13 @@ impl Dimension for Observability {
         if !analysis.has_logging {
             score -= 20;
             issues.push(Issue::with_actions(
-                Level::Warning,
-                name.clone(),
-                "no logging framework detected in project",
-                Some("add structured logging (e.g. log/tracing/slog for Rust, logging for Python)".to_string()),
+                Level::Warning, name.clone(), "no logging framework detected in project",
                 vec![Action {
-                    dimension: name.clone(),
-                    action_type: ActionType::Add,
-                    target: Target { file: ".".into(), line_range: None, symbol: None },
-                    reason: "no logging framework detected, add structured logging".into(),
-                    priority: Priority::High,
-                    effort: Effort::Medium,
+                    dimension: name.clone(), action_type: ActionType::Add,
+                    target: Target::file("."),
+                    suggestion: "add structured logging (e.g. log/tracing/slog for Rust, logging for Python)".into(),
+                    reason: "no logging framework detected".into(),
+                    priority: Priority::High, effort: Effort::Medium,
                 }],
             ));
         }
@@ -96,17 +92,14 @@ impl Dimension for Observability {
         }
         if analysis.empty_catches > 0 {
             issues.push(Issue::with_actions(
-                Level::Warning,
-                name.clone(),
+                Level::Warning, name.clone(),
                 format!("{} empty catch/except blocks detected", analysis.empty_catches),
-                Some("handle or log errors instead of silently swallowing them".to_string()),
                 vec![Action {
-                    dimension: name.clone(),
-                    action_type: ActionType::Replace,
-                    target: Target { file: ".".into(), line_range: None, symbol: None },
-                    reason: format!("{} empty catch blocks, handle or log errors", analysis.empty_catches),
-                    priority: Priority::High,
-                    effort: Effort::Small,
+                    dimension: name.clone(), action_type: ActionType::Replace,
+                    target: Target::file("."),
+                    suggestion: "handle or log errors instead of silently swallowing them".into(),
+                    reason: format!("{} empty catch blocks", analysis.empty_catches),
+                    priority: Priority::High, effort: Effort::Small,
                 }],
             ));
         }
@@ -117,10 +110,8 @@ impl Dimension for Observability {
         }
         if analysis.hardcoded_configs > 0 {
             issues.push(Issue::new(
-                Level::Info,
-                name,
+                Level::Info, name,
                 format!("{} hardcoded configuration values detected", analysis.hardcoded_configs),
-                Some("externalize configuration using environment variables or config files".to_string()),
             ));
         }
 

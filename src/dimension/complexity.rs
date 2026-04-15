@@ -95,32 +95,24 @@ impl Dimension for Complexity {
             let size_kb = size / 1024;
             if *size > MAX_SIZE_WARN {
                 issues.push(Issue::with_actions(
-                    Level::Critical,
-                    name.clone(),
-                    format!("{path} ({size_kb}KB)"),
-                    Some(format!("split {path} into smaller units")),
+                    Level::Critical, name.clone(), format!("{path} ({size_kb}KB)"),
                     vec![Action {
-                        dimension: name.clone(),
-                        action_type: ActionType::Split,
-                        target: Target { file: path.clone(), line_range: None, symbol: None },
+                        dimension: name.clone(), action_type: ActionType::Split,
+                        target: Target::file(path),
+                        suggestion: format!("split {path} into smaller units"),
                         reason: format!("{path} is {size_kb}KB, exceeds 50KB threshold"),
-                        priority: Priority::Critical,
-                        effort: Effort::Large,
+                        priority: Priority::Critical, effort: Effort::Large,
                     }],
                 ));
             } else {
                 issues.push(Issue::with_actions(
-                    Level::Warning,
-                    name.clone(),
-                    format!("{path} ({size_kb}KB)"),
-                    Some(format!("extract independent logic from {path}")),
+                    Level::Warning, name.clone(), format!("{path} ({size_kb}KB)"),
                     vec![Action {
-                        dimension: name.clone(),
-                        action_type: ActionType::Extract,
-                        target: Target { file: path.clone(), line_range: None, symbol: None },
+                        dimension: name.clone(), action_type: ActionType::Extract,
+                        target: Target::file(path),
+                        suggestion: format!("extract independent logic from {path}"),
                         reason: format!("{path} is {size_kb}KB, extract independent logic"),
-                        priority: Priority::High,
-                        effort: Effort::Medium,
+                        priority: Priority::High, effort: Effort::Medium,
                     }],
                 ));
             }
@@ -131,9 +123,7 @@ impl Dimension for Complexity {
             let pct = (large_ratio * 100.0) as i32;
             issues.push(Issue::new(
                 Level::Info,
-                name,
-                format!("{pct}% of files exceed 15KB"),
-                None,
+                name, format!("{pct}% of files exceed 15KB"),
             ));
         }
 

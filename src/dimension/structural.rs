@@ -49,33 +49,25 @@ impl Dimension for Structural {
         if file_count > FILE_COUNT_CRIT {
             score -= 40;
             issues.push(Issue::with_actions(
-                Level::Critical,
-                name.clone(),
-                format!("{file_count} files in project"),
-                Some("split into sub-modules by responsibility".into()),
+                Level::Critical, name.clone(), format!("{file_count} files in project"),
                 vec![Action {
-                    dimension: name.clone(),
-                    action_type: ActionType::Split,
-                    target: Target { file: "src/".into(), line_range: None, symbol: None },
-                    reason: format!("{file_count} files exceed {FILE_COUNT_CRIT} threshold, split into sub-modules by responsibility"),
-                    priority: Priority::Critical,
-                    effort: Effort::Large,
+                    dimension: name.clone(), action_type: ActionType::Split,
+                    target: Target::file("src/"),
+                    suggestion: "split into sub-modules by responsibility".into(),
+                    reason: format!("{file_count} files exceed {FILE_COUNT_CRIT} threshold"),
+                    priority: Priority::Critical, effort: Effort::Large,
                 }],
             ));
         } else if file_count > FILE_COUNT_WARN {
             score -= 20;
             issues.push(Issue::with_actions(
-                Level::Warning,
-                name.clone(),
-                format!("{file_count} files in project"),
-                Some("review directory structure for extractable modules".into()),
+                Level::Warning, name.clone(), format!("{file_count} files in project"),
                 vec![Action {
-                    dimension: name.clone(),
-                    action_type: ActionType::Refactor,
-                    target: Target { file: "src/".into(), line_range: None, symbol: None },
-                    reason: format!("{file_count} files exceed {FILE_COUNT_WARN} threshold, review for extractable modules"),
-                    priority: Priority::High,
-                    effort: Effort::Medium,
+                    dimension: name.clone(), action_type: ActionType::Refactor,
+                    target: Target::file("src/"),
+                    suggestion: "review directory structure for extractable modules".into(),
+                    reason: format!("{file_count} files exceed {FILE_COUNT_WARN} threshold"),
+                    priority: Priority::High, effort: Effort::Medium,
                 }],
             ));
         }
@@ -95,17 +87,13 @@ impl Dimension for Structural {
         }
         if max_depth > DEPTH_WARN {
             issues.push(Issue::with_actions(
-                Level::Warning,
-                name.clone(),
-                format!("max directory depth is {max_depth}"),
-                Some("flatten nested directories".into()),
+                Level::Warning, name.clone(), format!("max directory depth is {max_depth}"),
                 vec![Action {
-                    dimension: name.clone(),
-                    action_type: ActionType::Move,
-                    target: Target { file: ".".into(), line_range: None, symbol: None },
-                    reason: format!("max depth {max_depth} exceeds {DEPTH_WARN} threshold, flatten nested directories"),
-                    priority: Priority::Medium,
-                    effort: Effort::Medium,
+                    dimension: name.clone(), action_type: ActionType::Move,
+                    target: Target::file("."),
+                    suggestion: "flatten nested directories".into(),
+                    reason: format!("max depth {max_depth} exceeds {DEPTH_WARN} threshold"),
+                    priority: Priority::Medium, effort: Effort::Medium,
                 }],
             ));
         }
@@ -124,10 +112,7 @@ impl Dimension for Structural {
         if top_dirs > TOP_DIRS_WARN {
             score -= 15;
             issues.push(Issue::new(
-                Level::Info,
-                name,
-                format!("{top_dirs} top-level entries"),
-                None,
+                Level::Info, name, format!("{top_dirs} top-level entries"),
             ));
         }
 

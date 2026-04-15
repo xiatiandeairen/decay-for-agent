@@ -51,34 +51,26 @@ impl Dimension for QualityAssurance {
             if test_ratio == 0.0 {
                 score -= 40;
                 issues.push(Issue::with_actions(
-                    Level::Critical,
-                    name.clone(),
-                    "no test files found in project",
-                    Some("add tests for critical paths and public APIs".to_string()),
+                    Level::Critical, name.clone(), "no test files found in project",
                     vec![Action {
-                        dimension: name.clone(),
-                        action_type: ActionType::Add,
-                        target: Target { file: ".".into(), line_range: None, symbol: None },
-                        reason: "no test files found, add tests for critical paths and public APIs".into(),
-                        priority: Priority::Critical,
-                        effort: Effort::Large,
+                        dimension: name.clone(), action_type: ActionType::Add,
+                        target: Target::file("."),
+                        suggestion: "add tests for critical paths and public APIs".into(),
+                        reason: "no test files found".into(),
+                        priority: Priority::Critical, effort: Effort::Large,
                     }],
                 ));
             } else if test_ratio < TEST_FILE_RATIO_WARN {
                 score -= 25;
                 let pct = (test_ratio * 100.0) as i32;
                 issues.push(Issue::with_actions(
-                    Level::Warning,
-                    name.clone(),
-                    format!("only {pct}% of files are tests"),
-                    Some("increase test coverage, focus on complex and critical modules".to_string()),
+                    Level::Warning, name.clone(), format!("only {pct}% of files are tests"),
                     vec![Action {
-                        dimension: name.clone(),
-                        action_type: ActionType::Add,
-                        target: Target { file: ".".into(), line_range: None, symbol: None },
-                        reason: format!("only {pct}% test files, increase coverage on complex modules"),
-                        priority: Priority::High,
-                        effort: Effort::Large,
+                        dimension: name.clone(), action_type: ActionType::Add,
+                        target: Target::file("."),
+                        suggestion: "increase test coverage, focus on complex and critical modules".into(),
+                        reason: format!("only {pct}% test files"),
+                        priority: Priority::High, effort: Effort::Large,
                     }],
                 ));
             } else if test_ratio < TEST_FILE_RATIO_GOOD {
@@ -92,17 +84,14 @@ impl Dimension for QualityAssurance {
             if line_ratio < TEST_LINE_RATIO_WARN {
                 score -= 20;
                 issues.push(Issue::with_actions(
-                    Level::Warning,
-                    name.clone(),
+                    Level::Warning, name.clone(),
                     format!("test/source line ratio is {:.1}% (very low)", line_ratio * 100.0),
-                    Some("add more tests to improve confidence in changes".to_string()),
                     vec![Action {
-                        dimension: name.clone(),
-                        action_type: ActionType::Add,
-                        target: Target { file: ".".into(), line_range: None, symbol: None },
-                        reason: format!("test/source ratio {:.1}%, add more tests", line_ratio * 100.0),
-                        priority: Priority::High,
-                        effort: Effort::Medium,
+                        dimension: name.clone(), action_type: ActionType::Add,
+                        target: Target::file("."),
+                        suggestion: "add more tests to improve confidence in changes".into(),
+                        reason: format!("test/source ratio {:.1}%", line_ratio * 100.0),
+                        priority: Priority::High, effort: Effort::Medium,
                     }],
                 ));
             } else if line_ratio < TEST_LINE_RATIO_GOOD {
@@ -121,10 +110,7 @@ impl Dimension for QualityAssurance {
         // Report source files without corresponding test files
         for path in &analysis.untested_source_files {
             issues.push(Issue::new(
-                Level::Info,
-                name.clone(),
-                format!("{path} has no corresponding test file"),
-                None,
+                Level::Info, name.clone(), format!("{path} has no corresponding test file"),
             ));
         }
 

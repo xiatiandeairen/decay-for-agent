@@ -20,35 +20,36 @@ impl fmt::Display for Level {
     }
 }
 
+/// A diagnostic issue — what's wrong.
+///
+/// Pure diagnostic: level + category + message.
+/// Prescriptive actions (what to do) live in `actions`.
 #[derive(serde::Serialize)]
 pub struct Issue {
     pub level: Level,
     pub category: String,
     pub message: String,
-    pub prescription: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub actions: Vec<Action>,
 }
 
 impl Issue {
-    /// Create an issue without actions (default for dimensions not yet migrated to Action).
-    pub fn new(level: Level, category: impl Into<String>, message: impl Into<String>, prescription: Option<String>) -> Self {
+    /// Create a diagnostic issue without actions.
+    pub fn new(level: Level, category: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             level,
             category: category.into(),
             message: message.into(),
-            prescription,
             actions: vec![],
         }
     }
 
-    /// Create an issue with structured actions.
-    pub fn with_actions(level: Level, category: impl Into<String>, message: impl Into<String>, prescription: Option<String>, actions: Vec<Action>) -> Self {
+    /// Create a diagnostic issue with structured actions.
+    pub fn with_actions(level: Level, category: impl Into<String>, message: impl Into<String>, actions: Vec<Action>) -> Self {
         Self {
             level,
             category: category.into(),
             message: message.into(),
-            prescription,
             actions,
         }
     }
@@ -57,8 +58,8 @@ impl Issue {
 impl fmt::Display for Issue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "  [{}] {}: {}", self.level, self.category, self.message)?;
-        if let Some(rx) = &self.prescription {
-            write!(f, " — {rx}")?;
+        if let Some(action) = self.actions.first() {
+            write!(f, " — {}", action.suggestion)?;
         }
         Ok(())
     }

@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use log::debug;
 
 use super::{Dimension, DimensionResult};
+use crate::action::{Action, ActionType, Effort, Priority, Target};
 use crate::data_store::DataStore;
 use crate::diagnose::{Issue, Level};
 
@@ -93,31 +94,47 @@ impl Dimension for Complexity {
         for (path, size) in &large_files {
             let size_kb = size / 1024;
             if *size > MAX_SIZE_WARN {
-                issues.push(Issue {
-                    level: Level::Critical,
-                    category: name.clone(),
-                    message: format!("{path} ({size_kb}KB)"),
-                    prescription: Some(format!("split {path} into smaller units")),
-                });
+                issues.push(Issue::with_actions(
+                    Level::Critical,
+                    name.clone(),
+                    format!("{path} ({size_kb}KB)"),
+                    Some(format!("split {path} into smaller units")),
+                    vec![Action {
+                        dimension: name.clone(),
+                        action_type: ActionType::Split,
+                        target: Target { file: path.clone(), line_range: None, symbol: None },
+                        reason: format!("{path} is {size_kb}KB, exceeds 50KB threshold"),
+                        priority: Priority::Critical,
+                        effort: Effort::Large,
+                    }],
+                ));
             } else {
-                issues.push(Issue {
-                    level: Level::Warning,
-                    category: name.clone(),
-                    message: format!("{path} ({size_kb}KB)"),
-                    prescription: Some(format!("extract independent logic from {path}")),
-                });
+                issues.push(Issue::with_actions(
+                    Level::Warning,
+                    name.clone(),
+                    format!("{path} ({size_kb}KB)"),
+                    Some(format!("extract independent logic from {path}")),
+                    vec![Action {
+                        dimension: name.clone(),
+                        action_type: ActionType::Extract,
+                        target: Target { file: path.clone(), line_range: None, symbol: None },
+                        reason: format!("{path} is {size_kb}KB, extract independent logic"),
+                        priority: Priority::High,
+                        effort: Effort::Medium,
+                    }],
+                ));
             }
         }
 
         // Diagnose: ratio info
         if large_ratio > LARGE_RATIO_WARN {
             let pct = (large_ratio * 100.0) as i32;
-            issues.push(Issue {
-                level: Level::Info,
-                category: name,
-                message: format!("{pct}% of files exceed 15KB"),
-                prescription: None,
-            });
+            issues.push(Issue::new(
+                Level::Info,
+                name,
+                format!("{pct}% of files exceed 15KB"),
+                None,
+            ));
         }
 
         Ok(DimensionResult {

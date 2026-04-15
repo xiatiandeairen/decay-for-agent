@@ -2,6 +2,7 @@ use anyhow::Result;
 use log::debug;
 
 use super::{Dimension, DimensionResult};
+use crate::action::{Action, ActionType, Effort, Priority, Target};
 use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
@@ -52,37 +53,61 @@ impl Dimension for Reliability {
         }
         for (path, count) in &analysis.unsafe_details {
             if *count > UNSAFE_PER_FILE_WARN {
-                issues.push(Issue {
-                    level: Level::Warning,
-                    category: name.clone(),
-                    message: format!("{path} has {count} unsafe/eval occurrences"),
-                    prescription: Some(format!("minimize unsafe code in {path}, prefer safe abstractions")),
-                });
+                issues.push(Issue::with_actions(
+                    Level::Warning,
+                    name.clone(),
+                    format!("{path} has {count} unsafe/eval occurrences"),
+                    Some(format!("minimize unsafe code in {path}, prefer safe abstractions")),
+                    vec![Action {
+                        dimension: name.clone(),
+                        action_type: ActionType::Replace,
+                        target: Target { file: path.clone(), line_range: None, symbol: None },
+                        reason: format!("{path} has {count} unsafe/eval, replace with safe abstractions"),
+                        priority: Priority::High,
+                        effort: Effort::Medium,
+                    }],
+                ));
             }
         }
 
         // SQL/shell injection patterns
         let injection_penalty = (analysis.injection_patterns * 20).min(40) as i32;
         score -= injection_penalty;
-        for (path, pattern) in &analysis.injection_details {
-            issues.push(Issue {
-                level: Level::Critical,
-                category: name.clone(),
-                message: format!("{path}: potential {pattern}"),
-                prescription: Some("use parameterized queries or safe command execution".to_string()),
-            });
+        for (path, pattern, line_no) in &analysis.injection_details {
+            issues.push(Issue::with_actions(
+                Level::Critical,
+                name.clone(),
+                format!("{path}:{line_no}: potential {pattern}"),
+                Some("use parameterized queries or safe command execution".to_string()),
+                vec![Action {
+                    dimension: name.clone(),
+                    action_type: ActionType::Replace,
+                    target: Target { file: path.clone(), line_range: Some((*line_no, *line_no)), symbol: None },
+                    reason: format!("{path}:{line_no}: potential {pattern}, use parameterized queries"),
+                    priority: Priority::Critical,
+                    effort: Effort::Small,
+                }],
+            ));
         }
 
         // Hardcoded secrets
         let secret_penalty = (analysis.hardcoded_secrets * 15).min(30) as i32;
         score -= secret_penalty;
-        for (path, kind) in &analysis.secret_details {
-            issues.push(Issue {
-                level: Level::Critical,
-                category: name.clone(),
-                message: format!("{path}: {kind}"),
-                prescription: Some("use environment variables or secret management for credentials".to_string()),
-            });
+        for (path, kind, line_no) in &analysis.secret_details {
+            issues.push(Issue::with_actions(
+                Level::Critical,
+                name.clone(),
+                format!("{path}:{line_no}: {kind}"),
+                Some("use environment variables or secret management for credentials".to_string()),
+                vec![Action {
+                    dimension: name.clone(),
+                    action_type: ActionType::Replace,
+                    target: Target { file: path.clone(), line_range: Some((*line_no, *line_no)), symbol: None },
+                    reason: format!("{path}:{line_no}: {kind}, use env vars or secret management"),
+                    priority: Priority::Critical,
+                    effort: Effort::Small,
+                }],
+            ));
         }
 
         // Dependency count
@@ -93,12 +118,20 @@ impl Dimension for Reliability {
             score -= 10;
         }
         if dep_count > DEP_COUNT_WARN {
-            issues.push(Issue {
-                level: Level::Info,
-                category: name,
-                message: format!("{dep_count} direct dependencies"),
-                prescription: Some("audit dependencies for necessity, remove unused ones".to_string()),
-            });
+            issues.push(Issue::with_actions(
+                Level::Info,
+                name,
+                format!("{dep_count} direct dependencies"),
+                Some("audit dependencies for necessity, remove unused ones".to_string()),
+                vec![Action {
+                    dimension: "reliability".into(),
+                    action_type: ActionType::Remove,
+                    target: Target { file: ".".into(), line_range: None, symbol: None },
+                    reason: format!("{dep_count} direct dependencies, audit and remove unused"),
+                    priority: Priority::Medium,
+                    effort: Effort::Small,
+                }],
+            ));
         }
 
         Ok(DimensionResult {
@@ -116,8 +149,8 @@ struct Analysis {
     injection_patterns: usize,
     hardcoded_secrets: usize,
     unsafe_details: Vec<(String, usize)>,
-    injection_details: Vec<(String, String)>,
-    secret_details: Vec<(String, String)>,
+    injection_details: Vec<(String, String, u32)>, // (path, pattern, line_no)
+    secret_details: Vec<(String, String, u32)>,   // (path, kind, line_no)
 }
 
 fn analyze(source_files: &[SourceFile]) -> Analysis {
@@ -128,7 +161,7 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
     let mut hardcoded_secrets = 0;
     let mut unsafe_details = Vec::new();
     let mut injection_details = Vec::new();
-    let mut secret_details: Vec<(String, String)> = Vec::new();
+    let mut secret_details: Vec<(String, String, u32)> = Vec::new();
 
     let unsafe_patterns = ["unsafe {", "unsafe{", "eval(", "exec(", "Function("];
 
@@ -137,11 +170,12 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
         total_lines += sf.line_count;
         let mut file_unsafe = 0;
 
-        for line in &sf.lines {
+        for (i, line) in sf.lines.iter().enumerate() {
             let trimmed = line.trim();
             if trimmed.starts_with("//") || trimmed.starts_with('#') {
                 continue;
             }
+            let line_no = (i + 1) as u32;
 
             // Unsafe/eval
             for pat in &unsafe_patterns {
@@ -159,7 +193,7 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
                     || trimmed.to_uppercase().contains("UPDATE "))
             {
                 injection_patterns += 1;
-                injection_details.push((sf.path.clone(), "SQL string concatenation".to_string()));
+                injection_details.push((sf.path.clone(), "SQL string concatenation".to_string(), line_no));
             }
 
             // Shell injection
@@ -167,7 +201,7 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
                 && (trimmed.contains("format!(") || trimmed.contains("f\"") || trimmed.contains("+ "))
             {
                 injection_patterns += 1;
-                injection_details.push((sf.path.clone(), "shell command injection risk".to_string()));
+                injection_details.push((sf.path.clone(), "shell command injection risk".to_string(), line_no));
             }
 
             // Hardcoded secrets
@@ -177,7 +211,7 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
                 && !lower.contains("env") && !lower.contains("config") && !lower.contains("example")
             {
                 hardcoded_secrets += 1;
-                secret_details.push((sf.path.clone(), "hardcoded credential detected".to_string()));
+                secret_details.push((sf.path.clone(), "hardcoded credential detected".to_string(), line_no));
             }
         }
 

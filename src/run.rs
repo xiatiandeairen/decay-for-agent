@@ -5,7 +5,7 @@ use anyhow::Result;
 use log::debug;
 use serde::Serialize;
 
-use crate::{collector, data_store, db, diagnose, dimension, profile, trend};
+use crate::{action, collector, data_store, db, diagnose, dimension, profile, trend};
 
 #[derive(Serialize)]
 pub struct Report {
@@ -16,6 +16,8 @@ pub struct Report {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub trend: Option<HashMap<String, trend::Delta>>,
     pub issues: Vec<diagnose::Issue>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<action::Action>,
     pub collectors: HashMap<String, HashMap<String, String>>,
 }
 
@@ -27,6 +29,7 @@ pub struct MarkdownCtx<'a> {
     pub trend_data: &'a Option<HashMap<String, trend::Delta>>,
     pub collectors: &'a HashMap<String, HashMap<String, String>>,
     pub issues: &'a [diagnose::Issue],
+    pub actions: &'a [action::Action],
 }
 
 pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
@@ -38,6 +41,7 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         trend_data,
         collectors,
         issues,
+        actions: _,
     } = ctx;
 
     let scan_stats = collectors.get("file_scan");
@@ -155,6 +159,29 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
         sections.join("\n")
     };
 
+    let actions_section = if ctx.actions.is_empty() {
+        String::new()
+    } else {
+        let mut rows = String::from("## Actions\n\n| Priority | Type | Target | Effort | Reason |\n|----------|------|--------|--------|--------|\n");
+        for a in ctx.actions {
+            let target = if let Some((start, end)) = a.target.line_range {
+                if start == end {
+                    format!("{}:{}", a.target.file, start)
+                } else {
+                    format!("{}:{}-{}", a.target.file, start, end)
+                }
+            } else {
+                a.target.file.clone()
+            };
+            rows.push_str(&format!(
+                "| {} | {} | {} | {:?} | {} |\n",
+                a.priority, a.action_type, target, a.effort, a.reason
+            ));
+        }
+        rows.push('\n');
+        rows
+    };
+
     let project_name = std::path::Path::new(project_path)
         .file_name()
         .unwrap_or_default()
@@ -190,6 +217,7 @@ pub fn render_markdown(ctx: &MarkdownCtx<'_>) -> String {
          \n\
          {issues_section}\n\
          \n\
+         {actions_section}\
          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n",
         version = env!("CARGO_PKG_VERSION"),
     )
@@ -253,6 +281,22 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
 
     all_issues.sort_by_key(|i| i.level);
 
+    // Collect all actions from issues, dedup, sort by priority then effort
+    let mut all_actions: Vec<action::Action> = all_issues
+        .iter()
+        .flat_map(|i| i.actions.iter().cloned())
+        .collect();
+    // Dedup: same dimension + file + action_type → keep first (higher severity)
+    all_actions.dedup_by(|b, a| {
+        a.dimension == b.dimension
+            && a.target.file == b.target.file
+            && a.action_type == b.action_type
+    });
+    // Sort: priority asc (Critical first), then effort asc (Small first)
+    all_actions.sort_by(|a, b| {
+        a.priority.cmp(&b.priority).then(a.effort.cmp(&b.effort))
+    });
+
     // Compute weighted composite using score profile
     let comp = score_profile.weighted_composite(&scores);
     scores.insert("composite".to_string(), Some(comp));
@@ -289,6 +333,7 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
             composite: comp,
             trend: trend_data,
             issues: all_issues,
+            actions: all_actions,
             collectors: collector_stats,
         };
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -301,6 +346,7 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
             trend_data: &trend_data,
             collectors: &collector_stats,
             issues: &all_issues,
+            actions: &all_actions,
         });
         println!("{md}");
     } else if quiet {

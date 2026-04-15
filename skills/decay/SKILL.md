@@ -57,9 +57,33 @@ cargo run --manifest-path {PLUGIN_DIR}/../../Cargo.toml 2>/dev/null || echo "dec
 | WARNING | Should fix — quality degrading |
 | INFO | Monitor — not urgent |
 
+### Actions (v4+)
+
+Each issue may include structured `actions` — agent-consumable refactoring instructions:
+
+| Field | Description |
+|-------|-------------|
+| `action_type` | split, extract, add, remove, replace, move, refactor |
+| `target.file` | File or directory path |
+| `target.line_range` | `[start, end]` line range (when available) |
+| `target.symbol` | Function/module name (when available) |
+| `priority` | critical > high > medium > low |
+| `effort` | small (< 30min) / medium (30min-2hr) / large (> 2hr) |
+| `reason` | Why this action is needed |
+
+Top-level `actions` array is sorted by priority then effort (most urgent + cheapest first).
+
+For JSON output with full action data, use:
+
+```bash
+# [RUN]
+decay --json
+```
+
 ## After Running
 
 1. Present the health summary to the user
-2. If critical issues exist, suggest addressing them
+2. If critical issues exist, highlight the top actions from the `actions` array
 3. If user just completed a refactor, compare with previous scores (trend arrows)
 4. Do not automatically start fixing issues — wait for user direction
+5. When user wants to fix issues, use the `actions` array to plan refactoring in priority order

@@ -5,6 +5,7 @@ use anyhow::Result;
 use log::debug;
 
 use super::{Dimension, DimensionResult};
+use crate::action::{Action, ActionType, Effort, Priority, Target};
 use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
@@ -67,12 +68,20 @@ impl Dimension for Maintainability {
         }
         for (path, dup_count) in &analysis.dup_details {
             if *dup_count > 0 {
-                issues.push(Issue {
-                    level: Level::Warning,
-                    category: name.clone(),
-                    message: format!("{path} has {dup_count} duplicate block(s) shared with other files"),
-                    prescription: Some(format!("extract shared logic from {path} into a common module")),
-                });
+                issues.push(Issue::with_actions(
+                    Level::Warning,
+                    name.clone(),
+                    format!("{path} has {dup_count} duplicate block(s) shared with other files"),
+                    Some(format!("extract shared logic from {path} into a common module")),
+                    vec![Action {
+                        dimension: name.clone(),
+                        action_type: ActionType::Extract,
+                        target: Target { file: path.clone(), line_range: None, symbol: None },
+                        reason: format!("{path} has {dup_count} duplicate blocks, extract into common module"),
+                        priority: Priority::High,
+                        effort: Effort::Medium,
+                    }],
+                ));
             }
         }
 
@@ -87,12 +96,21 @@ impl Dimension for Maintainability {
         }
         for (path, lines) in &analysis.long_file_details {
             let level = if *lines > 600 { Level::Critical } else { Level::Warning };
-            issues.push(Issue {
+            let priority = if *lines > 600 { Priority::Critical } else { Priority::High };
+            issues.push(Issue::with_actions(
                 level,
-                category: name.clone(),
-                message: format!("{path} has {lines} lines"),
-                prescription: Some(format!("split {path} into smaller modules")),
-            });
+                name.clone(),
+                format!("{path} has {lines} lines"),
+                Some(format!("split {path} into smaller modules")),
+                vec![Action {
+                    dimension: name.clone(),
+                    action_type: ActionType::Split,
+                    target: Target { file: path.clone(), line_range: None, symbol: None },
+                    reason: format!("{path} has {lines} lines, split into smaller modules"),
+                    priority,
+                    effort: Effort::Medium,
+                }],
+            ));
         }
 
         // Long function ratio
@@ -104,13 +122,23 @@ impl Dimension for Maintainability {
                 score -= 10;
             }
         }
-        for (path, func_name, lines) in &analysis.long_func_details {
-            issues.push(Issue {
-                level: Level::Warning,
-                category: name.clone(),
-                message: format!("{func_name} in {path} is {lines} lines long"),
-                prescription: Some(format!("break {func_name} into smaller functions")),
-            });
+        for (path, func_name, lines, start_line) in &analysis.long_func_details {
+            let start = *start_line as u32;
+            let end = start + *lines as u32;
+            issues.push(Issue::with_actions(
+                Level::Warning,
+                name.clone(),
+                format!("{func_name} in {path} is {lines} lines long"),
+                Some(format!("break {func_name} into smaller functions")),
+                vec![Action {
+                    dimension: name.clone(),
+                    action_type: ActionType::Extract,
+                    target: Target { file: path.clone(), line_range: Some((start, end)), symbol: Some(func_name.clone()) },
+                    reason: format!("{func_name} is {lines} lines, break into smaller functions"),
+                    priority: Priority::High,
+                    effort: Effort::Small,
+                }],
+            ));
         }
 
         // TODO/FIXME density
@@ -121,12 +149,12 @@ impl Dimension for Maintainability {
             }
         }
         if analysis.todo_count > 0 {
-            issues.push(Issue {
-                level: Level::Info,
-                category: name,
-                message: format!("{} TODO/FIXME comments across project", analysis.todo_count),
-                prescription: None,
-            });
+            issues.push(Issue::new(
+                Level::Info,
+                name,
+                format!("{} TODO/FIXME comments across project", analysis.todo_count),
+                None,
+            ));
         }
 
         Ok(DimensionResult {
@@ -147,7 +175,7 @@ struct Analysis {
     todo_count: usize,
     dup_details: Vec<(String, usize)>,
     long_file_details: Vec<(String, usize)>,
-    long_func_details: Vec<(String, String, usize)>,
+    long_func_details: Vec<(String, String, usize, usize)>, // (path, func_name, func_len, start_line)
 }
 
 fn analyze_files(source_files: &[SourceFile]) -> Analysis {
@@ -201,7 +229,7 @@ fn analyze_files(source_files: &[SourceFile]) -> Analysis {
             let func_len = end - start;
             if func_len > LONG_FUNC_LINES {
                 long_functions += 1;
-                long_func_details.push((sf.path.clone(), func_name.clone(), func_len));
+                long_func_details.push((sf.path.clone(), func_name.clone(), func_len, *start));
             }
         }
 

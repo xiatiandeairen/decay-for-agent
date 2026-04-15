@@ -2,6 +2,7 @@ use anyhow::Result;
 use log::debug;
 
 use super::{Dimension, DimensionResult};
+use crate::action::{Action, ActionType, Effort, Priority, Target};
 use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
@@ -52,12 +53,23 @@ impl Dimension for Performance {
             score -= 15;
         }
         for (path, line_no, depth) in &analysis.nest_details {
-            issues.push(Issue {
-                level: if *depth >= 4 { Level::Critical } else { Level::Warning },
-                category: name.clone(),
-                message: format!("{path}:{line_no} has {depth}-level nested loop"),
-                prescription: Some("extract inner loops into separate functions or use iterators".to_string()),
-            });
+            let priority = if *depth >= 4 { Priority::Critical } else { Priority::High };
+            let level = if *depth >= 4 { Level::Critical } else { Level::Warning };
+            let ln = *line_no as u32;
+            issues.push(Issue::with_actions(
+                level,
+                name.clone(),
+                format!("{path}:{line_no} has {depth}-level nested loop"),
+                Some("extract inner loops into separate functions or use iterators".to_string()),
+                vec![Action {
+                    dimension: name.clone(),
+                    action_type: ActionType::Extract,
+                    target: Target { file: path.clone(), line_range: Some((ln, ln)), symbol: None },
+                    reason: format!("{depth}-level nested loop at line {line_no}, extract into functions"),
+                    priority,
+                    effort: Effort::Small,
+                }],
+            ));
         }
 
         // Clone/copy density
@@ -71,12 +83,20 @@ impl Dimension for Performance {
         }
         for (path, count) in &analysis.clone_details {
             if *count > 10 {
-                issues.push(Issue {
-                    level: Level::Warning,
-                    category: name.clone(),
-                    message: format!("{path} has {count} clone/copy calls"),
-                    prescription: Some(format!("reduce cloning in {path}, prefer references or Cow")),
-                });
+                issues.push(Issue::with_actions(
+                    Level::Warning,
+                    name.clone(),
+                    format!("{path} has {count} clone/copy calls"),
+                    Some(format!("reduce cloning in {path}, prefer references or Cow")),
+                    vec![Action {
+                        dimension: name.clone(),
+                        action_type: ActionType::Refactor,
+                        target: Target { file: path.clone(), line_range: None, symbol: None },
+                        reason: format!("{path} has {count} clones, prefer references or Cow"),
+                        priority: Priority::Medium,
+                        effort: Effort::Medium,
+                    }],
+                ));
             }
         }
 
@@ -87,12 +107,12 @@ impl Dimension for Performance {
             score -= 10;
         }
         for (path, call) in &analysis.blocking_details {
-            issues.push(Issue {
-                level: Level::Info,
-                category: name.clone(),
-                message: format!("{path}: blocking call {call}"),
-                prescription: Some("consider async alternatives for I/O-bound operations".to_string()),
-            });
+            issues.push(Issue::new(
+                Level::Info,
+                name.clone(),
+                format!("{path}: blocking call {call}"),
+                Some("consider async alternatives for I/O-bound operations".to_string()),
+            ));
         }
 
         Ok(DimensionResult {

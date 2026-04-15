@@ -2,6 +2,12 @@
 
 ### 文档索引
 
+#### v5
+- [decay-for-agent 产品路线图](.know/docs/v5/roadmap.md) | 2026-04-15
+
+#### v4
+- [decay-for-agent 产品路线图](.know/docs/v4/roadmap.md) | 2026-04-15
+
 #### v3
 - [decay-for-agent 产品路线图](.know/docs/v3/roadmap.md) | 2026-04-14
 
@@ -64,3 +70,13 @@
   - [tech](.know/docs/requirements/reliability/tech.md) | 2026-04-14
 - [performance](.know/docs/requirements/performance/prd.md) | 2026-04-14
   - [tech](.know/docs/requirements/performance/tech.md) | 2026-04-14
+- [action-schema](.know/docs/requirements/action-schema/prd.md) | 2026-04-15
+  - [tech](.know/docs/requirements/action-schema/tech.md) | 2026-04-15
+- [prescription-engine](.know/docs/requirements/prescription-engine/prd.md) | 2026-04-15
+  - [tech](.know/docs/requirements/prescription-engine/tech.md) | 2026-04-15
+- [location-precision](.know/docs/requirements/location-precision/prd.md) | 2026-04-15
+  - [tech](.know/docs/requirements/location-precision/tech.md) | 2026-04-15
+- [action-sorting](.know/docs/requirements/action-sorting/prd.md) | 2026-04-15
+  - [tech](.know/docs/requirements/action-sorting/tech.md) | 2026-04-15
+- [agent-protocol](.know/docs/requirements/agent-protocol/prd.md) | 2026-04-15
+  - [tech](.know/docs/requirements/agent-protocol/tech.md) | 2026-04-15

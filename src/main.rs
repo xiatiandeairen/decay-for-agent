@@ -1,3 +1,4 @@
+mod action;
 mod collector;
 mod config;
 mod data_store;

@@ -38,7 +38,7 @@ const server = new McpServer({
 
 server.tool(
   "decay_check",
-  "Run project health check: scan files, analyze git history, score health, diagnose issues, and generate refactoring prescriptions",
+  "Run project health check: scan files, analyze git history, score 8 dimensions, diagnose issues, and generate structured actions (type, target file+line, priority, effort). Returns JSON with top-level sorted actions array for direct consumption.",
   {
     path: z.string().optional().describe("Project path (default: current working directory)"),
   },

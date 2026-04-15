@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::action::Action;
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Level {
@@ -24,6 +26,32 @@ pub struct Issue {
     pub category: String,
     pub message: String,
     pub prescription: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub actions: Vec<Action>,
+}
+
+impl Issue {
+    /// Create an issue without actions (default for dimensions not yet migrated to Action).
+    pub fn new(level: Level, category: impl Into<String>, message: impl Into<String>, prescription: Option<String>) -> Self {
+        Self {
+            level,
+            category: category.into(),
+            message: message.into(),
+            prescription,
+            actions: vec![],
+        }
+    }
+
+    /// Create an issue with structured actions.
+    pub fn with_actions(level: Level, category: impl Into<String>, message: impl Into<String>, prescription: Option<String>, actions: Vec<Action>) -> Self {
+        Self {
+            level,
+            category: category.into(),
+            message: message.into(),
+            prescription,
+            actions,
+        }
+    }
 }
 
 impl fmt::Display for Issue {

@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use log::debug;
 
 use super::{Dimension, DimensionResult};
+use crate::action::{Action, ActionType, Effort, Priority, Target};
 use crate::data_store::DataStore;
 use crate::diagnose::{Issue, Level};
 
@@ -79,12 +80,20 @@ impl Dimension for Fragility {
         }
         if concentration > CHURN_CONCENTRATION_WARN {
             let pct = (concentration * 100.0) as i32;
-            issues.push(Issue {
-                level: Level::Warning,
-                category: name.clone(),
-                message: format!("top 10% files account for {pct}% of churn"),
-                prescription: Some("distribute changes across more files".into()),
-            });
+            issues.push(Issue::with_actions(
+                Level::Warning,
+                name.clone(),
+                format!("top 10% files account for {pct}% of churn"),
+                Some("distribute changes across more files".into()),
+                vec![Action {
+                    dimension: name.clone(),
+                    action_type: ActionType::Refactor,
+                    target: Target { file: ".".into(), line_range: None, symbol: None },
+                    reason: format!("top 10% files account for {pct}% of churn, distribute changes"),
+                    priority: Priority::High,
+                    effort: Effort::Large,
+                }],
+            ));
         }
 
         // High churn files (>MAX_CHURN_WARN lines), excluding lock files
@@ -105,12 +114,20 @@ impl Dimension for Fragility {
         }
 
         for (path, churn) in &high_churn {
-            issues.push(Issue {
-                level: Level::Critical,
-                category: name.clone(),
-                message: format!("{path} has {churn} lines churn"),
-                prescription: Some(format!("split {path} to isolate unstable logic")),
-            });
+            issues.push(Issue::with_actions(
+                Level::Critical,
+                name.clone(),
+                format!("{path} has {churn} lines churn"),
+                Some(format!("split {path} to isolate unstable logic")),
+                vec![Action {
+                    dimension: name.clone(),
+                    action_type: ActionType::Split,
+                    target: Target { file: path.clone(), line_range: None, symbol: None },
+                    reason: format!("{path} has {churn} lines churn, isolate unstable logic"),
+                    priority: Priority::Critical,
+                    effort: Effort::Medium,
+                }],
+            ));
         }
 
         // Frequently changed files (>10 changes), excluding lock files
@@ -127,12 +144,12 @@ impl Dimension for Fragility {
             .with_context(|| format!("fragility: failed to collect frequent for snapshot {snapshot_id}"))?;
 
         for (path, count) in &frequent {
-            issues.push(Issue {
-                level: Level::Info,
-                category: name.clone(),
-                message: format!("{path} changed {count} times"),
-                prescription: None,
-            });
+            issues.push(Issue::new(
+                Level::Info,
+                name.clone(),
+                format!("{path} changed {count} times"),
+                None,
+            ));
         }
 
         Ok(DimensionResult {

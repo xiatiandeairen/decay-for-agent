@@ -2,6 +2,7 @@ use anyhow::Result;
 use log::debug;
 
 use super::{Dimension, DimensionResult};
+use crate::action::{Action, ActionType, Effort, Priority, Target};
 use crate::data_store::{DataStore, SourceFile};
 use crate::diagnose::{Issue, Level};
 
@@ -45,26 +46,45 @@ impl Dimension for Observability {
                 score -= 15;
             }
         }
-        for (path, count) in &analysis.unwrap_details {
+        for (path, count, lines) in &analysis.unwrap_details {
             if *count > 5 {
-                issues.push(Issue {
-                    level: Level::Warning,
-                    category: name.clone(),
-                    message: format!("{path} has {count} unwrap/panic calls"),
-                    prescription: Some(format!("replace unwrap/panic in {path} with proper error handling")),
+                let line_range = lines.first().and_then(|first| {
+                    lines.last().map(|last| (*first, *last))
                 });
+                issues.push(Issue::with_actions(
+                    Level::Warning,
+                    name.clone(),
+                    format!("{path} has {count} unwrap/panic calls"),
+                    Some(format!("replace unwrap/panic in {path} with proper error handling")),
+                    vec![Action {
+                        dimension: name.clone(),
+                        action_type: ActionType::Replace,
+                        target: Target { file: path.clone(), line_range, symbol: None },
+                        reason: format!("{path} has {count} unwrap/panic calls, replace with proper error handling"),
+                        priority: Priority::High,
+                        effort: Effort::Medium,
+                    }],
+                ));
             }
         }
 
         // No logging framework
         if !analysis.has_logging {
             score -= 20;
-            issues.push(Issue {
-                level: Level::Warning,
-                category: name.clone(),
-                message: "no logging framework detected in project".to_string(),
-                prescription: Some("add structured logging (e.g. log/tracing/slog for Rust, logging for Python)".to_string()),
-            });
+            issues.push(Issue::with_actions(
+                Level::Warning,
+                name.clone(),
+                "no logging framework detected in project",
+                Some("add structured logging (e.g. log/tracing/slog for Rust, logging for Python)".to_string()),
+                vec![Action {
+                    dimension: name.clone(),
+                    action_type: ActionType::Add,
+                    target: Target { file: ".".into(), line_range: None, symbol: None },
+                    reason: "no logging framework detected, add structured logging".into(),
+                    priority: Priority::High,
+                    effort: Effort::Medium,
+                }],
+            ));
         }
 
         // Error swallowing
@@ -75,12 +95,20 @@ impl Dimension for Observability {
             }
         }
         if analysis.empty_catches > 0 {
-            issues.push(Issue {
-                level: Level::Warning,
-                category: name.clone(),
-                message: format!("{} empty catch/except blocks detected", analysis.empty_catches),
-                prescription: Some("handle or log errors instead of silently swallowing them".to_string()),
-            });
+            issues.push(Issue::with_actions(
+                Level::Warning,
+                name.clone(),
+                format!("{} empty catch/except blocks detected", analysis.empty_catches),
+                Some("handle or log errors instead of silently swallowing them".to_string()),
+                vec![Action {
+                    dimension: name.clone(),
+                    action_type: ActionType::Replace,
+                    target: Target { file: ".".into(), line_range: None, symbol: None },
+                    reason: format!("{} empty catch blocks, handle or log errors", analysis.empty_catches),
+                    priority: Priority::High,
+                    effort: Effort::Small,
+                }],
+            ));
         }
 
         // Hardcoded config
@@ -88,12 +116,12 @@ impl Dimension for Observability {
             score -= 10;
         }
         if analysis.hardcoded_configs > 0 {
-            issues.push(Issue {
-                level: Level::Info,
-                category: name,
-                message: format!("{} hardcoded configuration values detected", analysis.hardcoded_configs),
-                prescription: Some("externalize configuration using environment variables or config files".to_string()),
-            });
+            issues.push(Issue::new(
+                Level::Info,
+                name,
+                format!("{} hardcoded configuration values detected", analysis.hardcoded_configs),
+                Some("externalize configuration using environment variables or config files".to_string()),
+            ));
         }
 
         Ok(DimensionResult {
@@ -112,7 +140,7 @@ struct Analysis {
     total_catches: usize,
     empty_catches: usize,
     hardcoded_configs: usize,
-    unwrap_details: Vec<(String, usize)>,
+    unwrap_details: Vec<(String, usize, Vec<u32>)>, // (path, count, line_numbers)
 }
 
 fn analyze(source_files: &[SourceFile]) -> Analysis {
@@ -139,6 +167,7 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
         total_lines += sf.line_count;
 
         let mut file_unwraps = 0;
+        let mut file_unwrap_lines: Vec<u32> = Vec::new();
 
         for (i, line) in sf.lines.iter().enumerate() {
             let trimmed = line.trim();
@@ -158,6 +187,7 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
                 if trimmed.contains(pat) {
                     unwrap_panic_count += 1;
                     file_unwraps += 1;
+                    file_unwrap_lines.push((i + 1) as u32);
                 }
             }
 
@@ -186,7 +216,7 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
         }
 
         if file_unwraps > 0 {
-            unwrap_details.push((sf.path.clone(), file_unwraps));
+            unwrap_details.push((sf.path.clone(), file_unwraps, file_unwrap_lines));
         }
     }
 

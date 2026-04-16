@@ -2,6 +2,9 @@
 
 ### 文档索引
 
+#### v7
+- [decay-for-agent 产品路线图](.know/docs/v7/roadmap.md) | 2026-04-16
+
 #### v6
 - [decay-for-agent 产品路线图](.know/docs/v6/roadmap.md) | 2026-04-15
 

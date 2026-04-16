@@ -348,8 +348,9 @@ pub fn render_terminal(
     // Summary first — the most important info
     if let Some(s) = summary {
         println!("━━━ {} ━━━", s.headline);
+        println!("{}", s.narrative);
         if !s.top_actions.is_empty() {
-            println!("Top actions:");
+            println!("\nTop actions:");
             for a in &s.top_actions {
                 println!("  [{:>8}] {} ({})", a.priority, a.what, a.effort);
             }

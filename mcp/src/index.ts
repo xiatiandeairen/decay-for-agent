@@ -38,7 +38,7 @@ const server = new McpServer({
 
 server.tool(
   "decay_check",
-  "Run project health check: scan files, analyze git history, score 8 dimensions, diagnose issues, and generate structured actions (type, target file+line, priority, effort). Returns JSON with top-level sorted actions array for direct consumption.",
+  "Run project health check. Returns summary (headline + narrative + top 3 actions) first, then full diagnostic report with 8 dimension scores, classified issues, impact assessment, patches, and preventions.",
   {
     path: z.string().optional().describe("Project path (default: current working directory)"),
   },
@@ -53,8 +53,19 @@ server.tool(
 
       const result = JSON.parse(stdout);
 
+      // Return summary as first content block for quick consumption,
+      // full report as second block for details
+      const summary = result.summary;
+      const summaryText = summary
+        ? `${summary.headline}\n\n${summary.narrative}\n\nTop actions:\n${(summary.top_actions || []).map((a: { priority: string; what: string; effort: string }) => `  [${a.priority}] ${a.what} (${a.effort})`).join("\n")}`
+        : "No summary available.";
+
       return {
         content: [
+          {
+            type: "text" as const,
+            text: summaryText,
+          },
           {
             type: "text" as const,
             text: JSON.stringify(result, null, 2),

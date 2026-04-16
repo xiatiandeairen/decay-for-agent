@@ -22,6 +22,8 @@ pub struct TopAction {
 pub struct Summary {
     /// One-line health overview.
     pub headline: String,
+    /// Natural language narrative explaining the project's health story.
+    pub narrative: String,
     /// Top 3 priority actions.
     pub top_actions: Vec<TopAction>,
     /// Issue counts by severity.
@@ -69,13 +71,73 @@ pub fn generate_summary(
         })
         .collect();
 
+    // Build narrative
+    let narrative = build_narrative(composite, critical_count, warning_count, trajectory, actions);
+
     Summary {
         headline,
+        narrative,
         top_actions,
         critical_count,
         warning_count,
         info_count,
     }
+}
+
+fn build_narrative(
+    composite: i32,
+    critical_count: usize,
+    warning_count: usize,
+    trajectory: Option<&Trajectory>,
+    actions: &[Action],
+) -> String {
+    let mut parts = Vec::new();
+
+    // Health status
+    let health_desc = if composite >= 90 {
+        "in good shape"
+    } else if composite >= 75 {
+        "reasonably healthy with room for improvement"
+    } else if composite >= 60 {
+        "showing signs of accumulated debt"
+    } else {
+        "in need of significant attention"
+    };
+    parts.push(format!("Your project is {health_desc} (health score: {composite}/100)."));
+
+    // Trajectory context
+    if let Some(traj) = trajectory {
+        let trend_desc = match traj.overall_direction {
+            crate::trend::Direction::Improving => "The overall trend is positive — health is improving.",
+            crate::trend::Direction::Declining => "The overall trend is concerning — health is declining over recent snapshots.",
+            crate::trend::Direction::Stable => "Health has been stable across recent snapshots.",
+        };
+        parts.push(trend_desc.to_string());
+    }
+
+    // Key concerns
+    if critical_count > 0 {
+        parts.push(format!(
+            "{critical_count} critical issue{} require{} immediate attention.",
+            if critical_count > 1 { "s" } else { "" },
+            if critical_count > 1 { "" } else { "s" },
+        ));
+    }
+
+    // Recommended next step
+    if let Some(first) = actions.first() {
+        let impact_note = first.impact.as_ref()
+            .map(|imp| format!(" {}", imp.statement))
+            .unwrap_or_default();
+        parts.push(format!(
+            "Recommended next step: {} (effort: {}).{}",
+            first.suggestion, first.effort, impact_note,
+        ));
+    } else if warning_count == 0 && critical_count == 0 {
+        parts.push("No actions needed at this time.".to_string());
+    }
+
+    parts.join(" ")
 }
 
 #[cfg(test)]
@@ -105,6 +167,8 @@ mod tests {
         assert!(s.headline.contains("1 critical issue"));
         assert_eq!(s.top_actions.len(), 1);
         assert_eq!(s.critical_count, 1);
+        assert!(s.narrative.contains("reasonably healthy"));
+        assert!(s.narrative.contains("Recommended next step"));
     }
 
     #[test]

@@ -6,7 +6,7 @@ use anyhow::Result;
 use log::debug;
 use serde::Serialize;
 
-use crate::{action, aggregate, classify, collector, data_store, db, diagnose, dimension, patch, prevention, profile, render, trend};
+use crate::{action, aggregate, classify, collector, data_store, db, diagnose, dimension, patch, prevention, profile, render, report, trend};
 
 #[derive(Serialize)]
 pub struct Report {
@@ -23,6 +23,8 @@ pub struct Report {
     pub patches: Vec<patch::Patch>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub preventions: Vec<prevention::Prevention>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostic_report: Option<report::DiagnosticReport>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub actions: Vec<action::Action>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -65,6 +67,11 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
     let aggregated_issues = aggregate::aggregate_issues(&all_issues);
     let patches = patch::generate_patches(&all_issues, store.source_files());
     let preventions = prevention::generate_preventions(&all_issues);
+    let diagnostic_report = if all_issues.is_empty() {
+        None
+    } else {
+        Some(report::build_diagnostic_report(&all_issues, &aggregated_issues, &patches, &preventions))
+    };
 
     let trend_data = db::get_previous_dimension_scores(store.conn(), &project_path_str, snapshot_id)?
         .map(|prev| trend::compare_dimensions(&scores, &prev));
@@ -90,7 +97,7 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
             project_type, snapshot_id,
             scores: scores.clone(), composite: comp,
             trend: trend_data,
-            issues: all_issues, aggregated_issues, patches, preventions,
+            issues: all_issues, aggregated_issues, patches, preventions, diagnostic_report,
             actions: all_actions,
             velocities, regressions, forecasts, correlations, trajectory,
             time_series, collectors: collector_stats,

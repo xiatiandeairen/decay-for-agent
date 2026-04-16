@@ -13,7 +13,7 @@ use crate::action::Action;
 /// - F: trajectory-based → preventive warning
 /// - G: context-aware → suppress or downgrade
 /// - H: recommend toolchain/CI config
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum IssueCategory {
     /// Mechanical fix — clear pattern, direct fix, no judgment needed.

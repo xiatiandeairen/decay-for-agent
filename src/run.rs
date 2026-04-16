@@ -6,7 +6,7 @@ use anyhow::Result;
 use log::debug;
 use serde::Serialize;
 
-use crate::{action, aggregate, chronic, classify, collector, data_store, db, diagnose, dimension, impact, patch, prevention, profile, render, report, summary, trend};
+use crate::{action, aggregate, chronic, classify, collector, data_store, db, diagnose, dimension, impact, patch, plan, prevention, profile, render, report, summary, trend};
 
 #[derive(Serialize)]
 pub struct Report {
@@ -27,6 +27,8 @@ pub struct Report {
     pub preventions: Vec<prevention::Prevention>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub chronic_warnings: Vec<chronic::ChronicWarning>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub improvement_plan: Option<plan::ImprovementPlan>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diagnostic_report: Option<report::DiagnosticReport>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -109,6 +111,11 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
     let chronic_warnings = chronic::detect_chronic_decay(&scores, trajectory.as_ref());
 
     let agent_summary = summary::generate_summary(comp, &all_issues, &all_actions, trajectory.as_ref());
+    let improvement_plan = if all_actions.is_empty() {
+        None
+    } else {
+        Some(plan::generate_plan(&all_actions, &aggregated_issues))
+    };
 
     let critical_count = all_issues
         .iter()
@@ -123,7 +130,7 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
             scores: scores.clone(), composite: comp,
             trend: trend_data,
             issues: all_issues, aggregated_issues, patches, preventions,
-            chronic_warnings, diagnostic_report,
+            chronic_warnings, improvement_plan, diagnostic_report,
             actions: all_actions,
             velocities, regressions, forecasts, correlations, trajectory,
             time_series, collectors: collector_stats,

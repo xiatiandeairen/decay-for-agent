@@ -116,19 +116,34 @@ fn load_scores(conn: &Connection, snapshot_id: i64) -> Result<HashMap<String, Op
 /// Print comparison report to terminal.
 pub fn print_comparison(report: &ComparisonReport) {
     println!(
-        "Comparing snapshot #{} → #{}",
+        "━━━ Comparison: snapshot #{} → #{} ━━━",
         report.before_snapshot, report.after_snapshot
     );
     println!();
-    for c in &report.changes {
-        let sign = if c.change > 0 { "+" } else { "" };
-        println!(
-            "  {:<20} {} → {} ({sign}{}) {}",
-            c.dimension, c.before, c.after, c.change, c.status
-        );
+
+    // Show improvements first, then regressions, then unchanged
+    let improved: Vec<_> = report.changes.iter().filter(|c| c.status == ChangeStatus::Improved).collect();
+    let regressed: Vec<_> = report.changes.iter().filter(|c| c.status == ChangeStatus::Regressed).collect();
+    let unchanged: Vec<_> = report.changes.iter().filter(|c| c.status == ChangeStatus::Unchanged).collect();
+
+    if !improved.is_empty() {
+        println!("  Improved:");
+        for c in &improved {
+            println!("    ✅ {:<20} {} → {} (+{})", c.dimension, c.before, c.after, c.change);
+        }
+    }
+    if !regressed.is_empty() {
+        println!("  Regressed:");
+        for c in &regressed {
+            println!("    ⚠  {:<20} {} → {} ({})", c.dimension, c.before, c.after, c.change);
+        }
+    }
+    if !unchanged.is_empty() {
+        let dims: Vec<_> = unchanged.iter().map(|c| c.dimension.as_str()).collect();
+        println!("  Unchanged: {}", dims.join(", "));
     }
     println!();
-    println!("Summary: {}", report.summary);
+    println!("Result: {}", report.summary);
 }
 
 #[cfg(test)]

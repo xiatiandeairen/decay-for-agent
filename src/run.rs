@@ -6,7 +6,7 @@ use anyhow::Result;
 use log::debug;
 use serde::Serialize;
 
-use crate::{action, aggregate, classify, collector, data_store, db, diagnose, dimension, patch, prevention, profile, render, report, trend};
+use crate::{action, aggregate, chronic, classify, collector, data_store, db, diagnose, dimension, patch, prevention, profile, render, report, trend};
 
 #[derive(Serialize)]
 pub struct Report {
@@ -23,6 +23,8 @@ pub struct Report {
     pub patches: Vec<patch::Patch>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub preventions: Vec<prevention::Prevention>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub chronic_warnings: Vec<chronic::ChronicWarning>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diagnostic_report: Option<report::DiagnosticReport>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -85,6 +87,7 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
     let regressions = trajectory.as_ref().map_or_else(Vec::new, |t| t.regressions.clone());
     let forecasts = trajectory.as_ref().map_or_else(Vec::new, |t| t.forecasts.clone());
     let correlations = trajectory.as_ref().map_or_else(Vec::new, |t| t.correlations.clone());
+    let chronic_warnings = chronic::detect_chronic_decay(&scores, trajectory.as_ref());
 
     let critical_count = all_issues
         .iter()
@@ -97,7 +100,8 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
             project_type, snapshot_id,
             scores: scores.clone(), composite: comp,
             trend: trend_data,
-            issues: all_issues, aggregated_issues, patches, preventions, diagnostic_report,
+            issues: all_issues, aggregated_issues, patches, preventions,
+            chronic_warnings, diagnostic_report,
             actions: all_actions,
             velocities, regressions, forecasts, correlations, trajectory,
             time_series, collectors: collector_stats,

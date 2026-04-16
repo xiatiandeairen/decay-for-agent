@@ -2,6 +2,7 @@ mod action;
 mod aggregate;
 mod chronic;
 mod classify;
+mod compare;
 mod collector;
 mod config;
 mod data_store;
@@ -19,6 +20,7 @@ mod profile;
 mod render;
 mod run;
 mod scan;
+mod summary;
 mod trend;
 mod util;
 
@@ -43,6 +45,10 @@ struct Cli {
     #[arg(long, conflicts_with_all = ["json", "markdown"])]
     quiet: bool,
 
+    /// Compare current snapshot against a previous snapshot ID
+    #[arg(long)]
+    compare: Option<i64>,
+
     /// Enable debug logging
     #[arg(long)]
     debug: bool,
@@ -56,6 +62,30 @@ fn main() -> anyhow::Result<()> {
         log_builder.filter_level(log::LevelFilter::Debug);
     }
     log_builder.init();
+
+    // Compare mode: compare current against a previous snapshot
+    if let Some(before_id) = cli.compare {
+        let conn = db::init()?;
+        let project_path = std::env::current_dir()?;
+        let project_path_str = project_path.to_string_lossy().to_string();
+        let snapshot_id = db::create_snapshot(&conn, &project_path_str)?;
+
+        // Run current scan to populate the new snapshot
+        let has_critical = run::run(cli.json, cli.markdown, cli.quiet)?;
+
+        // Then compare
+        let report = compare::compare_snapshots(&conn, before_id, snapshot_id)?;
+        if cli.json {
+            println!("{}", serde_json::to_string_pretty(&report).unwrap_or_default());
+        } else {
+            compare::print_comparison(&report);
+        }
+
+        if has_critical {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
 
     let has_critical = run::run(cli.json, cli.markdown, cli.quiet)?;
 

@@ -6,10 +6,12 @@ use anyhow::Result;
 use log::debug;
 use serde::Serialize;
 
-use crate::{action, aggregate, chronic, classify, collector, data_store, db, diagnose, dimension, patch, prevention, profile, render, report, trend};
+use crate::{action, aggregate, chronic, classify, collector, data_store, db, diagnose, dimension, patch, prevention, profile, render, report, summary, trend};
 
 #[derive(Serialize)]
 pub struct Report {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<summary::Summary>,
     pub project_type: profile::ProjectType,
     pub snapshot_id: i64,
     pub scores: HashMap<String, Option<i32>>,
@@ -89,6 +91,8 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
     let correlations = trajectory.as_ref().map_or_else(Vec::new, |t| t.correlations.clone());
     let chronic_warnings = chronic::detect_chronic_decay(&scores, trajectory.as_ref());
 
+    let agent_summary = summary::generate_summary(comp, &all_issues, &all_actions, trajectory.as_ref());
+
     let critical_count = all_issues
         .iter()
         .filter(|i| i.level == diagnose::Level::Critical)
@@ -97,6 +101,7 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
     output(
         json, markdown, quiet,
         &Report {
+            summary: Some(agent_summary),
             project_type, snapshot_id,
             scores: scores.clone(), composite: comp,
             trend: trend_data,

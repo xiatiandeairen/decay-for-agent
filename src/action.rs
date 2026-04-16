@@ -126,6 +126,9 @@ pub struct Action {
     /// Specific sub-steps or details for executing this action.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub details: Vec<String>,
+    /// Development impact assessment.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub impact: Option<crate::impact::Impact>,
 }
 
 impl Action {
@@ -148,6 +151,7 @@ impl Action {
             priority,
             effort,
             details: vec![],
+            impact: None,
         }
     }
 }
@@ -200,6 +204,7 @@ mod tests {
             priority: Priority::Critical,
             effort: Effort::Large,
             details: vec![],
+            impact: None,
         }
     }
 
@@ -295,6 +300,7 @@ mod tests {
                     priority: Priority::High,
                     effort: Effort::Medium,
                     details: vec![],
+                    impact: None,
                 }],
             ),
             Issue::with_actions(
@@ -310,6 +316,7 @@ mod tests {
                     priority: Priority::Critical,
                     effort: Effort::Medium,
                     details: vec![],
+                    impact: None,
                 }],
             ),
         ];

@@ -32,6 +32,7 @@ pub fn make_issue(
             priority: Priority::High,
             effort: Effort::Medium,
             details: vec![],
+            impact: None,
         }],
     }
 }

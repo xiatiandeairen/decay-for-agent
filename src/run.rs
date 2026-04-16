@@ -6,7 +6,7 @@ use anyhow::Result;
 use log::debug;
 use serde::Serialize;
 
-use crate::{action, aggregate, chronic, classify, collector, data_store, db, diagnose, dimension, patch, prevention, profile, render, report, summary, trend};
+use crate::{action, aggregate, chronic, classify, collector, data_store, db, diagnose, dimension, impact, patch, prevention, profile, render, report, summary, trend};
 
 #[derive(Serialize)]
 pub struct Report {
@@ -66,8 +66,25 @@ pub fn run(json: bool, markdown: bool, quiet: bool) -> Result<bool> {
 
     let store = data_store::DataStore::new(conn, snapshot_id, project_path_str.clone());
 
-    let (scores, comp, mut all_issues, all_actions) = evaluate(&store, &score_profile, snapshot_id, &project_path_str)?;
+    let (scores, comp, mut all_issues, _) = evaluate(&store, &score_profile, snapshot_id, &project_path_str)?;
     classify::classify_issues(&mut all_issues);
+
+    // Enrich actions with development impact
+    let coupling_map = impact::build_coupling_map(store.conn(), snapshot_id).unwrap_or_default();
+    let source_files = store.source_files();
+    for issue in &mut all_issues {
+        for act in &mut issue.actions {
+            let line_count = source_files
+                .iter()
+                .find(|sf| sf.path == act.target.file)
+                .map(|sf| sf.line_count)
+                .unwrap_or(0);
+            act.impact = Some(impact::compute_impact(&act.target.file, line_count, &coupling_map));
+        }
+    }
+
+    // Re-collect actions after impact enrichment
+    let all_actions = action::collect_sorted(&all_issues);
     let aggregated_issues = aggregate::aggregate_issues(&all_issues);
     let patches = patch::generate_patches(&all_issues, store.source_files());
     let preventions = prevention::generate_preventions(&all_issues);

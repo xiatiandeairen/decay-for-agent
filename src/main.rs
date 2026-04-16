@@ -12,6 +12,7 @@ mod dimension;
 mod filter;
 mod filter_pipeline;
 mod git;
+mod impact;
 mod patch;
 mod prevention;
 mod report;

@@ -79,6 +79,7 @@ impl Dimension for Maintainability {
                         reason: format!("{path} has {dup_count} duplicate blocks"),
                         priority: Priority::High, effort: Effort::Medium,
                         details: vec![],
+                        impact: None,
                     }],
                 ));
             }
@@ -116,6 +117,7 @@ impl Dimension for Maintainability {
                     reason: format!("{path} has {lines} lines"),
                     priority, effort: Effort::Medium,
                     details,
+                    impact: None,
                 }],
             ));
         }
@@ -142,6 +144,7 @@ impl Dimension for Maintainability {
                     reason: format!("{func_name} is {lines} lines"),
                     priority: Priority::High, effort: Effort::Small,
                     details: vec![],
+                    impact: None,
                 }],
             ));
         }

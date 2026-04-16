@@ -222,6 +222,7 @@ mod tests {
                     priority: Priority::High,
                     effort: Effort::Small,
                     details: vec![],
+                    impact: None,
                 }],
             },
             Issue {

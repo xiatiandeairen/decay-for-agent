@@ -94,6 +94,7 @@ impl Dimension for Fragility {
                     reason: format!("top 10% files account for {pct}% of churn"),
                     priority: Priority::High, effort: Effort::Large,
                     details: vec![],
+                    impact: None,
                 }],
             ));
         }
@@ -131,6 +132,7 @@ impl Dimension for Fragility {
                     reason: format!("{path} has {churn} lines churn"),
                     priority: Priority::Critical, effort: Effort::Medium,
                     details,
+                    impact: None,
                 }],
             ));
         }

@@ -71,6 +71,7 @@ impl Dimension for Reliability {
                         reason: format!("{path} has {count} unsafe/eval"),
                         priority, effort: Effort::Medium,
                         details: vec![],
+                        impact: None,
                     }],
                 ));
             }
@@ -89,6 +90,7 @@ impl Dimension for Reliability {
                     reason: format!("{path}:{line_no}: potential {pattern}"),
                     priority: Priority::Critical, effort: Effort::Small,
                     details: vec![],
+                    impact: None,
                 }],
             ));
         }
@@ -106,6 +108,7 @@ impl Dimension for Reliability {
                     reason: format!("{path}:{line_no}: {kind}"),
                     priority: Priority::Critical, effort: Effort::Small,
                     details: vec![],
+                    impact: None,
                 }],
             ));
         }
@@ -127,6 +130,7 @@ impl Dimension for Reliability {
                     reason: format!("{dep_count} direct dependencies"),
                     priority: Priority::Medium, effort: Effort::Small,
                     details: vec![],
+                    impact: None,
                 }],
             ));
         }

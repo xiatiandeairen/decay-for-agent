@@ -57,6 +57,7 @@ impl Dimension for Structural {
                     reason: format!("{file_count} files exceed {FILE_COUNT_CRIT} threshold"),
                     priority: Priority::Critical, effort: Effort::Large,
                     details: vec![],
+                    impact: None,
                 }],
             ));
         } else if file_count > FILE_COUNT_WARN {
@@ -70,6 +71,7 @@ impl Dimension for Structural {
                     reason: format!("{file_count} files exceed {FILE_COUNT_WARN} threshold"),
                     priority: Priority::High, effort: Effort::Medium,
                     details: vec![],
+                    impact: None,
                 }],
             ));
         }
@@ -97,6 +99,7 @@ impl Dimension for Structural {
                     reason: format!("max depth {max_depth} exceeds {DEPTH_WARN} threshold"),
                     priority: Priority::Medium, effort: Effort::Medium,
                     details: vec![],
+                    impact: None,
                 }],
             ));
         }

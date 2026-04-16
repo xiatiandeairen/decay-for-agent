@@ -65,6 +65,7 @@ impl Dimension for Observability {
                         reason: format!("{path} has {count} unwrap/panic calls"),
                         priority: Priority::High, effort: Effort::Medium,
                         details: vec![],
+                        impact: None,
                     }],
                 ));
             }
@@ -82,6 +83,7 @@ impl Dimension for Observability {
                     reason: "no logging framework detected".into(),
                     priority: Priority::High, effort: Effort::Medium,
                     details: vec![],
+                    impact: None,
                 }],
             ));
         }
@@ -104,6 +106,7 @@ impl Dimension for Observability {
                     reason: format!("{} empty catch blocks", analysis.empty_catches),
                     priority: Priority::High, effort: Effort::Small,
                     details: vec![],
+                    impact: None,
                 }],
             ));
         }

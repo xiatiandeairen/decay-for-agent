@@ -60,6 +60,7 @@ impl Dimension for QualityAssurance {
                         reason: "no test files found".into(),
                         priority: Priority::Critical, effort: Effort::Large,
                         details: vec![],
+                        impact: None,
                     }],
                 ));
             } else if test_ratio < TEST_FILE_RATIO_WARN {
@@ -74,6 +75,7 @@ impl Dimension for QualityAssurance {
                         reason: format!("only {pct}% test files"),
                         priority: Priority::High, effort: Effort::Large,
                         details: vec![],
+                        impact: None,
                     }],
                 ));
             } else if test_ratio < TEST_FILE_RATIO_GOOD {
@@ -96,6 +98,7 @@ impl Dimension for QualityAssurance {
                         reason: format!("test/source ratio {:.1}%", line_ratio * 100.0),
                         priority: Priority::High, effort: Effort::Medium,
                         details: vec![],
+                        impact: None,
                     }],
                 ));
             } else if line_ratio < TEST_LINE_RATIO_GOOD {

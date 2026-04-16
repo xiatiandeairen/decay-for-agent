@@ -103,6 +103,7 @@ impl Dimension for Complexity {
                         reason: format!("{path} is {size_kb}KB, exceeds 50KB threshold"),
                         priority: Priority::Critical, effort: Effort::Large,
                         details: vec![],
+                        impact: None,
                     }],
                 ));
             } else {
@@ -115,6 +116,7 @@ impl Dimension for Complexity {
                         reason: format!("{path} is {size_kb}KB, extract independent logic"),
                         priority: Priority::High, effort: Effort::Medium,
                         details: vec![],
+                        impact: None,
                     }],
                 ));
             }

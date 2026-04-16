@@ -14,8 +14,13 @@ const CHURN_CONCENTRATION_WARN: f64 = 0.5;
 /// These files are high-blast-radius; any bug there affects the whole project disproportionately.
 const CHURN_CONCENTRATION_CRIT: f64 = 0.7;
 /// Total lines added+deleted for a single file across history.
-/// 500+ lines of churn indicates a persistently unstable file that warrants isolation.
-const MAX_CHURN_WARN: i64 = 500;
+/// 1000+ lines of churn indicates a persistently unstable file that warrants isolation.
+/// Young projects with rapid iteration naturally have high churn; 1000 filters to true hotspots.
+const MAX_CHURN_WARN: i64 = 1000;
+/// Maximum number of high-churn files to report individually.
+const MAX_CHURN_ISSUES: usize = 5;
+/// Minimum number of changes to a file before flagging it as frequently changed.
+const FREQ_CHANGE_WARN: i64 = 20;
 
 pub struct Fragility;
 
@@ -109,7 +114,7 @@ impl Dimension for Fragility {
             score -= 15;
         }
 
-        for (path, churn) in &high_churn {
+        for (path, churn) in high_churn.iter().take(MAX_CHURN_ISSUES) {
             issues.push(Issue::with_actions(
                 Level::Critical, name.clone(), format!("{path} has {churn} lines churn"),
                 vec![Action {
@@ -125,12 +130,12 @@ impl Dimension for Fragility {
         // Frequently changed files (>10 changes), excluding lock files
         let mut freq_stmt = conn
             .prepare(
-                "SELECT path, change_count FROM git_changes WHERE snapshot_id = ?1 AND change_count > 10 AND path NOT LIKE '%.lock' AND path NOT LIKE '%lock.json' ORDER BY change_count DESC",
+                "SELECT path, change_count FROM git_changes WHERE snapshot_id = ?1 AND change_count > ?2 AND path NOT LIKE '%.lock' AND path NOT LIKE '%lock.json' ORDER BY change_count DESC",
             )
             .with_context(|| format!("fragility: failed to prepare freq query for snapshot {snapshot_id}"))?;
 
         let frequent: Vec<(String, i64)> = freq_stmt
-            .query_map([snapshot_id], |row| Ok((row.get(0)?, row.get(1)?)))
+            .query_map(rusqlite::params![snapshot_id, FREQ_CHANGE_WARN], |row| Ok((row.get(0)?, row.get(1)?)))
             .with_context(|| format!("fragility: failed to query frequent for snapshot {snapshot_id}"))?
             .collect::<std::result::Result<Vec<_>, _>>()
             .with_context(|| format!("fragility: failed to collect frequent for snapshot {snapshot_id}"))?;
@@ -182,7 +187,7 @@ mod tests {
     fn test_high_churn_critical() -> Result<()> {
         let store = test_support::setup_db_store();
         store.conn().execute(
-            "INSERT INTO git_changes (snapshot_id, path, change_count, lines_added, lines_deleted, last_modified) VALUES (1, 'hot.rs', 20, 400, 200, '2026-04-01')",
+            "INSERT INTO git_changes (snapshot_id, path, change_count, lines_added, lines_deleted, last_modified) VALUES (1, 'hot.rs', 20, 700, 500, '2026-04-01')",
             [],
         )?;
         let dim = Fragility;

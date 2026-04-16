@@ -170,9 +170,21 @@ fn analyze(source_files: &[SourceFile]) -> Analysis {
         let file_clones = clone_hits.len();
         clone_count += file_clones;
 
-        // Use helpers for blocking call scanning
-        let blocking_hits = helpers::count_pattern_matches(&sf.lines, &blocking_pats);
+        // Use helpers for blocking call scanning — skip test files and pattern definition files
+        let test_mask = if ctx == helpers::FileContext::Test {
+            vec![true; sf.lines.len()] // skip entire test files
+        } else {
+            helpers::mark_test_lines(&sf.lines)
+        };
+        let blocking_hits = helpers::count_pattern_matches_filtered(&sf.lines, &blocking_pats, Some(&test_mask));
         for hit in &blocking_hits {
+            // Skip pattern definitions: lines where the match is inside a string literal
+            let line = sf.lines.get(hit.line_no as usize - 1).map(|l| l.trim()).unwrap_or("");
+            if line.contains(&format!("\"{}\"", hit.pattern))
+                || line.contains(&format!("\"{}", hit.pattern))
+            {
+                continue;
+            }
             // Map back to label
             let label = blocking_pattern_pairs.iter()
                 .find(|(p, _)| *p == hit.pattern)

@@ -139,30 +139,12 @@ fn match_preventions(issue: &Issue, is_rust: bool, is_node: bool) -> Vec<Prevent
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::{Action, ActionType, Effort, Priority, Target};
-    use crate::diagnose::Level;
-
-    fn make_issue(dim: &str, msg: &str, cat: IssueCategory, file: &str) -> Issue {
-        Issue {
-            level: Level::Warning,
-            category: dim.into(),
-            message: msg.into(),
-            classification: Some(cat),
-            actions: vec![Action {
-                dimension: dim.into(),
-                action_type: ActionType::Replace,
-                target: Target::file(file),
-                suggestion: "fix".into(),
-                reason: "broken".into(),
-                priority: Priority::High,
-                effort: Effort::Small,
-            }],
-        }
-    }
+    use crate::action::ActionType;
+    use crate::test_helpers::make_issue;
 
     #[test]
     fn test_dependency_prevention_rust() {
-        let issues = vec![make_issue("reliability", "80 direct dependencies", IssueCategory::Prevention, "src/main.rs")];
+        let issues = vec![make_issue("reliability", "80 direct dependencies", IssueCategory::Prevention, ActionType::Replace, "src/main.rs")];
         let preventions = generate_preventions(&issues);
         assert_eq!(preventions.len(), 1);
         assert_eq!(preventions[0].tool, "cargo-deny");
@@ -170,7 +152,7 @@ mod tests {
 
     #[test]
     fn test_dependency_prevention_node() {
-        let issues = vec![make_issue("reliability", "80 direct dependencies", IssueCategory::Prevention, "src/app.ts")];
+        let issues = vec![make_issue("reliability", "80 direct dependencies", IssueCategory::Prevention, ActionType::Replace, "src/app.ts")];
         let preventions = generate_preventions(&issues);
         assert_eq!(preventions.len(), 1);
         assert_eq!(preventions[0].tool, "depcheck");
@@ -178,7 +160,7 @@ mod tests {
 
     #[test]
     fn test_unwrap_prevention() {
-        let issues = vec![make_issue("observability", "src/a.rs has 10 unwrap/panic calls", IssueCategory::MechanicalFix, "src/a.rs")];
+        let issues = vec![make_issue("observability", "src/a.rs has 10 unwrap/panic calls", IssueCategory::MechanicalFix, ActionType::Replace, "src/a.rs")];
         let preventions = generate_preventions(&issues);
         assert_eq!(preventions.len(), 1);
         assert_eq!(preventions[0].tool, "clippy");
@@ -186,7 +168,7 @@ mod tests {
 
     #[test]
     fn test_credential_prevention() {
-        let issues = vec![make_issue("reliability", "src/config.rs:5: hardcoded credential detected", IssueCategory::SecurityCritical, "src/config.rs")];
+        let issues = vec![make_issue("reliability", "src/config.rs:5: hardcoded credential detected", IssueCategory::SecurityCritical, ActionType::Replace, "src/config.rs")];
         let preventions = generate_preventions(&issues);
         assert_eq!(preventions.len(), 1);
         assert_eq!(preventions[0].tool, "git-secrets");
@@ -195,8 +177,8 @@ mod tests {
     #[test]
     fn test_no_duplicate_tools() {
         let issues = vec![
-            make_issue("observability", "src/a.rs has 10 unwrap/panic calls", IssueCategory::MechanicalFix, "src/a.rs"),
-            make_issue("observability", "src/b.rs has 8 unwrap/panic calls", IssueCategory::MechanicalFix, "src/b.rs"),
+            make_issue("observability", "src/a.rs has 10 unwrap/panic calls", IssueCategory::MechanicalFix, ActionType::Replace, "src/a.rs"),
+            make_issue("observability", "src/b.rs has 8 unwrap/panic calls", IssueCategory::MechanicalFix, ActionType::Replace, "src/b.rs"),
         ];
         let preventions = generate_preventions(&issues);
         assert_eq!(preventions.len(), 1);
@@ -204,7 +186,7 @@ mod tests {
 
     #[test]
     fn test_no_preventions_for_non_matching() {
-        let issues = vec![make_issue("structural", "max directory depth is 7", IssueCategory::ArchitecturalDecision, ".")];
+        let issues = vec![make_issue("structural", "max directory depth is 7", IssueCategory::ArchitecturalDecision, ActionType::Replace, ".")];
         let preventions = generate_preventions(&issues);
         assert!(preventions.is_empty());
     }

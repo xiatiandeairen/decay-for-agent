@@ -2,9 +2,179 @@
 ///
 /// Maps each issue to one of 8 categories (A-H) based on
 /// dimension, message content, action type, and severity level.
+/// Uses a data-driven rule table — the first matching rule wins.
 
 use crate::action::ActionType;
 use crate::diagnose::{Issue, IssueCategory, Level};
+
+/// A single classification rule.
+/// All `Some` fields must match; `None` fields are wildcards.
+struct ClassifyRule {
+    /// Required dimension (None = any).
+    dimension: Option<&'static str>,
+    /// Message must contain ANY of these substrings (None = skip check).
+    message_any: Option<&'static [&'static str]>,
+    /// Message must contain ALL of these substrings (None = skip check).
+    message_all: Option<&'static [&'static str]>,
+    /// Required issue level (None = any).
+    level: Option<Level>,
+    /// Required action type on the first action (None = any).
+    action_type: Option<ActionType>,
+    /// Category to assign when all conditions match.
+    category: IssueCategory,
+}
+
+impl ClassifyRule {
+    /// Check whether this rule matches the given issue context.
+    fn matches(&self, dim: &str, msg: &str, level: Level, action_type: Option<&ActionType>) -> bool {
+        if let Some(d) = self.dimension {
+            if dim != d {
+                return false;
+            }
+        }
+        if let Some(pats) = self.message_any {
+            if !pats.iter().any(|p| msg.contains(p)) {
+                return false;
+            }
+        }
+        if let Some(pats) = self.message_all {
+            if !pats.iter().all(|p| msg.contains(p)) {
+                return false;
+            }
+        }
+        if let Some(l) = self.level {
+            if level != l {
+                return false;
+            }
+        }
+        if let Some(ref at) = self.action_type {
+            if action_type != Some(at) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+/// Classification rules evaluated in priority order — first match wins.
+const RULES: &[ClassifyRule] = &[
+    // D: Security Critical — injection and credentials
+    ClassifyRule {
+        dimension: None,
+        message_any: Some(&["injection", "sql string concatenation", "shell command", "hardcoded credential"]),
+        message_all: None, level: None, action_type: None,
+        category: IssueCategory::SecurityCritical,
+    },
+    // A: Mechanical Fix — observability per-file issues
+    ClassifyRule {
+        dimension: Some("observability"),
+        message_any: Some(&["unwrap/panic calls", "empty catch", "hardcoded configuration"]),
+        message_all: None, level: None, action_type: None,
+        category: IssueCategory::MechanicalFix,
+    },
+    // E: Convention Drift — observability no-logging
+    ClassifyRule {
+        dimension: Some("observability"),
+        message_any: Some(&["no logging"]),
+        message_all: None, level: None, action_type: None,
+        category: IssueCategory::ConventionDrift,
+    },
+    // G: Contextual Exception — unsafe code may be legitimate
+    ClassifyRule {
+        dimension: Some("reliability"),
+        message_any: Some(&["unsafe/eval"]),
+        message_all: None, level: None, action_type: None,
+        category: IssueCategory::ContextualException,
+    },
+    // H: Prevention — dependency management
+    ClassifyRule {
+        dimension: Some("reliability"),
+        message_any: Some(&["direct dependencies"]),
+        message_all: None, level: None, action_type: None,
+        category: IssueCategory::Prevention,
+    },
+    // H: Prevention — blocking calls
+    ClassifyRule {
+        dimension: Some("performance"),
+        message_any: Some(&["blocking call"]),
+        message_all: None, level: None, action_type: None,
+        category: IssueCategory::Prevention,
+    },
+    // B: Pattern Problem — duplication
+    ClassifyRule {
+        dimension: Some("maintainability"),
+        message_any: Some(&["duplicate"]),
+        message_all: None, level: None, action_type: None,
+        category: IssueCategory::PatternProblem,
+    },
+    // F: Chronic Decay — TODO/FIXME
+    ClassifyRule {
+        dimension: Some("maintainability"),
+        message_any: Some(&["todo/fixme"]),
+        message_all: None, level: None, action_type: None,
+        category: IssueCategory::ChronicDecay,
+    },
+    // B: Pattern Problem — clone/copy
+    ClassifyRule {
+        dimension: Some("performance"),
+        message_any: Some(&["clone/copy"]),
+        message_all: None, level: None, action_type: None,
+        category: IssueCategory::PatternProblem,
+    },
+    // F: Chronic Decay — ratio/percentage Info-level indicators
+    ClassifyRule {
+        dimension: None,
+        message_any: Some(&["% of files", "ratio", "top-level entries"]),
+        message_all: None, level: Some(Level::Info), action_type: None,
+        category: IssueCategory::ChronicDecay,
+    },
+    // F: Chronic Decay — churn indicator (changed N times)
+    ClassifyRule {
+        dimension: None,
+        message_any: None,
+        message_all: Some(&["changed", "times"]),
+        level: Some(Level::Info), action_type: None,
+        category: IssueCategory::ChronicDecay,
+    },
+    // E: Convention Drift — test coverage gaps
+    ClassifyRule {
+        dimension: Some("quality"),
+        message_any: Some(&["no test files", "no corresponding test", "% of files are tests", "test/source line ratio"]),
+        message_all: None, level: None, action_type: None,
+        category: IssueCategory::ConventionDrift,
+    },
+    // C: Architectural Decision — Split/Refactor actions
+    ClassifyRule {
+        dimension: None, message_any: None, message_all: None,
+        level: None, action_type: Some(ActionType::Split),
+        category: IssueCategory::ArchitecturalDecision,
+    },
+    ClassifyRule {
+        dimension: None, message_any: None, message_all: None,
+        level: None, action_type: Some(ActionType::Refactor),
+        category: IssueCategory::ArchitecturalDecision,
+    },
+    // C: structural dimension issues are typically architectural
+    ClassifyRule {
+        dimension: Some("structural"),
+        message_any: None, message_all: None,
+        level: None, action_type: None,
+        category: IssueCategory::ArchitecturalDecision,
+    },
+    // C: performance nested loops
+    ClassifyRule {
+        dimension: Some("performance"),
+        message_any: Some(&["nested loop"]),
+        message_all: None, level: None, action_type: None,
+        category: IssueCategory::ArchitecturalDecision,
+    },
+    // B: Extract actions suggest pattern problems
+    ClassifyRule {
+        dimension: None, message_any: None, message_all: None,
+        level: None, action_type: Some(ActionType::Extract),
+        category: IssueCategory::PatternProblem,
+    },
+];
 
 /// Classify all issues in-place.
 pub fn classify_issues(issues: &mut [Issue]) {
@@ -14,98 +184,19 @@ pub fn classify_issues(issues: &mut [Issue]) {
 }
 
 /// Determine the category for a single issue.
+/// Iterates rules in priority order; returns the first match,
+/// defaulting to `ArchitecturalDecision`.
 fn classify(issue: &Issue) -> IssueCategory {
     let dim = issue.category.as_str();
     let msg = issue.message.to_lowercase();
     let action_type = issue.actions.first().map(|a| &a.action_type);
 
-    // D: Security Critical — injection and credentials
-    if msg.contains("injection") || msg.contains("sql string concatenation")
-        || msg.contains("shell command") || msg.contains("hardcoded credential")
-    {
-        return IssueCategory::SecurityCritical;
-    }
-
-    // A: Mechanical Fix — per-file issues with clear Replace/Add pattern
-    if dim == "observability" {
-        if msg.contains("unwrap/panic calls") {
-            return IssueCategory::MechanicalFix;
-        }
-        if msg.contains("empty catch") {
-            return IssueCategory::MechanicalFix;
-        }
-        if msg.contains("hardcoded configuration") {
-            return IssueCategory::MechanicalFix;
-        }
-        if msg.contains("no logging") {
-            return IssueCategory::ConventionDrift;
+    for rule in RULES {
+        if rule.matches(dim, &msg, issue.level, action_type) {
+            return rule.category;
         }
     }
 
-    // G: Contextual Exception — unsafe code may be legitimate (FFI, etc.)
-    if dim == "reliability" && msg.contains("unsafe/eval") {
-        return IssueCategory::ContextualException;
-    }
-
-    // H: Prevention — dependency management, blocking calls
-    if dim == "reliability" && msg.contains("direct dependencies") {
-        return IssueCategory::Prevention;
-    }
-    if dim == "performance" && msg.contains("blocking call") {
-        return IssueCategory::Prevention;
-    }
-
-    // B: Pattern Problem — duplication, density/ratio issues
-    if dim == "maintainability" && msg.contains("duplicate") {
-        return IssueCategory::PatternProblem;
-    }
-    if dim == "maintainability" && msg.contains("todo/fixme") {
-        return IssueCategory::ChronicDecay;
-    }
-    if dim == "performance" && msg.contains("clone/copy") {
-        return IssueCategory::PatternProblem;
-    }
-
-    // F: Chronic Decay — ratio/percentage Info-level indicators
-    if issue.level == Level::Info {
-        if msg.contains("% of files") || msg.contains("ratio")
-            || msg.contains("top-level entries") || msg.contains("changed") && msg.contains("times")
-        {
-            return IssueCategory::ChronicDecay;
-        }
-    }
-
-    // E: Convention Drift — test coverage gaps
-    if dim == "quality" {
-        if msg.contains("no test files") || msg.contains("no corresponding test") {
-            return IssueCategory::ConventionDrift;
-        }
-        if msg.contains("% of files are tests") || msg.contains("test/source line ratio") {
-            return IssueCategory::ConventionDrift;
-        }
-    }
-
-    // C: Architectural Decision — Split/Refactor actions on structure issues
-    if matches!(action_type, Some(ActionType::Split) | Some(ActionType::Refactor)) {
-        return IssueCategory::ArchitecturalDecision;
-    }
-
-    // C: structural dimension issues are typically architectural
-    if dim == "structural" {
-        return IssueCategory::ArchitecturalDecision;
-    }
-
-    // C: performance nested loops
-    if dim == "performance" && msg.contains("nested loop") {
-        return IssueCategory::ArchitecturalDecision;
-    }
-
-    // B: Extract actions suggest pattern problems
-    if matches!(action_type, Some(ActionType::Extract)) {
-        return IssueCategory::PatternProblem;
-    }
-
-    // Default: Architectural Decision (most conservative)
     IssueCategory::ArchitecturalDecision
 }
 

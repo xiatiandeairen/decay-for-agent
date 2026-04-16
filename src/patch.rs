@@ -161,17 +161,7 @@ fn generate_hardcoded_config_patches(source_files: &[SourceFile]) -> Vec<Patch> 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn make_source_file(path: &str, content: &str) -> SourceFile {
-        let lines: Vec<String> = content.lines().map(Into::into).collect();
-        let line_count = lines.len();
-        SourceFile {
-            path: path.into(),
-            content: content.into(),
-            lines,
-            line_count,
-        }
-    }
+    use crate::test_helpers::make_source_file;
 
     #[test]
     fn test_unwrap_patches() {

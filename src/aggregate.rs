@@ -136,26 +136,8 @@ pub fn aggregate_issues(issues: &[Issue]) -> Vec<AggregatedIssue> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::{Action, Effort, Priority, Target};
-    use crate::diagnose::Level;
-
-    fn make_issue(dim: &str, msg: &str, cat: IssueCategory, action_type: ActionType, file: &str) -> Issue {
-        Issue {
-            level: Level::Warning,
-            category: dim.into(),
-            message: msg.into(),
-            classification: Some(cat),
-            actions: vec![Action {
-                dimension: dim.into(),
-                action_type,
-                target: Target::file(file),
-                suggestion: "fix".into(),
-                reason: "broken".into(),
-                priority: Priority::High,
-                effort: Effort::Medium,
-            }],
-        }
-    }
+    use crate::action::ActionType;
+    use crate::test_helpers::make_issue;
 
     #[test]
     fn test_aggregate_duplicate_code() {

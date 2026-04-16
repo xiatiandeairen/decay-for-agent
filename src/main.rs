@@ -22,6 +22,9 @@ mod scan;
 mod trend;
 mod util;
 
+#[cfg(test)]
+mod test_helpers;
+
 use clap::Parser;
 
 /// Project health monitoring for AI agents

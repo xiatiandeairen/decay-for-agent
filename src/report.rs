@@ -102,25 +102,10 @@ pub fn build_diagnostic_report(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::{Action, ActionType, Effort, Priority, Target};
-    use crate::diagnose::Level;
+    use crate::action::ActionType;
 
     fn make_issue(dim: &str, msg: &str, cat: IssueCategory) -> Issue {
-        Issue {
-            level: Level::Warning,
-            category: dim.into(),
-            message: msg.into(),
-            classification: Some(cat),
-            actions: vec![Action {
-                dimension: dim.into(),
-                action_type: ActionType::Replace,
-                target: Target::file("test.rs"),
-                suggestion: "fix".into(),
-                reason: "reason".into(),
-                priority: Priority::High,
-                effort: Effort::Small,
-            }],
-        }
+        crate::test_helpers::make_issue(dim, msg, cat, ActionType::Replace, "test.rs")
     }
 
     #[test]

@@ -208,8 +208,16 @@ fn detect_injection_and_secrets(
         }
         let line_no = (i + 1) as u32;
 
-        // SQL injection — skip error messages and logging that happen to mention SQL keywords
-        if (trimmed.contains("format!(") || trimmed.contains("f\""))
+        // SQL injection — skip error messages and logging that happen to mention SQL keywords.
+        // Also skip detection-logic lines (contain `to_uppercase()` or `contains("SELECT`)
+        // to avoid false positives when scanning our own source code.
+        let is_detection_logic = trimmed.contains("to_uppercase()")
+            || trimmed.contains("contains(\"SELECT")
+            || trimmed.contains("contains(\"INSERT")
+            || trimmed.contains("contains(\"DELETE")
+            || trimmed.contains("contains(\"UPDATE");
+        if !is_detection_logic
+            && (trimmed.contains("format!(") || trimmed.contains("f\""))
             && (trimmed.to_uppercase().contains("SELECT ")
                 || trimmed.to_uppercase().contains("INSERT ")
                 || trimmed.to_uppercase().contains("DELETE ")

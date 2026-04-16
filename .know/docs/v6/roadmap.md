@@ -88,7 +88,7 @@
 | M2  | **语境识别** — 识别 test/FFI/parser/builder 等上下文，降级误报      | `#[cfg(test)]` 内的 unwrap 不报警，FFI 模块 unsafe 降级为 Info | ✅ |
 | M3  | **模式聚合** — 识别同类问题的共性根因，推荐统一解决方案                     | 5 个文件的重复代码聚合为 1 条"缺少公共抽象"诊断，附统一方案               | ✅ |
 | M4  | **机械修复生成** — 为 A 类问题生成可执行的 patch                     | unwrap→Result、空 catch→log 等生成 diff，patch 可编译      | ✅ |
-| M5  | **预防配置生成** — 输出 lint 规则、CI 配置、pre-commit hook 推荐     | 生成 clippy.toml / .pre-commit-config.yaml 等配置文件   |    |
+| M5  | **预防配置生成** — 输出 lint 规则、CI 配置、pre-commit hook 推荐     | 生成 clippy.toml / .pre-commit-config.yaml 等配置文件   | ✅ |
 | M6  | **智能报告** — 按分类输出结构化诊断报告                               | 单次 decay 输出分类报告：问题 + 分类 + 解决思路 + 优先级            |    |
 | M7  | **慢性恶化预警** — 结合 trajectory 对未触发阈值但趋势恶化的维度预警          | 依赖数从 20→40 时输出"approaching threshold"预警           |    |
 

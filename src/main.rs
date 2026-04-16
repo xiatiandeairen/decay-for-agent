@@ -11,6 +11,7 @@ mod filter;
 mod filter_pipeline;
 mod git;
 mod patch;
+mod prevention;
 mod git_pipeline;
 mod profile;
 mod render;

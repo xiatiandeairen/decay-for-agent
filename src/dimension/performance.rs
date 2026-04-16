@@ -9,19 +9,21 @@ use crate::diagnose::{Issue, Level};
 
 // --- Thresholds ---
 /// Number of deeply nested loop sites (depth ≥ 3) before penalizing.
-/// More than 3 occurrences means O(n³)+ complexity is not an isolated incident.
-const DEEP_NEST_WARN: usize = 3;
-/// Critical nested loop count: 10+ sites with 3+ loop levels likely tanks throughput under load.
-const DEEP_NEST_CRIT: usize = 10;
+/// More than 5 occurrences means O(n³)+ complexity is not an isolated incident.
+const DEEP_NEST_WARN: usize = 5;
+/// Critical nested loop count: 15+ sites with 3+ loop levels likely tanks throughput under load.
+const DEEP_NEST_CRIT: usize = 15;
 /// Clone/copy calls per 1,000 lines triggering a warning. Excessive cloning inflates allocations.
-/// 10 per 1K lines is where clone pressure starts to show up in profiling on hot paths.
-const CLONE_DENSITY_WARN: f64 = 10.0;
+/// 15 per 1K lines is where clone pressure starts to show up in profiling on hot paths.
+/// Rust projects naturally use more clone than GC languages.
+const CLONE_DENSITY_WARN: f64 = 15.0;
 /// Critical clone density: 25+ per 1K lines means ownership design is consistently avoided.
 /// At this level, heap allocation patterns are likely causing measurable memory pressure.
 const CLONE_DENSITY_CRIT: f64 = 25.0;
 /// Number of synchronous blocking calls (sleep, block_on) before penalizing.
-/// More than 5 blocking calls in async code risks starving the runtime's thread pool.
-const BLOCKING_CALLS_WARN: usize = 5;
+/// More than 10 blocking calls in async code risks starving the runtime's thread pool.
+/// Test code and pattern strings inflate this count, so threshold is generous.
+const BLOCKING_CALLS_WARN: usize = 10;
 /// Critical blocking call count: 15+ makes async throughput effectively synchronous.
 const BLOCKING_CALLS_CRIT: usize = 15;
 /// Minimum loop nesting depth considered "deep" for nest detection.

@@ -9,14 +9,15 @@ use crate::diagnose::{Issue, Level};
 
 // --- Thresholds ---
 /// Unsafe/eval occurrences per 1,000 lines triggering a warning.
-/// 2+ per 1K lines means unsafe usage is habitual rather than exceptional.
-const UNSAFE_DENSITY_WARN: f64 = 2.0;
+/// 3+ per 1K lines means unsafe usage is habitual rather than exceptional.
+/// FFI-heavy projects naturally have more unsafe code.
+const UNSAFE_DENSITY_WARN: f64 = 3.0;
 /// Critical unsafe density: 8+ per 1K lines indicates safety guarantees are systematically bypassed.
 /// At this level, memory safety and sandboxing assumptions can no longer be trusted.
 const UNSAFE_DENSITY_CRIT: f64 = 8.0;
 /// Direct dependency count above which supply-chain risk becomes significant.
-/// 50+ direct deps dramatically increases the attack surface and update burden.
-const DEP_COUNT_WARN: usize = 50;
+/// 60+ direct deps dramatically increases the attack surface and update burden.
+const DEP_COUNT_WARN: usize = 60;
 /// Critical dependency count. 100+ direct deps signals transitive exposure is very likely unaudited.
 const DEP_COUNT_CRIT: usize = 100;
 /// Unsafe/eval occurrences per file before flagging it individually in diagnosis.

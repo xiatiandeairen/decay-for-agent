@@ -19,18 +19,18 @@ const LONG_FILE_LINES: usize = 300;
 const LONG_FILE_RATIO_WARN: f64 = 0.20;
 /// Critical ratio: 40%+ long files signals systemic poor decomposition across the codebase.
 const LONG_FILE_RATIO_CRIT: f64 = 0.40;
-/// Functions exceeding 50 lines are hard to reason about and test in isolation.
-/// 50 lines is a widely used heuristic (Clean Code, Google style) for function length.
-const LONG_FUNC_LINES: usize = 50;
-/// 10%+ of functions being long is a warning that single-responsibility isn't being enforced.
-const LONG_FUNC_RATIO_WARN: f64 = 0.10;
+/// Functions exceeding 60 lines are hard to reason about and test in isolation.
+/// 60 lines accounts for Rust's match expressions and error handling verbosity.
+const LONG_FUNC_LINES: usize = 60;
+/// 15%+ of functions being long is a warning that single-responsibility isn't being enforced.
+const LONG_FUNC_RATIO_WARN: f64 = 0.15;
 /// 25%+ long functions is critical — refactoring has become necessary to keep the codebase safe.
 const LONG_FUNC_RATIO_CRIT: f64 = 0.25;
 /// Fraction of files sharing duplicate code blocks.
-/// 5% means duplication is creeping in; at this level extract-to-module fixes are cheap.
-const DUP_FILE_RATIO_WARN: f64 = 0.05;
-/// 15%+ files with shared duplicate blocks signals copy-paste culture has taken hold.
-const DUP_FILE_RATIO_CRIT: f64 = 0.15;
+/// 15% means duplication is widespread; test pattern similarity is normal below this.
+const DUP_FILE_RATIO_WARN: f64 = 0.15;
+/// 30%+ files with shared duplicate blocks signals copy-paste culture has taken hold.
+const DUP_FILE_RATIO_CRIT: f64 = 0.30;
 /// TODO/FIXME density per 10,000 lines of code. High density signals deferred debt.
 /// 20 per 10K lines (~1 per 500 lines) is where debt starts compounding faster than it's resolved.
 const TODO_DENSITY_WARN: f64 = 20.0; // per 10K lines
@@ -62,9 +62,9 @@ impl Dimension for Maintainability {
         if analysis.file_count > 0 {
             let dup_ratio = analysis.files_with_dups as f64 / analysis.file_count as f64;
             if dup_ratio > DUP_FILE_RATIO_CRIT {
-                score -= 35;
+                score -= 25;
             } else if dup_ratio > DUP_FILE_RATIO_WARN {
-                score -= 15;
+                score -= 10;
             }
         }
         for (path, dup_count) in &analysis.dup_details {

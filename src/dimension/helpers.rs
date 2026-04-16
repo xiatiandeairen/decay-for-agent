@@ -202,6 +202,77 @@ pub fn is_generated_file(path: &str) -> bool {
     false
 }
 
+/// Suggest split details for a large file by grouping its function names.
+/// Returns specific suggestions like "extract foo/bar/baz → {path_stem}_foo.rs".
+pub fn suggest_split_details(lines: &[String], path: &str) -> Vec<String> {
+    // Extract function names (simplified: fn name( patterns)
+    let mut functions: Vec<String> = Vec::new();
+    for line in lines {
+        let trimmed = line.trim();
+        // Match: fn name(, pub fn name(, async fn name(, pub async fn name(
+        let fn_pos = if let Some(p) = trimmed.find("fn ") {
+            if p == 0
+                || trimmed[..p].trim().ends_with("pub")
+                || trimmed[..p].trim().ends_with("async")
+            {
+                Some(p)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        if let Some(pos) = fn_pos {
+            let after_fn = &trimmed[pos + 3..];
+            if let Some(paren) = after_fn.find('(') {
+                let name = after_fn[..paren].trim();
+                if !name.is_empty() && !name.contains(' ') {
+                    functions.push(name.to_string());
+                }
+            }
+        }
+    }
+
+    if functions.len() < 4 {
+        return vec![]; // Too few functions to suggest meaningful splits
+    }
+
+    // Group by common prefixes (first word before _)
+    let mut groups: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for f in &functions {
+        let prefix = f.split('_').next().unwrap_or(f).to_string();
+        groups.entry(prefix).or_default().push(f.clone());
+    }
+
+    // Only suggest groups with ≥2 functions
+    let stem = std::path::Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("module");
+    let parent = std::path::Path::new(path)
+        .parent()
+        .and_then(|p| p.to_str())
+        .unwrap_or("src");
+
+    let mut details: Vec<String> = groups
+        .iter()
+        .filter(|(_, fns)| fns.len() >= 2)
+        .map(|(prefix, fns)| {
+            let fn_list = fns.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
+            let suffix = if fns.len() > 3 {
+                format!(" +{} more", fns.len() - 3)
+            } else {
+                String::new()
+            };
+            format!("extract {fn_list}{suffix} → {parent}/{stem}_{prefix}.rs")
+        })
+        .collect();
+
+    details.sort();
+    details.truncate(5); // Max 5 suggestions
+    details
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

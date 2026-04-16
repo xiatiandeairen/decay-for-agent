@@ -64,6 +64,7 @@ impl Dimension for Observability {
                         suggestion: format!("replace unwrap/panic in {path} with proper error handling"),
                         reason: format!("{path} has {count} unwrap/panic calls"),
                         priority: Priority::High, effort: Effort::Medium,
+                        details: vec![],
                     }],
                 ));
             }
@@ -80,6 +81,7 @@ impl Dimension for Observability {
                     suggestion: "add structured logging (e.g. log/tracing/slog for Rust, logging for Python)".into(),
                     reason: "no logging framework detected".into(),
                     priority: Priority::High, effort: Effort::Medium,
+                    details: vec![],
                 }],
             ));
         }
@@ -101,6 +103,7 @@ impl Dimension for Observability {
                     suggestion: "handle or log errors instead of silently swallowing them".into(),
                     reason: format!("{} empty catch blocks", analysis.empty_catches),
                     priority: Priority::High, effort: Effort::Small,
+                    details: vec![],
                 }],
             ));
         }

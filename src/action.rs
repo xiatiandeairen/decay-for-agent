@@ -123,6 +123,33 @@ pub struct Action {
     pub priority: Priority,
     /// Estimated implementation effort.
     pub effort: Effort,
+    /// Specific sub-steps or details for executing this action.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub details: Vec<String>,
+}
+
+impl Action {
+    /// Create an action with empty details.
+    pub fn new(
+        dimension: impl Into<String>,
+        action_type: ActionType,
+        target: Target,
+        suggestion: impl Into<String>,
+        reason: impl Into<String>,
+        priority: Priority,
+        effort: Effort,
+    ) -> Self {
+        Self {
+            dimension: dimension.into(),
+            action_type,
+            target,
+            suggestion: suggestion.into(),
+            reason: reason.into(),
+            priority,
+            effort,
+            details: vec![],
+        }
+    }
 }
 
 impl fmt::Display for Action {
@@ -172,6 +199,7 @@ mod tests {
             reason: "1200 files exceed threshold".into(),
             priority: Priority::Critical,
             effort: Effort::Large,
+            details: vec![],
         }
     }
 
@@ -266,6 +294,7 @@ mod tests {
                     reason: "A is big".into(),
                     priority: Priority::High,
                     effort: Effort::Medium,
+                    details: vec![],
                 }],
             ),
             Issue::with_actions(
@@ -280,6 +309,7 @@ mod tests {
                     reason: "A is long".into(),
                     priority: Priority::Critical,
                     effort: Effort::Medium,
+                    details: vec![],
                 }],
             ),
         ];

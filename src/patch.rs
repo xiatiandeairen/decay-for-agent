@@ -221,6 +221,7 @@ mod tests {
                     reason: "broken".into(),
                     priority: Priority::High,
                     effort: Effort::Small,
+                    details: vec![],
                 }],
             },
             Issue {

@@ -59,6 +59,7 @@ impl Dimension for QualityAssurance {
                         suggestion: "add tests for critical paths and public APIs".into(),
                         reason: "no test files found".into(),
                         priority: Priority::Critical, effort: Effort::Large,
+                        details: vec![],
                     }],
                 ));
             } else if test_ratio < TEST_FILE_RATIO_WARN {
@@ -72,6 +73,7 @@ impl Dimension for QualityAssurance {
                         suggestion: "increase test coverage, focus on complex and critical modules".into(),
                         reason: format!("only {pct}% test files"),
                         priority: Priority::High, effort: Effort::Large,
+                        details: vec![],
                     }],
                 ));
             } else if test_ratio < TEST_FILE_RATIO_GOOD {
@@ -93,6 +95,7 @@ impl Dimension for QualityAssurance {
                         suggestion: "add more tests to improve confidence in changes".into(),
                         reason: format!("test/source ratio {:.1}%", line_ratio * 100.0),
                         priority: Priority::High, effort: Effort::Medium,
+                        details: vec![],
                     }],
                 ));
             } else if line_ratio < TEST_LINE_RATIO_GOOD {

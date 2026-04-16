@@ -70,6 +70,7 @@ impl Dimension for Reliability {
                         suggestion: format!("minimize unsafe code in {path}, prefer safe abstractions"),
                         reason: format!("{path} has {count} unsafe/eval"),
                         priority, effort: Effort::Medium,
+                        details: vec![],
                     }],
                 ));
             }
@@ -87,6 +88,7 @@ impl Dimension for Reliability {
                     suggestion: "use parameterized queries or safe command execution".into(),
                     reason: format!("{path}:{line_no}: potential {pattern}"),
                     priority: Priority::Critical, effort: Effort::Small,
+                    details: vec![],
                 }],
             ));
         }
@@ -103,6 +105,7 @@ impl Dimension for Reliability {
                     suggestion: "use environment variables or secret management for credentials".into(),
                     reason: format!("{path}:{line_no}: {kind}"),
                     priority: Priority::Critical, effort: Effort::Small,
+                    details: vec![],
                 }],
             ));
         }
@@ -123,6 +126,7 @@ impl Dimension for Reliability {
                     suggestion: "audit dependencies for necessity, remove unused ones".into(),
                     reason: format!("{dep_count} direct dependencies"),
                     priority: Priority::Medium, effort: Effort::Small,
+                    details: vec![],
                 }],
             ));
         }

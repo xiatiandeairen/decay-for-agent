@@ -31,6 +31,7 @@ pub fn make_issue(
             reason: "broken".into(),
             priority: Priority::High,
             effort: Effort::Medium,
+            details: vec![],
         }],
     }
 }

@@ -93,6 +93,7 @@ impl Dimension for Fragility {
                     suggestion: "distribute changes across more files".into(),
                     reason: format!("top 10% files account for {pct}% of churn"),
                     priority: Priority::High, effort: Effort::Large,
+                    details: vec![],
                 }],
             ));
         }
@@ -115,6 +116,12 @@ impl Dimension for Fragility {
         }
 
         for (path, churn) in high_churn.iter().take(MAX_CHURN_ISSUES) {
+            // Generate split suggestions from source file function analysis
+            let details = store.source_files()
+                .iter()
+                .find(|sf| sf.path == *path)
+                .map(|sf| crate::dimension::helpers::suggest_split_details(&sf.lines, path))
+                .unwrap_or_default();
             issues.push(Issue::with_actions(
                 Level::Critical, name.clone(), format!("{path} has {churn} lines churn"),
                 vec![Action {
@@ -123,6 +130,7 @@ impl Dimension for Fragility {
                     suggestion: format!("split {path} to isolate unstable logic"),
                     reason: format!("{path} has {churn} lines churn"),
                     priority: Priority::Critical, effort: Effort::Medium,
+                    details,
                 }],
             ));
         }

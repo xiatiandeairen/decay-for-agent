@@ -73,6 +73,7 @@ impl Dimension for Performance {
                     suggestion: "extract inner loops into separate functions or use iterators".into(),
                     reason: format!("{depth}-level nested loop at line {line_no}"),
                     priority, effort: Effort::Small,
+                    details: vec![],
                 }],
             ));
         }
@@ -103,6 +104,7 @@ impl Dimension for Performance {
                         suggestion: format!("reduce cloning in {path}, prefer references or Cow"),
                         reason: format!("{path} has {count} clones"),
                         priority, effort: Effort::Medium,
+                        details: vec![],
                     }],
                 ));
             }

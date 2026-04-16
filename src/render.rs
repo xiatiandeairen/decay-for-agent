@@ -268,7 +268,11 @@ fn render_issues_section(issues: &[diagnose::Issue]) -> (String, String) {
                     let line = match issue.actions.first() {
                         Some(a) => {
                             let class = issue.classification.map(|c| format!(" `{c}`")).unwrap_or_default();
-                            format!("- **{}**{class}: {} — *{}*", issue.category, issue.message, a.suggestion)
+                            let mut s = format!("- **{}**{class}: {} — *{}*", issue.category, issue.message, a.suggestion);
+                            for detail in &a.details {
+                                s.push_str(&format!("\n  - {detail}"));
+                            }
+                            s
                         },
                         None => {
                             let class = issue.classification.map(|c| format!(" `{c}`")).unwrap_or_default();

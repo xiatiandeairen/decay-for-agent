@@ -78,6 +78,7 @@ impl Dimension for Maintainability {
                         suggestion: format!("extract shared logic from {path} into a common module"),
                         reason: format!("{path} has {dup_count} duplicate blocks"),
                         priority: Priority::High, effort: Effort::Medium,
+                        details: vec![],
                     }],
                 ));
             }
@@ -95,14 +96,26 @@ impl Dimension for Maintainability {
         for (path, lines) in &analysis.long_file_details {
             let level = if *lines > 600 { Level::Critical } else { Level::Warning };
             let priority = if *lines > 600 { Priority::Critical } else { Priority::High };
+            // Generate specific split suggestions based on function analysis
+            let details = source_files
+                .iter()
+                .find(|sf| sf.path == *path)
+                .map(|sf| helpers::suggest_split_details(&sf.lines, path))
+                .unwrap_or_default();
+            let suggestion = if details.is_empty() {
+                format!("split {path} into smaller modules")
+            } else {
+                format!("split {path} by responsibility ({} groups identified)", details.len())
+            };
             issues.push(Issue::with_actions(
                 level, name.clone(), format!("{path} has {lines} lines"),
                 vec![Action {
                     dimension: name.clone(), action_type: ActionType::Split,
                     target: Target::file(path),
-                    suggestion: format!("split {path} into smaller modules"),
+                    suggestion,
                     reason: format!("{path} has {lines} lines"),
                     priority, effort: Effort::Medium,
+                    details,
                 }],
             ));
         }
@@ -128,6 +141,7 @@ impl Dimension for Maintainability {
                     suggestion: format!("break {func_name} into smaller functions"),
                     reason: format!("{func_name} is {lines} lines"),
                     priority: Priority::High, effort: Effort::Small,
+                    details: vec![],
                 }],
             ));
         }

@@ -56,6 +56,7 @@ impl Dimension for Structural {
                     suggestion: "split into sub-modules by responsibility".into(),
                     reason: format!("{file_count} files exceed {FILE_COUNT_CRIT} threshold"),
                     priority: Priority::Critical, effort: Effort::Large,
+                    details: vec![],
                 }],
             ));
         } else if file_count > FILE_COUNT_WARN {
@@ -68,6 +69,7 @@ impl Dimension for Structural {
                     suggestion: "review directory structure for extractable modules".into(),
                     reason: format!("{file_count} files exceed {FILE_COUNT_WARN} threshold"),
                     priority: Priority::High, effort: Effort::Medium,
+                    details: vec![],
                 }],
             ));
         }
@@ -94,6 +96,7 @@ impl Dimension for Structural {
                     suggestion: "flatten nested directories".into(),
                     reason: format!("max depth {max_depth} exceeds {DEPTH_WARN} threshold"),
                     priority: Priority::Medium, effort: Effort::Medium,
+                    details: vec![],
                 }],
             ));
         }

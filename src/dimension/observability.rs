@@ -66,6 +66,7 @@ impl Dimension for Observability {
                         priority: Priority::High, effort: Effort::Medium,
                         details: vec![],
                         impact: None,
+                        verify: String::new(),
                     }],
                 ));
             }
@@ -84,6 +85,7 @@ impl Dimension for Observability {
                     priority: Priority::High, effort: Effort::Medium,
                     details: vec![],
                     impact: None,
+                    verify: String::new(),
                 }],
             ));
         }
@@ -107,6 +109,7 @@ impl Dimension for Observability {
                     priority: Priority::High, effort: Effort::Small,
                     details: vec![],
                     impact: None,
+                    verify: String::new(),
                 }],
             ));
         }

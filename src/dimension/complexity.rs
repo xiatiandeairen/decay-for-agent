@@ -104,6 +104,7 @@ impl Dimension for Complexity {
                         priority: Priority::Critical, effort: Effort::Large,
                         details: vec![],
                         impact: None,
+                        verify: String::new(),
                     }],
                 ));
             } else {
@@ -117,6 +118,7 @@ impl Dimension for Complexity {
                         priority: Priority::High, effort: Effort::Medium,
                         details: vec![],
                         impact: None,
+                        verify: String::new(),
                     }],
                 ));
             }

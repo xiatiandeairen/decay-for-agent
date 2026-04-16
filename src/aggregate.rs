@@ -58,6 +58,33 @@ const RULES: &[AggRule] = &[
         approach: "introduce borrowing, references, or Cow to reduce cloning",
     },
     AggRule {
+        category: IssueCategory::PatternProblem,
+        dimension: "maintainability",
+        action_type: Some(ActionType::Extract),
+        message_contains: Some("lines long"),
+        min_count: 3,
+        root_cause: "functions exceeding size threshold",
+        approach: "break functions into smaller, focused units",
+    },
+    AggRule {
+        category: IssueCategory::ArchitecturalDecision,
+        dimension: "performance",
+        action_type: Some(ActionType::Extract),
+        message_contains: Some("nested loop"),
+        min_count: 3,
+        root_cause: "deeply nested iteration patterns",
+        approach: "extract inner loops into iterators or helper functions",
+    },
+    AggRule {
+        category: IssueCategory::ArchitecturalDecision,
+        dimension: "fragility",
+        action_type: Some(ActionType::Split),
+        message_contains: None,
+        min_count: 2,
+        root_cause: "high-churn file concentration",
+        approach: "isolate frequently changing logic into stable/unstable boundaries",
+    },
+    AggRule {
         category: IssueCategory::ArchitecturalDecision,
         dimension: "complexity",
         action_type: Some(ActionType::Split),
@@ -195,6 +222,55 @@ mod tests {
         let agg = aggregate_issues(&issues);
         assert_eq!(agg.len(), 1);
         assert_eq!(agg[0].root_cause, "unclear module responsibilities");
+    }
+
+    #[test]
+    fn test_aggregate_long_functions() {
+        let issues: Vec<Issue> = (0..5)
+            .map(|i| make_issue(
+                "maintainability",
+                &format!("process_data in src/mod{i}.rs is 180 lines long"),
+                IssueCategory::PatternProblem,
+                ActionType::Extract,
+                &format!("src/mod{i}.rs"),
+            ))
+            .collect();
+        let agg = aggregate_issues(&issues);
+        assert!(agg.iter().any(|a| a.root_cause == "functions exceeding size threshold"));
+        let matched = agg.iter().find(|a| a.root_cause == "functions exceeding size threshold").unwrap();
+        assert_eq!(matched.issue_count, 5);
+    }
+
+    #[test]
+    fn test_aggregate_nested_loops() {
+        let issues: Vec<Issue> = (0..4)
+            .map(|i| make_issue(
+                "performance",
+                &format!("src/scan{i}.rs:42 has 3-level nested loop"),
+                IssueCategory::ArchitecturalDecision,
+                ActionType::Extract,
+                &format!("src/scan{i}.rs"),
+            ))
+            .collect();
+        let agg = aggregate_issues(&issues);
+        assert!(agg.iter().any(|a| a.root_cause == "deeply nested iteration patterns"));
+        let matched = agg.iter().find(|a| a.root_cause == "deeply nested iteration patterns").unwrap();
+        assert_eq!(matched.issue_count, 4);
+    }
+
+    #[test]
+    fn test_aggregate_fragility_split() {
+        let issues = vec![
+            make_issue("fragility", "src/core.rs has 450 lines churn",
+                IssueCategory::ArchitecturalDecision, ActionType::Split, "src/core.rs"),
+            make_issue("fragility", "src/engine.rs has 320 lines churn",
+                IssueCategory::ArchitecturalDecision, ActionType::Split, "src/engine.rs"),
+        ];
+        let agg = aggregate_issues(&issues);
+        assert!(agg.iter().any(|a| a.root_cause == "high-churn file concentration"));
+        let matched = agg.iter().find(|a| a.root_cause == "high-churn file concentration").unwrap();
+        assert_eq!(matched.issue_count, 2);
+        assert_eq!(matched.affected_files.len(), 2);
     }
 
     #[test]

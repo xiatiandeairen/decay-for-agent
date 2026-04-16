@@ -95,6 +95,7 @@ impl Dimension for Fragility {
                     priority: Priority::High, effort: Effort::Large,
                     details: vec![],
                     impact: None,
+                    verify: String::new(),
                 }],
             ));
         }
@@ -116,25 +117,70 @@ impl Dimension for Fragility {
             score -= 15;
         }
 
+        // Check how many of the last 3 snapshots (same project) each high-churn file appears in
+        let recent_snapshot_ids: Vec<i64> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id FROM snapshots WHERE project_path = ?1 AND id < ?2 ORDER BY id DESC LIMIT 3",
+                )
+                .with_context(|| "fragility: failed to prepare recent snapshots query")?;
+            stmt.query_map(rusqlite::params![store.project_path(), snapshot_id], |row| row.get(0))
+                .with_context(|| "fragility: failed to query recent snapshots")?
+                .collect::<std::result::Result<Vec<_>, _>>()
+                .with_context(|| "fragility: failed to collect recent snapshots")?
+        };
+
         for (path, churn) in high_churn.iter().take(MAX_CHURN_ISSUES) {
-            // Generate split suggestions from source file function analysis
-            let details = store.source_files()
-                .iter()
-                .find(|sf| sf.path == *path)
-                .map(|sf| crate::dimension::helpers::suggest_split_details(&sf.lines, path))
-                .unwrap_or_default();
-            issues.push(Issue::with_actions(
-                Level::Critical, name.clone(), format!("{path} has {churn} lines churn"),
-                vec![Action {
-                    dimension: name.clone(), action_type: ActionType::Split,
-                    target: Target::file(path),
-                    suggestion: format!("split {path} to isolate unstable logic"),
-                    reason: format!("{path} has {churn} lines churn"),
-                    priority: Priority::Critical, effort: Effort::Medium,
-                    details,
-                    impact: None,
-                }],
-            ));
+            // Count how many recent snapshots also contain this file in git_changes
+            let consecutive_count = if recent_snapshot_ids.is_empty() {
+                0usize
+            } else {
+                let placeholders: String = recent_snapshot_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+                let query = format!(
+                    "SELECT COUNT(DISTINCT snapshot_id) FROM git_changes WHERE snapshot_id IN ({placeholders}) AND path = ?",
+                );
+                let mut stmt = conn.prepare(&query)
+                    .with_context(|| "fragility: failed to prepare consecutive query")?;
+                let mut param_idx = 1;
+                for sid in &recent_snapshot_ids {
+                    stmt.raw_bind_parameter(param_idx, sid)?;
+                    param_idx += 1;
+                }
+                stmt.raw_bind_parameter(param_idx, path.as_str())?;
+                let count: i64 = stmt.raw_query().next()?.unwrap().get(0)?;
+                count as usize
+            };
+
+            let is_active_dev = consecutive_count >= 3;
+
+            if is_active_dev {
+                // +1 for current snapshot
+                let n = consecutive_count + 1;
+                issues.push(Issue::new(
+                    Level::Info, name.clone(),
+                    format!("{path} has {churn} lines churn (active development — changed in {n} consecutive snapshots)"),
+                ));
+            } else {
+                // Generate split suggestions from source file function analysis
+                let details = store.source_files()
+                    .iter()
+                    .find(|sf| sf.path == *path)
+                    .map(|sf| crate::dimension::helpers::suggest_split_details(&sf.lines, path))
+                    .unwrap_or_default();
+                issues.push(Issue::with_actions(
+                    Level::Critical, name.clone(), format!("{path} has {churn} lines churn"),
+                    vec![Action {
+                        dimension: name.clone(), action_type: ActionType::Split,
+                        target: Target::file(path),
+                        suggestion: format!("split {path} to isolate unstable logic"),
+                        reason: format!("{path} has {churn} lines churn"),
+                        priority: Priority::Critical, effort: Effort::Medium,
+                        details,
+                        impact: None,
+                        verify: String::new(),
+                    }],
+                ));
+            }
         }
 
         // Frequently changed files (>10 changes), excluding lock files
@@ -168,6 +214,7 @@ impl Dimension for Fragility {
 mod tests {
     use super::*;
     use crate::dimension::test_support;
+    use rusqlite::Connection;
 
     #[test]
     fn test_no_git() -> Result<()> {
@@ -203,6 +250,84 @@ mod tests {
         let dim = Fragility;
         let issues = dim.evaluate(&store)?.issues;
         assert!(issues.iter().any(|i| i.level == Level::Critical && i.message.contains("hot.rs")));
+        Ok(())
+    }
+
+    #[test]
+    fn test_active_dev_downgrades_to_info() -> Result<()> {
+        let store = test_support::setup_db_store();
+        let conn = store.conn();
+
+        // Create 3 older snapshots for the same project_path ('/tmp')
+        for _ in 0..3 {
+            conn.execute(
+                "INSERT INTO snapshots (project_path, version) VALUES ('/tmp', '0.1.0')",
+                [],
+            )?;
+        }
+        // Snapshot IDs: 1 (current), 2, 3, 4 (historical)
+        // The query fetches snapshots with id < current (1), so ids 2,3,4 won't work.
+        // We need current snapshot_id to be the largest. Let's create a new store.
+        drop(store);
+
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, project_path TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), version TEXT NOT NULL);
+             CREATE TABLE files (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, size_bytes INTEGER NOT NULL, depth INTEGER NOT NULL);
+             CREATE TABLE git_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, snapshot_id INTEGER NOT NULL, path TEXT NOT NULL, change_count INTEGER NOT NULL, lines_added INTEGER NOT NULL, lines_deleted INTEGER NOT NULL, last_modified TEXT NOT NULL);",
+        )?;
+
+        // Create 3 historical snapshots + 1 current (ids 1,2,3 historical, 4 current)
+        for _ in 0..3 {
+            conn.execute(
+                "INSERT INTO snapshots (project_path, version) VALUES ('/tmp', '0.1.0')",
+                [],
+            )?;
+        }
+        conn.execute(
+            "INSERT INTO snapshots (project_path, version) VALUES ('/tmp', '0.1.0')",
+            [],
+        )?;
+        let current_id: i64 = 4;
+
+        // Add high-churn file to all 4 snapshots
+        for sid in 1..=4 {
+            conn.execute(
+                "INSERT INTO git_changes (snapshot_id, path, change_count, lines_added, lines_deleted, last_modified) VALUES (?1, 'active.rs', 20, 700, 500, '2026-04-01')",
+                [sid],
+            )?;
+        }
+
+        let store = DataStore::new(conn, current_id, "/tmp".to_string());
+        let dim = Fragility;
+        let result = dim.evaluate(&store)?;
+
+        // Should be Info (active development), not Critical
+        let active_issue = result.issues.iter().find(|i| i.message.contains("active.rs"));
+        assert!(active_issue.is_some(), "should have an issue for active.rs");
+        let issue = active_issue.unwrap();
+        assert_eq!(issue.level, Level::Info, "active development file should be Info, got {:?}", issue.level);
+        assert!(issue.message.contains("active development"), "message should mention active development: {}", issue.message);
+        assert!(issue.message.contains("4 consecutive snapshots"), "message should show 4 consecutive snapshots: {}", issue.message);
+
+        // Should NOT have a Critical issue for this file
+        assert!(!result.issues.iter().any(|i| i.level == Level::Critical && i.message.contains("active.rs")));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_high_churn_stays_critical_without_history() -> Result<()> {
+        // File with high churn but only in 1 snapshot — should remain Critical
+        let store = test_support::setup_db_store();
+        store.conn().execute(
+            "INSERT INTO git_changes (snapshot_id, path, change_count, lines_added, lines_deleted, last_modified) VALUES (1, 'new_hot.rs', 20, 800, 400, '2026-04-01')",
+            [],
+        )?;
+        let dim = Fragility;
+        let result = dim.evaluate(&store)?;
+        assert!(result.issues.iter().any(|i| i.level == Level::Critical && i.message.contains("new_hot.rs")),
+            "file without historical presence should remain Critical");
         Ok(())
     }
 }

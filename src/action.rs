@@ -129,6 +129,19 @@ pub struct Action {
     /// Development impact assessment.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub impact: Option<crate::impact::Impact>,
+    /// Command to verify the action was applied correctly.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub verify: String,
+}
+
+/// Return a verification command appropriate for the given action type.
+pub fn verify_command(action_type: &ActionType) -> &'static str {
+    match action_type {
+        ActionType::Split | ActionType::Extract | ActionType::Move | ActionType::Refactor => {
+            "cargo test && decay --quiet"
+        }
+        ActionType::Replace | ActionType::Add | ActionType::Remove => "cargo test",
+    }
 }
 
 impl Action {
@@ -142,6 +155,7 @@ impl Action {
         priority: Priority,
         effort: Effort,
     ) -> Self {
+        let verify = verify_command(&action_type).to_string();
         Self {
             dimension: dimension.into(),
             action_type,
@@ -152,6 +166,7 @@ impl Action {
             effort,
             details: vec![],
             impact: None,
+            verify,
         }
     }
 }
@@ -175,6 +190,12 @@ pub fn collect_sorted(issues: &[crate::diagnose::Issue]) -> Vec<Action> {
         .iter()
         .flat_map(|i| i.actions.iter().cloned())
         .collect();
+    // Auto-fill empty verify fields
+    for action in &mut actions {
+        if action.verify.is_empty() {
+            action.verify = verify_command(&action.action_type).to_string();
+        }
+    }
     actions.sort_by(|a, b| {
         a.priority
             .cmp(&b.priority)
@@ -205,6 +226,7 @@ mod tests {
             effort: Effort::Large,
             details: vec![],
             impact: None,
+            verify: String::new(),
         }
     }
 
@@ -301,6 +323,7 @@ mod tests {
                     effort: Effort::Medium,
                     details: vec![],
                     impact: None,
+                    verify: String::new(),
                 }],
             ),
             Issue::with_actions(
@@ -317,6 +340,7 @@ mod tests {
                     effort: Effort::Medium,
                     details: vec![],
                     impact: None,
+                    verify: String::new(),
                 }],
             ),
         ];

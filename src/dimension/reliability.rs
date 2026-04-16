@@ -72,6 +72,7 @@ impl Dimension for Reliability {
                         priority, effort: Effort::Medium,
                         details: vec![],
                         impact: None,
+                        verify: String::new(),
                     }],
                 ));
             }
@@ -91,6 +92,7 @@ impl Dimension for Reliability {
                     priority: Priority::Critical, effort: Effort::Small,
                     details: vec![],
                     impact: None,
+                    verify: String::new(),
                 }],
             ));
         }
@@ -109,6 +111,7 @@ impl Dimension for Reliability {
                     priority: Priority::Critical, effort: Effort::Small,
                     details: vec![],
                     impact: None,
+                    verify: String::new(),
                 }],
             ));
         }
@@ -131,6 +134,7 @@ impl Dimension for Reliability {
                     priority: Priority::Medium, effort: Effort::Small,
                     details: vec![],
                     impact: None,
+                    verify: String::new(),
                 }],
             ));
         }
@@ -210,9 +214,11 @@ fn detect_injection_and_secrets(
     let mut secret_count = 0;
     let mut secret_details = Vec::new();
 
+    let test_lines = helpers::mark_test_lines(lines);
+
     for (i, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
-        if helpers::is_comment(trimmed) {
+        if helpers::is_comment(trimmed) || test_lines[i] {
             continue;
         }
         let line_no = (i + 1) as u32;

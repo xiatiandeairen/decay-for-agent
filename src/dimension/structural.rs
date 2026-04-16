@@ -58,6 +58,7 @@ impl Dimension for Structural {
                     priority: Priority::Critical, effort: Effort::Large,
                     details: vec![],
                     impact: None,
+                    verify: String::new(),
                 }],
             ));
         } else if file_count > FILE_COUNT_WARN {
@@ -72,6 +73,7 @@ impl Dimension for Structural {
                     priority: Priority::High, effort: Effort::Medium,
                     details: vec![],
                     impact: None,
+                    verify: String::new(),
                 }],
             ));
         }
@@ -100,6 +102,7 @@ impl Dimension for Structural {
                     priority: Priority::Medium, effort: Effort::Medium,
                     details: vec![],
                     impact: None,
+                    verify: String::new(),
                 }],
             ));
         }

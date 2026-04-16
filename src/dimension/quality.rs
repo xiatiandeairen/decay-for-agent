@@ -61,6 +61,7 @@ impl Dimension for QualityAssurance {
                         priority: Priority::Critical, effort: Effort::Large,
                         details: vec![],
                         impact: None,
+                        verify: String::new(),
                     }],
                 ));
             } else if test_ratio < TEST_FILE_RATIO_WARN {
@@ -76,6 +77,7 @@ impl Dimension for QualityAssurance {
                         priority: Priority::High, effort: Effort::Large,
                         details: vec![],
                         impact: None,
+                        verify: String::new(),
                     }],
                 ));
             } else if test_ratio < TEST_FILE_RATIO_GOOD {
@@ -99,6 +101,7 @@ impl Dimension for QualityAssurance {
                         priority: Priority::High, effort: Effort::Medium,
                         details: vec![],
                         impact: None,
+                        verify: String::new(),
                     }],
                 ));
             } else if line_ratio < TEST_LINE_RATIO_GOOD {

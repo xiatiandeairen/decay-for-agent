@@ -223,6 +223,7 @@ mod tests {
                     effort: Effort::Small,
                     details: vec![],
                     impact: None,
+                    verify: String::new(),
                 }],
             },
             Issue {

@@ -75,6 +75,7 @@ impl Dimension for Performance {
                     priority, effort: Effort::Small,
                     details: vec![],
                     impact: None,
+                    verify: String::new(),
                 }],
             ));
         }
@@ -107,6 +108,7 @@ impl Dimension for Performance {
                         priority, effort: Effort::Medium,
                         details: vec![],
                         impact: None,
+                        verify: String::new(),
                     }],
                 ));
             }

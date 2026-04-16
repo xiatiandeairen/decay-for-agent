@@ -33,6 +33,7 @@ pub fn make_issue(
             effort: Effort::Medium,
             details: vec![],
             impact: None,
+            verify: String::new(),
         }],
     }
 }

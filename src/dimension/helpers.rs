@@ -258,6 +258,10 @@ pub fn suggest_split_details(lines: &[String], path: &str) -> Vec<String> {
         .iter()
         .filter(|(_, fns)| fns.len() >= 2)
         .map(|(prefix, fns)| {
+            // If all functions in this group are test functions, suggest a dedicated test module
+            if fns.iter().all(|f| f.starts_with("test_")) {
+                return format!("move test functions to a dedicated test module → {parent}/tests/{stem}.rs");
+            }
             let fn_list = fns.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
             let suffix = if fns.len() > 3 {
                 format!(" +{} more", fns.len() - 3)

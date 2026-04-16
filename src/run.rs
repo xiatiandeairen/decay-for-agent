@@ -243,6 +243,7 @@ fn output(
             &report.forecasts,
             &report.correlations,
             &report.trajectory,
+            report.summary.as_ref(),
             &dimensions,
             &report.issues,
             snapshot_id,

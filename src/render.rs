@@ -339,11 +339,24 @@ pub fn render_terminal(
     forecasts: &[trend::Forecast],
     correlations: &[trend::Correlation],
     trajectory: &Option<trend::Trajectory>,
+    summary: Option<&crate::summary::Summary>,
     dimensions: &[Box<dyn dimension::Dimension>],
     issues: &[diagnose::Issue],
     snapshot_id: i64,
     project_path: &std::path::Path,
 ) {
+    // Summary first — the most important info
+    if let Some(s) = summary {
+        println!("━━━ {} ━━━", s.headline);
+        if !s.top_actions.is_empty() {
+            println!("Top actions:");
+            for a in &s.top_actions {
+                println!("  [{:>8}] {} ({})", a.priority, a.what, a.effort);
+            }
+        }
+        println!();
+    }
+
     if let Some(scan) = collector_stats.get("file_scan") {
         let files = scan.get("files").map_or("?", |s| s);
         let dirs = scan.get("dirs").map_or("?", |s| s);

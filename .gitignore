@@ -2,3 +2,4 @@
 /.sprint/
 /mcp/node_modules/
 /mcp/dist/
+*.local.*

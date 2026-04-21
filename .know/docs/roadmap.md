@@ -61,6 +61,8 @@
 | v6 | 检测精准化 + 智能分类 | ↓ 误报率（test 函数 unwrap 不再报 observability 问题）；↑ 分类 0→8 类 | 已发布 | 待补充 | M11 |
 | v7 | 闭环打磨 | 无数据（v7 为质量打磨版本，无新增量化指标） | 已发布 | 待补充 | 无独立里程碑 |
 | v8 — Impact-Driven Decay | 影响驱动的衰退治理 | ↑ 影响量化（每个 issue 附带开发影响评估）；↑ 处方追踪（--compare 关联处方效果） | 已发布 | 待补充 | M12-M13 |
+| v9 — AST-Driven Precision | 检测精度从 grep 升级到 AST | ↑ 检测精度（Rust 项目 tree-sitter AST 分析）；↓ 误报率 | 计划中 | — | M14-M15 |
+| v10 — Autonomous Remediation | 从展示处方到自动执行闭环 | ↑ agent 可执行性（action auto-apply → verify → confirm） | 计划中 | — | M16-M17 |
 
 ### 版本详情
 
@@ -247,13 +249,62 @@
 | M11 | 智能诊断 | 消除 test unwrap/error SQL 误报 + 55+ issue 归入 8 类（A-H） | 已完成 | — |
 | M12 | 影响量化 + 改善计划 | Impact（coupled_files/review_burden/change_risk）+ 自适应阈值 + 回退归因 + 3 阶段改善路线图 | 已完成 | — |
 | M13 | 叙事报告 + 输出升级 | 首段自然语言摘要 + 分类视图 + MCP 摘要优先 + --compare last 自动对比 + skill 输出 summary + top actions | 已完成 | — |
+| M14 | 检测抽象层 + tree-sitter 集成 | Detector trait 统一 AST/grep 后端 + tree-sitter-rust 集成 + Rust 核心检测规则迁移（嵌套/函数长度/unwrap） | 计划中 | — |
+| M15 | AST 检测全覆盖 + 精度验证 | 全部 Rust 检测规则迁移到 AST + 新增死代码/作用域检测 + 误报率 before/after 对比报告 | 计划中 | — |
+| M16 | Action 可执行化 + 验证管线 | A 类 action 生成 patch/diff + apply → cargo check → cargo test → --compare 自动管线 + git 安全回滚 | 计划中 | — |
+| M17 | 分级自动化 + 批量执行 | A/B/C 三级自动化策略 + 优先级队列批量执行 + 执行报告（成功/失败/跳过/回滚） | 计划中 | — |
+
+#### v9 — AST-Driven Precision（检测精度革命）
+
+- **战略意图**: 从 grep 模式匹配升级到 AST 语义分析，根本性解决误报问题，使上层趋势分析和处方引擎建立在可靠的数据基础上
+- **投入产出**: 投入 tree-sitter 集成 + 检测规则重写 → 预期 Rust 项目误报率 ↓50%+，检测覆盖面扩展到 grep 无法触达的场景（死代码、类型推断、作用域分析）
+- **优先级依据**: v1-v8 在检测层之上建了 6 层分析（评分/诊断/处方/影响/趋势/叙事），但检测精度是整条管线的瓶颈 — 对不准的数据做 Pearson 相关无意义
+- **风险与依赖**: 风险: tree-sitter 增加编译依赖和二进制体积；非 Rust 项目仍需 grep fallback → 需要统一的检测抽象层
+- **成功指标**: Rust 项目的嵌套循环/SQL 注入/unwrap/函数长度检测全部迁移到 AST；误报率可量化对比（before/after 同一项目）
+- **核心价值**:
+  1. 精确嵌套深度：AST 递归计算 vs 缩进猜测
+  2. 语义上下文感知：区分 test/prod、字面量/变量、error message/真实 SQL
+  3. 精确函数边界：statement 数 vs 行数，排除注释和空行
+  4. 新增检测能力：死代码（pub 无调用）、过度泛型、不必要的 clone
+  5. 检测抽象层：统一 AST 和 grep 两种后端，按语言自动选择
+- **用户覆盖**: 作者 dogfood → 验证后推广
+- **核心指标**（v8 → v9）:
+
+| 指标 | v8 | v9 | 变化 |
+|------|-----|-----|------|
+| 检测后端 | grep 模式匹配 | tree-sitter AST（Rust）+ grep fallback（其他） | 质变 |
+| 误报率 | 无数据（已知误报通过 v6 规则排除） | 目标值，待验证: Rust 项目误报 ↓50% | ↓ |
+| 检测能力 | 模式匹配可达范围 | 新增死代码/作用域/类型级检测 | ↑ |
+| 位置精度 | file + line_range（grep 行号） | file + line_range + symbol（AST 节点精确） | ↑ |
+
+#### v10 — Autonomous Remediation（自主修复闭环）
+
+- **战略意图**: 从"展示处方让人/agent 手动执行"升级到"自动执行 → 编译验证 → 效果确认"的完整闭环，使 decay 从诊断工具进化为自主修复引擎
+- **投入产出**: 投入 action 可执行化 + 验证管线 + 安全回滚 → 预期 agent 可无人值守执行低风险处方
+- **优先级依据**: v9 精度提升后 action 可信度足够支撑自动执行；当前 action 虽结构化但仍需人工解读和执行，是价值交付的最后一公里
+- **风险与依赖**: 依赖 v9 精度保证（不准的 action 自动执行会搞乱代码）；风险: 自动修改代码的安全边界需严格定义 — 哪些 action 可自动执行，哪些必须人工确认
+- **成功指标**: A 类机械修复（MechanicalFix）可全自动执行；执行后 cargo check + cargo test 通过率 >95%；`--compare last` 自动确认分数提升
+- **核心价值**:
+  1. Action 可执行化：从"建议 split 文件"到生成具体的代码变更（patch/diff）
+  2. 分级自动化：A 类（机械）全自动 → B 类（模式）agent 辅助 → C 类（架构）人工决策
+  3. 验证管线：apply → cargo check → cargo test → decay --compare last → 确认/回滚
+  4. 安全回滚：git stash / branch 隔离，验证失败自动恢复
+  5. 批量执行：按优先级队列逐个执行，每步验证，失败不影响后续
+- **用户覆盖**: 作者 dogfood → 验证后推广
+- **核心指标**（v9 → v10）:
+
+| 指标 | v9 | v10 | 变化 |
+|------|-----|------|------|
+| 处方可执行性 | 结构化 JSON（人/agent 解读执行） | 可执行 patch + 自动 apply | 质变 |
+| 自动化等级 | 0（全部手动） | A 类全自动 / B 类 agent 辅助 / C 类人工 | ↑ |
+| 验证管线 | 无（执行后手动 --compare） | 自动 check + test + compare + 回滚 | 新增 |
+| 闭环周期 | scan → 展示 → 结束 | scan → execute → verify → confirm → next | 质变 |
 
 ## 4. 后续版本方向（存档）
 
-### v9+ — Portfolio Health + Auto-execute
+### v11+ — Portfolio Health
 
 - 多项目健康聚合：组织级仪表盘
 - 跨项目模式发现：所有项目的共性衰退趋势
-- Auto-execute：A 类 patch 自动 apply → cargo check → 提 PR
 - 团队级预警：组织范围内的健康阈值管理
 - 自定义规则引擎：项目级自定义检测规则和阈值

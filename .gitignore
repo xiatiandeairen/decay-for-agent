@@ -1,5 +1,3 @@
 /target
-/.sprint/
-/mcp/node_modules/
-/mcp/dist/
+/.claude/
 *.local.*

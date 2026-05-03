@@ -130,31 +130,39 @@ fn score_loop(node: Node<'_>, source: &str, nesting: u32) -> u32 {
 /// is also walked at the outer nesting.
 fn score_match(node: Node<'_>, source: &str, nesting: u32) -> u32 {
     let mut score = 1u32.saturating_add(nesting);
-    let mut seen_first_arm = false;
     let mut cursor = node.walk();
 
     for child in node.children(&mut cursor) {
-        match child.kind() {
-            "match_block" => {
-                let mut arm_cursor = child.walk();
-                for grand in child.children(&mut arm_cursor) {
-                    if grand.kind() == "match_arm" {
-                        if seen_first_arm {
-                            score = score.saturating_add(1);
-                        } else {
-                            seen_first_arm = true;
-                        }
-                        // Walk arm contents at the outer nesting.
-                        score = score.saturating_add(walk_children(grand, source, nesting));
-                    }
-                    // Punctuation (`{`, `}`, `,`) — no contribution.
-                }
-            }
+        score = score.saturating_add(match child.kind() {
+            "match_block" => walk_match_arms(child, source, nesting),
             // Skip the literal `match` keyword; descend everything else (e.g.
             // the scrutinee expression) at current nesting.
-            "match" => {}
-            _ => score = score.saturating_add(score_node(child, source, nesting)),
+            "match" => 0,
+            _ => score_node(child, source, nesting),
+        });
+    }
+    score
+}
+
+/// Walk a `match_block`'s arms: every arm beyond the first adds +1, and arm
+/// contents are walked at the outer nesting (case bodies are siblings, not
+/// children, of the match expression).
+fn walk_match_arms(block: Node<'_>, source: &str, nesting: u32) -> u32 {
+    let mut score = 0u32;
+    let mut seen_first_arm = false;
+    let mut cursor = block.walk();
+
+    for child in block.children(&mut cursor) {
+        if child.kind() != "match_arm" {
+            // Punctuation (`{`, `}`, `,`) — no contribution.
+            continue;
         }
+        if seen_first_arm {
+            score = score.saturating_add(1);
+        } else {
+            seen_first_arm = true;
+        }
+        score = score.saturating_add(walk_children(child, source, nesting));
     }
     score
 }

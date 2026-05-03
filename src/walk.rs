@@ -21,33 +21,45 @@ pub fn walk_rust_files(project_root: &Path) -> Result<Vec<PathBuf>> {
 }
 
 fn walk_dir(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
-    let entries = fs::read_dir(dir).map_err(|source| DecayError::Io {
-        path: dir.display().to_string(),
-        source,
-    })?;
-
-    for entry in entries {
-        let entry = entry.map_err(|source| DecayError::Io {
-            path: dir.display().to_string(),
-            source,
-        })?;
+    for entry in read_dir(dir)? {
+        let entry = entry.map_err(io_err(dir))?;
         let path = entry.path();
-        let file_type = entry.file_type().map_err(|source| DecayError::Io {
-            path: path.display().to_string(),
-            source,
-        })?;
+        let file_type = entry.file_type().map_err(io_err(&path))?;
 
         if file_type.is_dir() {
-            // Skip excluded dirs at any depth (match by basename).
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if EXCLUDED_DIRS.contains(&name) {
-                continue;
-            }
-            walk_dir(&path, out)?;
-        } else if file_type.is_file() && path.extension().is_some_and(|e| e == "rs") {
-            out.push(path);
+            visit_dir(&path, out)?;
+        } else if file_type.is_file() {
+            collect_if_rs(path, out);
         }
         // Symlinks and other entry kinds are ignored.
     }
     Ok(())
+}
+
+/// `fs::read_dir` with consistent IO error wrapping.
+fn read_dir(dir: &Path) -> Result<fs::ReadDir> {
+    fs::read_dir(dir).map_err(io_err(dir))
+}
+
+/// Build a closure that wraps any `io::Error` into `DecayError::Io` carrying
+/// the offending path. Owned String avoids lifetime issues at the call site.
+fn io_err(path: &Path) -> impl FnOnce(std::io::Error) -> DecayError {
+    let path = path.display().to_string();
+    move |source| DecayError::Io { path, source }
+}
+
+/// Recurse into `dir` unless its basename is in `EXCLUDED_DIRS`.
+fn visit_dir(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    if EXCLUDED_DIRS.contains(&name) {
+        return Ok(());
+    }
+    walk_dir(dir, out)
+}
+
+/// Push `path` to `out` iff its extension is `rs`.
+fn collect_if_rs(path: PathBuf, out: &mut Vec<PathBuf>) {
+    if path.extension().is_some_and(|e| e == "rs") {
+        out.push(path);
+    }
 }

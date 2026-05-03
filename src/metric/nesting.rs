@@ -43,67 +43,80 @@ fn walk(node: Node<'_>, depth: u32, max_depth: &mut u32) {
     *max_depth = (*max_depth).max(depth);
 
     match node.kind() {
-        "if_expression" => {
-            // condition stays at current depth; consequence + alternative go +1.
-            if let Some(cond) = node.child_by_field_name("condition") {
-                walk(cond, depth, max_depth);
-            }
-            if let Some(consequence) = node.child_by_field_name("consequence") {
-                walk(consequence, depth + 1, max_depth);
-            }
-            if let Some(alternative) = node.child_by_field_name("alternative") {
-                walk_alternative(alternative, depth, max_depth);
-            }
-        }
-        "match_expression" => {
-            if let Some(value) = node.child_by_field_name("value") {
-                walk(value, depth, max_depth);
-            }
-            if let Some(body) = node.child_by_field_name("body") {
-                // body is `match_block`; its arms (and their guards/values) are inside the
-                // match body, so everything in there is one level deeper.
-                walk(body, depth + 1, max_depth);
-            }
-        }
+        "if_expression" => walk_if(node, depth, max_depth),
+        "match_expression" => walk_match(node, depth, max_depth),
         "while_expression" | "while_let_expression" => {
-            if let Some(cond) = node.child_by_field_name("condition") {
-                walk(cond, depth, max_depth);
-            }
-            if let Some(body) = node.child_by_field_name("body") {
-                walk(body, depth + 1, max_depth);
-            }
+            walk_while(node, depth, max_depth)
         }
-        "for_expression" => {
-            // pattern + iterator stay at current depth; only the body deepens.
-            if let Some(pat) = node.child_by_field_name("pattern") {
-                walk(pat, depth, max_depth);
-            }
-            if let Some(value) = node.child_by_field_name("value") {
-                walk(value, depth, max_depth);
-            }
-            if let Some(body) = node.child_by_field_name("body") {
-                walk(body, depth + 1, max_depth);
-            }
+        "for_expression" => walk_for(node, depth, max_depth),
+        // loop / closure body deepens by 1; no condition / pattern children
+        // contribute at the outer depth.
+        "loop_expression" | "closure_expression" => {
+            walk_simple_body(node, depth, max_depth)
         }
-        "loop_expression" => {
-            if let Some(body) = node.child_by_field_name("body") {
-                walk(body, depth + 1, max_depth);
-            }
-        }
-        "closure_expression" => {
-            // Per T5 brief: a closure body is one nesting level deeper, matching the
-            // cognitive metric's treatment.
-            if let Some(body) = node.child_by_field_name("body") {
-                walk(body, depth + 1, max_depth);
-            }
-        }
-        _ => {
-            // Plain block / expression / statement: pass through, depth unchanged.
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                walk(child, depth, max_depth);
-            }
-        }
+        // Plain block / expression / statement: pass through at same depth.
+        _ => walk_passthrough(node, depth, max_depth),
+    }
+}
+
+/// `if`: condition stays at current depth; consequence + alternative go +1.
+fn walk_if(node: Node<'_>, depth: u32, max_depth: &mut u32) {
+    if let Some(cond) = node.child_by_field_name("condition") {
+        walk(cond, depth, max_depth);
+    }
+    if let Some(consequence) = node.child_by_field_name("consequence") {
+        walk(consequence, depth + 1, max_depth);
+    }
+    if let Some(alternative) = node.child_by_field_name("alternative") {
+        walk_alternative(alternative, depth, max_depth);
+    }
+}
+
+/// `match`: scrutinee at current depth; body (`match_block`) at depth+1.
+fn walk_match(node: Node<'_>, depth: u32, max_depth: &mut u32) {
+    if let Some(value) = node.child_by_field_name("value") {
+        walk(value, depth, max_depth);
+    }
+    if let Some(body) = node.child_by_field_name("body") {
+        walk(body, depth + 1, max_depth);
+    }
+}
+
+/// `while` / `while let`: condition at current depth; body at depth+1.
+fn walk_while(node: Node<'_>, depth: u32, max_depth: &mut u32) {
+    if let Some(cond) = node.child_by_field_name("condition") {
+        walk(cond, depth, max_depth);
+    }
+    if let Some(body) = node.child_by_field_name("body") {
+        walk(body, depth + 1, max_depth);
+    }
+}
+
+/// `for`: pattern + iterator at current depth; body at depth+1.
+fn walk_for(node: Node<'_>, depth: u32, max_depth: &mut u32) {
+    if let Some(pat) = node.child_by_field_name("pattern") {
+        walk(pat, depth, max_depth);
+    }
+    if let Some(value) = node.child_by_field_name("value") {
+        walk(value, depth, max_depth);
+    }
+    if let Some(body) = node.child_by_field_name("body") {
+        walk(body, depth + 1, max_depth);
+    }
+}
+
+/// `loop` / `closure`: only the body field; one level deeper.
+fn walk_simple_body(node: Node<'_>, depth: u32, max_depth: &mut u32) {
+    if let Some(body) = node.child_by_field_name("body") {
+        walk(body, depth + 1, max_depth);
+    }
+}
+
+/// Non-control-flow nodes: descend through every child at the same depth.
+fn walk_passthrough(node: Node<'_>, depth: u32, max_depth: &mut u32) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        walk(child, depth, max_depth);
     }
 }
 

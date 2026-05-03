@@ -140,7 +140,20 @@ pub fn load_latest_snapshots(
     if n == 0 {
         return Ok(Vec::new());
     }
+    let mut snapshots = query_snapshots(conn, project_id, n)?;
+    for snap in &mut snapshots {
+        snap.functions = load_functions(conn, snap.id)?;
+    }
+    Ok(snapshots)
+}
 
+/// Read snapshot metadata rows (id / project_id / created_at) only; the
+/// `functions` field is left empty for `load_functions` to populate.
+fn query_snapshots(
+    conn: &Connection,
+    project_id: &str,
+    n: usize,
+) -> Result<Vec<Snapshot>> {
     let mut stmt = conn
         .prepare(
             "SELECT id, project_id, created_at
@@ -152,22 +165,20 @@ pub fn load_latest_snapshots(
         .map_err(map_db_err("failed to prepare snapshot select"))?;
 
     let rows = stmt
-        .query_map(params![project_id, n as i64], |row| {
-            Ok(Snapshot {
-                id: row.get(0)?,
-                project_id: row.get(1)?,
-                created_at: row.get(2)?,
-                functions: Vec::new(),
-            })
-        })
+        .query_map(params![project_id, n as i64], row_to_snapshot)
         .map_err(map_db_err("failed to query snapshots"))?;
 
     let mut snapshots: Vec<Snapshot> = Vec::new();
     for r in rows {
         snapshots.push(r.map_err(map_db_err("failed to read snapshot row"))?);
     }
+    Ok(snapshots)
+}
 
-    let mut fn_stmt = conn
+/// Load every Function row associated with `snapshot_id`. param_types is left
+/// empty per §2.4 (not persisted; signature_hash carries identity for diff).
+fn load_functions(conn: &Connection, snapshot_id: i64) -> Result<Vec<Function>> {
+    let mut stmt = conn
         .prepare(
             "SELECT signature_hash, file, name, start_line, end_line,
                     nesting, cyclomatic, cognitive, params
@@ -176,36 +187,48 @@ pub fn load_latest_snapshots(
         )
         .map_err(map_db_err("failed to prepare functions select"))?;
 
-    for snap in &mut snapshots {
-        let func_rows = fn_stmt
-            .query_map(params![snap.id], |row| {
-                let hash_i64: i64 = row.get(0)?;
-                Ok(Function {
-                    // mirror i64 -> u64 bit-cast from save path
-                    signature_hash: hash_i64 as u64,
-                    file: row.get(1)?,
-                    name: row.get(2)?,
-                    start_line: row.get(3)?,
-                    end_line: row.get(4)?,
-                    // param_types not persisted in schema (§2.4) — restored as empty.
-                    // Diff / fingerprint paths use signature_hash, not param_types.
-                    param_types: Vec::new(),
-                    metrics: Metrics {
-                        nesting: row.get(5)?,
-                        cyclomatic: row.get(6)?,
-                        cognitive: row.get(7)?,
-                        params: row.get(8)?,
-                    },
-                })
-            })
-            .map_err(map_db_err("failed to query functions"))?;
-        for r in func_rows {
-            snap.functions
-                .push(r.map_err(map_db_err("failed to read function row"))?);
-        }
-    }
+    let rows = stmt
+        .query_map(params![snapshot_id], row_to_function)
+        .map_err(map_db_err("failed to query functions"))?;
 
-    Ok(snapshots)
+    let mut funcs: Vec<Function> = Vec::new();
+    for r in rows {
+        funcs.push(r.map_err(map_db_err("failed to read function row"))?);
+    }
+    Ok(funcs)
+}
+
+/// Map a snapshots-table row to a `Snapshot` (without functions populated).
+/// Extracted so the per-column `?` operators stay out of `query_snapshots`'s
+/// cyclomatic budget.
+fn row_to_snapshot(row: &rusqlite::Row<'_>) -> rusqlite::Result<Snapshot> {
+    Ok(Snapshot {
+        id: row.get(0)?,
+        project_id: row.get(1)?,
+        created_at: row.get(2)?,
+        functions: Vec::new(),
+    })
+}
+
+/// Map a functions-table row to a `Function`. Mirrors the i64 → u64 bit-cast
+/// performed on the save path. Extracted so the per-column `?` operators stay
+/// out of `load_functions`'s cyclomatic budget.
+fn row_to_function(row: &rusqlite::Row<'_>) -> rusqlite::Result<Function> {
+    let hash_i64: i64 = row.get(0)?;
+    Ok(Function {
+        signature_hash: hash_i64 as u64,
+        file: row.get(1)?,
+        name: row.get(2)?,
+        start_line: row.get(3)?,
+        end_line: row.get(4)?,
+        param_types: Vec::new(),
+        metrics: Metrics {
+            nesting: row.get(5)?,
+            cyclomatic: row.get(6)?,
+            cognitive: row.get(7)?,
+            params: row.get(8)?,
+        },
+    })
 }
 
 pub fn _stub() {}

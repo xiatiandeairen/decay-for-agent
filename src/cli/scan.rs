@@ -3,7 +3,7 @@
 
 use std::time::Instant;
 
-use crate::config::DEFAULT_THRESHOLDS;
+use crate::config::{DEFAULT_THRESHOLDS, Thresholds};
 use crate::error::{DecayError, Result};
 use crate::pipeline;
 use crate::store;
@@ -90,27 +90,29 @@ pub fn run() -> Result<i32> {
 /// their single largest overage (same key) descending so the worst offenders
 /// surface first.
 fn print_exceeded(funcs: &[Function]) {
-    let thresholds = &DEFAULT_THRESHOLDS;
-
-    // Collect (function, list of (metric_name, value, threshold, overage)).
-    let mut exceeded: Vec<(&Function, Vec<MetricBreach>)> = funcs
-        .iter()
-        .filter_map(|f| {
-            let breaches = collect_breaches(&f.metrics, thresholds);
-            if breaches.is_empty() {
-                None
-            } else {
-                Some((f, breaches))
-            }
-        })
-        .collect();
-
+    let exceeded = collect_exceeded(funcs, &DEFAULT_THRESHOLDS);
     if exceeded.is_empty() {
         println!("\u{2713} All functions within threshold.");
         return;
     }
+    print_breach_list(&exceeded);
+}
 
-    // Sort functions by max overage desc; metrics within each function likewise.
+/// Build the (function, breaches) list, sorted by max overage descending so
+/// the worst offenders surface first; breaches within a function are likewise
+/// sorted by overage so the dominant metric leads its block.
+fn collect_exceeded<'a>(
+    funcs: &'a [Function],
+    thresholds: &Thresholds,
+) -> Vec<(&'a Function, Vec<MetricBreach>)> {
+    let mut exceeded: Vec<(&Function, Vec<MetricBreach>)> = funcs
+        .iter()
+        .filter_map(|f| {
+            let breaches = collect_breaches(&f.metrics, thresholds);
+            (!breaches.is_empty()).then_some((f, breaches))
+        })
+        .collect();
+
     for (_, breaches) in exceeded.iter_mut() {
         breaches.sort_by(|a, b| b.overage.cmp(&a.overage));
     }
@@ -119,11 +121,13 @@ fn print_exceeded(funcs: &[Function]) {
         let bm = b.1.iter().map(|m| m.overage).max().unwrap_or(0);
         bm.cmp(&am)
     });
+    exceeded
+}
 
+fn print_breach_list(exceeded: &[(&Function, Vec<MetricBreach>)]) {
     println!("{} functions exceed threshold:", exceeded.len());
     println!();
-
-    for (f, breaches) in &exceeded {
+    for (f, breaches) in exceeded {
         println!("  {}:{}  {}", f.file, f.start_line, f.name);
         for b in breaches {
             // \u{26A0} = ⚠ (warning sign). Kept as escape so file stays ASCII.

@@ -95,61 +95,67 @@ fn collect_metric_lines(
     curr: &Metrics,
     t: &Thresholds,
 ) -> Vec<String> {
-    let mut out = Vec::new();
-    let metrics = [
-        ("nesting", curr.nesting, t.nesting, prev.map(|m| m.nesting)),
-        (
-            "cyclomatic",
-            curr.cyclomatic,
-            t.cyclomatic,
-            prev.map(|m| m.cyclomatic),
-        ),
-        (
-            "cognitive",
-            curr.cognitive,
-            t.cognitive,
-            prev.map(|m| m.cognitive),
-        ),
-        ("params", curr.params, t.params, prev.map(|m| m.params)),
-    ];
-
-    match kind {
-        DiffKind::Added => {
-            for (name, value, threshold, _) in metrics {
-                if value >= threshold {
-                    // \u{26a0} = ⚠
-                    out.push(format!(
-                        "    {}: {} \u{26a0} over (>{})",
-                        name, value, threshold
-                    ));
-                }
-            }
-        }
-        DiffKind::CrossedThreshold | DiffKind::Worsened => {
-            for (name, value, threshold, prev_value) in metrics {
-                let prev_value = match prev_value {
-                    Some(v) => v,
-                    None => continue,
-                };
-                if value <= prev_value {
-                    continue;
-                }
-                let delta = value - prev_value;
-                let marker = if prev_value < threshold && value >= threshold {
-                    format!(" \u{26a0} crossed (>{})", threshold)
-                } else if prev_value >= threshold {
-                    format!(" \u{26a0} already over (>{})", threshold)
-                } else {
-                    // Increase but still under threshold — don't flag, but still show line.
-                    String::new()
-                };
-                out.push(format!(
-                    "    {}: {}\u{2192}{}  (+{}){}",
-                    name, prev_value, value, delta, marker
-                ));
-            }
-        }
+    match (kind, prev) {
+        (DiffKind::Added, _) => lines_for_added(curr, t),
+        (_, Some(prev)) => lines_for_change(prev, curr, t),
+        // Crossed/Worsened without prev shouldn't happen — diff::diff only
+        // emits those kinds when prev exists. Defensive empty if it does.
+        (_, None) => Vec::new(),
     }
+}
 
-    out
+/// Per-metric tuple shared by both Added and Change paths.
+fn metric_tuples<'a>(
+    curr: &'a Metrics,
+    t: &'a Thresholds,
+) -> [(&'static str, u32, u32); 4] {
+    [
+        ("nesting", curr.nesting, t.nesting),
+        ("cyclomatic", curr.cyclomatic, t.cyclomatic),
+        ("cognitive", curr.cognitive, t.cognitive),
+        ("params", curr.params, t.params),
+    ]
+}
+
+/// Newly added function: list every metric currently ≥ threshold.
+fn lines_for_added(curr: &Metrics, t: &Thresholds) -> Vec<String> {
+    metric_tuples(curr, t)
+        .into_iter()
+        .filter(|(_, value, threshold)| value >= threshold)
+        // \u{26a0} = ⚠
+        .map(|(name, value, threshold)| {
+            format!("    {}: {} \u{26a0} over (>{})", name, value, threshold)
+        })
+        .collect()
+}
+
+/// Existing function whose metrics rose: list every metric whose value
+/// strictly increased, with a marker if the new value crosses or sits over
+/// the threshold.
+fn lines_for_change(prev: &Metrics, curr: &Metrics, t: &Thresholds) -> Vec<String> {
+    let prevs = [prev.nesting, prev.cyclomatic, prev.cognitive, prev.params];
+    metric_tuples(curr, t)
+        .into_iter()
+        .zip(prevs)
+        .filter(|((_, value, _), prev_value)| value > prev_value)
+        .map(|((name, value, threshold), prev_value)| {
+            let delta = value - prev_value;
+            let marker = change_marker(prev_value, value, threshold);
+            format!(
+                "    {}: {}\u{2192}{}  (+{}){}",
+                name, prev_value, value, delta, marker
+            )
+        })
+        .collect()
+}
+
+fn change_marker(prev_value: u32, value: u32, threshold: u32) -> String {
+    if prev_value < threshold && value >= threshold {
+        format!(" \u{26a0} crossed (>{})", threshold)
+    } else if prev_value >= threshold {
+        format!(" \u{26a0} already over (>{})", threshold)
+    } else {
+        // Increase but still under threshold — don't flag, but still show line.
+        String::new()
+    }
 }

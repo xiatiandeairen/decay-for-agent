@@ -83,23 +83,50 @@ fn collect_functions(tree: &Tree, source: &str, rel_file: &str) -> Vec<ParsedFun
     let mut out = Vec::new();
     let mut cursor = tree.walk();
     let root = tree.root_node();
-    visit(root, source, rel_file, &mut cursor, &mut out);
+    visit(root, source, rel_file, "", &mut cursor, &mut out);
     out
 }
 
-/// Recursively descend, picking up every `function_item`.
+/// Recursively descend, picking up every `function_item` and tagging it with
+/// the nearest enclosing `impl_item`'s context (empty string for free fns).
+///
 /// `function_signature_item` and `closure_expression` are not recursed into for
 /// extraction — but we still descend into their bodies because nested
 /// `function_item`s could appear (e.g. a fn defined inside a closure body).
+///
+/// When entering an `impl_item` we extract its context once and pass it down.
+/// If extraction fails (malformed AST under tree-sitter ERROR recovery), we
+/// log a warn and skip the entire impl block — silent fallback to empty
+/// context would re-introduce fingerprint collisions, defeating the purpose.
 fn visit<'a>(
     node: Node<'a>,
     source: &str,
     rel_file: &str,
+    impl_context: &str,
     cursor: &mut tree_sitter::TreeCursor<'a>,
     out: &mut Vec<ParsedFunc>,
 ) {
+    if node.kind() == "impl_item" {
+        match extract_impl_context(node, source) {
+            Some(ctx) => {
+                for child in node.children(cursor) {
+                    let mut child_cursor = child.walk();
+                    visit(child, source, rel_file, &ctx, &mut child_cursor, out);
+                }
+            }
+            None => {
+                log::warn!(
+                    "{}:{}: cannot extract impl context, skipping impl block",
+                    rel_file,
+                    node.start_position().row + 1
+                );
+            }
+        }
+        return;
+    }
+
     if node.kind() == "function_item" {
-        if let Some(parsed) = extract_function(node, source, rel_file) {
+        if let Some(parsed) = extract_function(node, source, rel_file, impl_context) {
             out.push(parsed);
         }
     }
@@ -107,13 +134,26 @@ fn visit<'a>(
     // Always descend; nested function_items may exist anywhere.
     for child in node.children(cursor) {
         let mut child_cursor = child.walk();
-        visit(child, source, rel_file, &mut child_cursor, out);
+        visit(
+            child,
+            source,
+            rel_file,
+            impl_context,
+            &mut child_cursor,
+            out,
+        );
     }
 }
 
-fn extract_function(node: Node<'_>, source: &str, rel_file: &str) -> Option<ParsedFunc> {
+fn extract_function(
+    node: Node<'_>,
+    source: &str,
+    rel_file: &str,
+    impl_context: &str,
+) -> Option<ParsedFunc> {
     let name_node = node.child_by_field_name("name")?;
     let name = node_text(name_node, source)?.to_string();
+    let cfg_context = extract_cfg_context(node, source);
 
     let body_node = node.child_by_field_name("body")?;
     let body_range = body_node.range();
@@ -127,6 +167,8 @@ fn extract_function(node: Node<'_>, source: &str, rel_file: &str) -> Option<Pars
 
     let function = Function {
         file: rel_file.to_string(),
+        impl_context: impl_context.to_string(),
+        cfg_context,
         name,
         start_line,
         end_line,
@@ -144,6 +186,80 @@ fn extract_function(node: Node<'_>, source: &str, rel_file: &str) -> Option<Pars
         function,
         body_range,
     })
+}
+
+/// Extract a canonical impl-block context string for fingerprint disambiguation.
+///
+/// Returns `None` only when tree-sitter's ERROR recovery left the impl_item
+/// without a readable `type` field (rare but possible on malformed source).
+///
+/// Forms:
+/// - `impl Foo { ... }`              -> `"Foo"`
+/// - `impl<T> Foo<T> { ... }`        -> `"Foo"`            (generics stripped)
+/// - `impl Trait for Foo { ... }`    -> `"Trait for Foo"`
+/// - `impl<'a, T> Display for Foo<T>` -> `"Display for Foo"`
+fn extract_impl_context(impl_node: Node<'_>, source: &str) -> Option<String> {
+    let type_node = impl_node.child_by_field_name("type")?;
+    let self_type = strip_generic_args(node_text(type_node, source)?);
+    let self_type = strip_lifetimes(&self_type);
+    let self_type: String = self_type.chars().filter(|c| !c.is_whitespace()).collect();
+    if self_type.is_empty() {
+        return None;
+    }
+
+    if let Some(trait_node) = impl_node.child_by_field_name("trait") {
+        let trait_name = strip_generic_args(node_text(trait_node, source)?);
+        let trait_name = strip_lifetimes(&trait_name);
+        let trait_name: String = trait_name.chars().filter(|c| !c.is_whitespace()).collect();
+        if !trait_name.is_empty() {
+            return Some(format!("{trait_name} for {self_type}"));
+        }
+    }
+    Some(self_type)
+}
+
+/// Extract a canonical context string from contiguous preceding `#[cfg(...)]`
+/// attributes attached to this function.
+///
+/// Only plain `#[cfg(...)]` participates in identity. Other attributes such
+/// as `#[inline]`, `#[allow]`, doc comments, or `cfg_attr(...)` are ignored so
+/// formatting and lint controls do not perturb fingerprint stability.
+fn extract_cfg_context(function_node: Node<'_>, source: &str) -> String {
+    let mut attrs: Vec<String> = Vec::new();
+    let mut cursor = function_node.prev_named_sibling();
+
+    while let Some(node) = cursor {
+        if node.kind() != "attribute_item" {
+            break;
+        }
+        if let Some(text) = node_text(node, source) {
+            if let Some(cfg) = canonicalize_cfg_attr(text) {
+                attrs.push(cfg);
+            }
+        }
+        cursor = node.prev_named_sibling();
+    }
+
+    attrs.reverse();
+    attrs.join("\n")
+}
+
+fn canonicalize_cfg_attr(text: &str) -> Option<String> {
+    let normalized: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    if normalized.starts_with("#[cfg(") && normalized.ends_with(")]") {
+        return Some(normalized);
+    }
+    None
+}
+
+/// Truncate a type expression at the first `<` so generic parameters do not
+/// participate in the impl_context. `Foo<T>` and `Foo<U>` should map to the
+/// same context — fingerprint already disambiguates by file+name+params.
+fn strip_generic_args(s: &str) -> String {
+    match s.find('<') {
+        Some(i) => s[..i].to_string(),
+        None => s.to_string(),
+    }
 }
 
 fn collect_param_types(params_node: Node<'_>, source: &str) -> Vec<String> {

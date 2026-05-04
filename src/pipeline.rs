@@ -25,7 +25,13 @@ use crate::walk;
 /// IO errors at the directory-walk level (e.g. `project_root` does not exist)
 /// propagate as `DecayError::Io` and abort the scan.
 pub fn scan(project_root: &Path) -> Result<Vec<Function>> {
-    let files = walk::walk_rust_files(project_root)?;
+    scan_with_excludes(project_root, &[])
+}
+
+/// Same as [`scan`], but adds caller-controlled excludes on top of the
+/// default walker exclusions.
+pub fn scan_with_excludes(project_root: &Path, excludes: &[String]) -> Result<Vec<Function>> {
+    let files = walk::walk_rust_files_with_excludes(project_root, excludes)?;
     let mut out: Vec<Function> = Vec::new();
 
     for file in files {
@@ -51,6 +57,8 @@ pub fn scan(project_root: &Path) -> Result<Vec<Function>> {
 
             let signature_hash = fingerprint::compute(
                 &pf.function.file,
+                &pf.function.impl_context,
+                &pf.function.cfg_context,
                 &pf.function.name,
                 &pf.function.param_types,
             );

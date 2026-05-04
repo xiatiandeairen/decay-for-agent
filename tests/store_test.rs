@@ -16,6 +16,8 @@ static ENV_LOCK: Mutex<()> = Mutex::new(());
 fn make_func(file: &str, name: &str, hash: u64, nesting: u32) -> Function {
     Function {
         file: file.to_string(),
+        impl_context: String::new(),
+        cfg_context: String::new(),
         name: name.to_string(),
         start_line: 1,
         end_line: 10,
@@ -56,6 +58,8 @@ fn init_for_test(conn: &Connection) {
             snapshot_id      INTEGER NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
             signature_hash   INTEGER NOT NULL,
             file             TEXT NOT NULL,
+            impl_context     TEXT NOT NULL,
+            cfg_context      TEXT NOT NULL,
             name             TEXT NOT NULL,
             start_line       INTEGER NOT NULL,
             end_line         INTEGER NOT NULL,
@@ -109,7 +113,9 @@ fn save_and_load_round_trip_preserves_u64_hash() {
     let (_dir, conn) = open_isolated();
 
     // u64::MAX is the boundary case for the i64 bit-cast round trip.
-    let f = make_func("src/lib.rs", "deep", u64::MAX, 7);
+    let mut f = make_func("src/lib.rs", "deep", u64::MAX, 7);
+    f.impl_context = "Display for Foo".to_string();
+    f.cfg_context = "#[cfg(unix)]".to_string();
     let snap_id = save_snapshot(&conn, "proj-A", vec![f.clone()]).unwrap();
     assert!(snap_id > 0);
 
@@ -123,6 +129,8 @@ fn save_and_load_round_trip_preserves_u64_hash() {
 
     let got = &snap.functions[0];
     assert_eq!(got.file, f.file);
+    assert_eq!(got.impl_context, f.impl_context);
+    assert_eq!(got.cfg_context, f.cfg_context);
     assert_eq!(got.name, f.name);
     assert_eq!(got.start_line, f.start_line);
     assert_eq!(got.end_line, f.end_line);

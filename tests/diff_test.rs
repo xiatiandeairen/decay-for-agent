@@ -5,6 +5,8 @@ use decay::types::{DiffKind, Function, Metrics, Snapshot};
 fn make_function(signature_hash: u64, name: &str, metrics: Metrics) -> Function {
     Function {
         file: "src/lib.rs".to_string(),
+        impl_context: String::new(),
+        cfg_context: String::new(),
         name: name.to_string(),
         start_line: 1,
         end_line: 10,

@@ -16,9 +16,8 @@ fn resolve_db_path() -> Result<PathBuf> {
     if let Ok(p) = std::env::var("DECAY_DB_PATH") {
         return Ok(PathBuf::from(p));
     }
-    let base = dirs::data_dir().ok_or_else(|| {
-        DecayError::InvalidProject("could not resolve user data dir".to_string())
-    })?;
+    let base = dirs::data_dir()
+        .ok_or_else(|| DecayError::InvalidProject("could not resolve user data dir".to_string()))?;
     Ok(base.join(APP_NAME).join(DB_FILENAME))
 }
 
@@ -47,6 +46,15 @@ pub fn open_db() -> Result<Connection> {
 }
 
 fn init_schema(conn: &Connection) -> Result<()> {
+    // v0.1 alpha: when a pre-impl_context / pre-cfg_context schema is
+    // detected, drop both tables so the new schema can be created cleanly.
+    // Snapshot history is reset; this is acceptable while metric algorithms
+    // and thresholds are still settling.
+    if has_outdated_functions_schema(conn)? {
+        log::warn!("decay db schema is from an earlier v0.1 build; resetting (snapshots cleared)");
+        conn.execute_batch("DROP TABLE IF EXISTS functions; DROP TABLE IF EXISTS snapshots;")
+            .map_err(map_db_err("failed to drop outdated tables"))?;
+    }
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS snapshots (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,6 +67,8 @@ fn init_schema(conn: &Connection) -> Result<()> {
             snapshot_id      INTEGER NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
             signature_hash   INTEGER NOT NULL,
             file             TEXT NOT NULL,
+            impl_context     TEXT NOT NULL,
+            cfg_context      TEXT NOT NULL,
             name             TEXT NOT NULL,
             start_line       INTEGER NOT NULL,
             end_line         INTEGER NOT NULL,
@@ -74,15 +84,44 @@ fn init_schema(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Detect a pre-context schema: `functions` table exists but lacks one of the
+/// context columns used by the fingerprint.
+fn has_outdated_functions_schema(conn: &Connection) -> Result<bool> {
+    let table_exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='functions'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(map_db_err("failed to inspect schema"))?;
+    if table_exists == 0 {
+        return Ok(false);
+    }
+    let mut stmt = conn
+        .prepare("SELECT name FROM pragma_table_info('functions')")
+        .map_err(map_db_err("failed to read functions columns"))?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(map_db_err("failed to read functions columns"))?;
+    let mut has_impl_context = false;
+    let mut has_cfg_context = false;
+    for row in rows {
+        let name = row.map_err(map_db_err("failed to read column row"))?;
+        if name == "impl_context" {
+            has_impl_context = true;
+        }
+        if name == "cfg_context" {
+            has_cfg_context = true;
+        }
+    }
+    Ok(!(has_impl_context && has_cfg_context))
+}
+
 /// Persist a snapshot of `funcs` for `project_id`. Returns the new snapshot id.
 ///
 /// Wrapped in a single transaction: snapshots row + all functions rows succeed
 /// or roll back together.
-pub fn save_snapshot(
-    conn: &Connection,
-    project_id: &str,
-    funcs: Vec<Function>,
-) -> Result<i64> {
+pub fn save_snapshot(conn: &Connection, project_id: &str, funcs: Vec<Function>) -> Result<i64> {
     let created_at: i64 = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -103,9 +142,9 @@ pub fn save_snapshot(
         let mut stmt = tx
             .prepare(
                 "INSERT INTO functions (
-                    snapshot_id, signature_hash, file, name,
+                    snapshot_id, signature_hash, file, impl_context, cfg_context, name,
                     start_line, end_line, nesting, cyclomatic, cognitive, params
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             )
             .map_err(map_db_err("failed to prepare functions insert"))?;
         for f in &funcs {
@@ -115,6 +154,8 @@ pub fn save_snapshot(
                 snapshot_id,
                 hash_i64,
                 f.file,
+                f.impl_context,
+                f.cfg_context,
                 f.name,
                 f.start_line,
                 f.end_line,
@@ -149,11 +190,7 @@ pub fn load_latest_snapshots(
 
 /// Read snapshot metadata rows (id / project_id / created_at) only; the
 /// `functions` field is left empty for `load_functions` to populate.
-fn query_snapshots(
-    conn: &Connection,
-    project_id: &str,
-    n: usize,
-) -> Result<Vec<Snapshot>> {
+fn query_snapshots(conn: &Connection, project_id: &str, n: usize) -> Result<Vec<Snapshot>> {
     let mut stmt = conn
         .prepare(
             "SELECT id, project_id, created_at
@@ -180,7 +217,7 @@ fn query_snapshots(
 fn load_functions(conn: &Connection, snapshot_id: i64) -> Result<Vec<Function>> {
     let mut stmt = conn
         .prepare(
-            "SELECT signature_hash, file, name, start_line, end_line,
+            "SELECT signature_hash, file, impl_context, cfg_context, name, start_line, end_line,
                     nesting, cyclomatic, cognitive, params
              FROM functions
              WHERE snapshot_id = ?1",
@@ -218,15 +255,17 @@ fn row_to_function(row: &rusqlite::Row<'_>) -> rusqlite::Result<Function> {
     Ok(Function {
         signature_hash: hash_i64 as u64,
         file: row.get(1)?,
-        name: row.get(2)?,
-        start_line: row.get(3)?,
-        end_line: row.get(4)?,
+        impl_context: row.get(2)?,
+        cfg_context: row.get(3)?,
+        name: row.get(4)?,
+        start_line: row.get(5)?,
+        end_line: row.get(6)?,
         param_types: Vec::new(),
         metrics: Metrics {
-            nesting: row.get(5)?,
-            cyclomatic: row.get(6)?,
-            cognitive: row.get(7)?,
-            params: row.get(8)?,
+            nesting: row.get(7)?,
+            cyclomatic: row.get(8)?,
+            cognitive: row.get(9)?,
+            params: row.get(10)?,
         },
     })
 }

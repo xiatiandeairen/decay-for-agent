@@ -84,14 +84,18 @@ fn score_node(node: Node<'_>, source: &str, nesting: u32) -> u32 {
     }
 }
 
-/// `if_expression` shape: condition, consequence, optional alternative
-/// (`else_clause`). The condition is walked at the **current** nesting (it's
-/// not "inside" the if), the consequence at `nesting+1`. The else_clause is
-/// hybrid: +1 itself, contents at `nesting+1` (an `else if` re-enters here as
-/// `if_expression` and pays another +1+nesting — that's intentional and
-/// matches SonarSource).
+/// `if_expression`: the structural `if` itself pays `+1+nesting`, then its
+/// condition is walked at the current nesting and its bodies at `nesting+1`.
+///
+/// `else if` chains are flattened on purpose: every extra branch pays a single
+/// increment, but the chain does not keep deepening the nesting penalty.
 fn score_if(node: Node<'_>, source: &str, nesting: u32) -> u32 {
-    let mut score = 1u32.saturating_add(nesting);
+    1u32.saturating_add(nesting)
+        .saturating_add(score_if_payload(node, source, nesting))
+}
+
+fn score_if_payload(node: Node<'_>, source: &str, nesting: u32) -> u32 {
+    let mut score = 0u32;
 
     if let Some(cond) = node.child_by_field_name("condition") {
         score = score.saturating_add(walk_children_or_self(cond, source, nesting));
@@ -100,11 +104,32 @@ fn score_if(node: Node<'_>, source: &str, nesting: u32) -> u32 {
         score = score.saturating_add(walk_children(cons, source, nesting + 1));
     }
     if let Some(alt) = node.child_by_field_name("alternative") {
-        // alt is an else_clause node; +1 hybrid, walk its contents at nesting+1.
-        score = score.saturating_add(1);
-        score = score.saturating_add(walk_children(alt, source, nesting + 1));
+        score = score.saturating_add(score_else_clause(alt, source, nesting));
     }
     score
+}
+
+/// `else_clause`: a plain `else { ... }` pays +1 and walks its block at
+/// `nesting+1`; an `else if` also pays only +1, but the chained `if` reuses
+/// the same nesting depth so the chain stays flat.
+fn score_else_clause(node: Node<'_>, source: &str, nesting: u32) -> u32 {
+    let Some(payload) = else_clause_payload(node) else {
+        return 1;
+    };
+
+    if payload.kind() == "if_expression" {
+        return 1u32.saturating_add(score_if_payload(payload, source, nesting));
+    }
+
+    1u32.saturating_add(walk_children(payload, source, nesting + 1))
+}
+
+fn else_clause_payload(node: Node<'_>) -> Option<Node<'_>> {
+    let mut cursor = node.walk();
+    let payload = node
+        .children(&mut cursor)
+        .find(|child| child.kind() != "else");
+    payload
 }
 
 /// `while`/`for`/`loop`: +1+nesting, body at nesting+1, condition (if any) at

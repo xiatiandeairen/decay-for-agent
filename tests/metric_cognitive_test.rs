@@ -54,11 +54,40 @@ fn cognitive_single_if_is_one() {
 /// Hand-trace:
 ///   outer if at nesting=0 → +1+0 = 1; consequence walked at nesting=1
 ///     inner if at nesting=1 → +1+1 = 2
-/// Total = 1 + 2 = 3.
+/// Total = 1 + 2 = 3. This is intentionally higher than a flat `else if`.
 #[test]
 fn cognitive_nested_if_if_is_three() {
     let actual = cognitive_of("fn f() { if a { if b {} } }");
     assert_near(actual, 3, "nested_if_if");
+}
+
+/// Sample 3b — flat `if / else if`.
+/// Hand-trace:
+///   outer if             → +1
+///   `else if` branch     → +1   (extra branch, but no deeper nesting penalty)
+/// Total = 2.
+#[test]
+fn cognitive_else_if_is_two() {
+    let actual = cognitive_of("fn f() { if a {} else if b {} }");
+    assert_eq!(
+        actual, 2,
+        "else_if should stay flatter than nested if, got {actual}"
+    );
+}
+
+/// Sample 3c — longer `else if` chain stays flat.
+/// Hand-trace:
+///   if                   → +1
+///   first else-if        → +1
+///   second else-if       → +1
+/// Total = 3.
+#[test]
+fn cognitive_else_if_chain_does_not_stack_nesting() {
+    let actual = cognitive_of("fn f() { if a {} else if b {} else if c {} }");
+    assert_eq!(
+        actual, 3,
+        "else_if chain should add one per branch, got {actual}"
+    );
 }
 
 /// Sample 4 — match with closure inside an arm.

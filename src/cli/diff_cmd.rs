@@ -4,9 +4,9 @@
 //! Output goes to stdout (program output, mirrors `scan::run`); friendly notices
 //! when there is no baseline. Exit code follows §2.8: 0 for any normal run.
 
-use crate::config::{DEFAULT_THRESHOLDS, Thresholds};
+use crate::config::{Thresholds, DEFAULT_THRESHOLDS};
 use crate::diff;
-use crate::error::{DecayError, Result};
+use crate::error::Result;
 use crate::store;
 use crate::types::{DiffEntry, DiffKind, Metrics};
 
@@ -16,20 +16,10 @@ use crate::types::{DiffEntry, DiffKind, Metrics};
 /// exit code 0 in every normal case (no baseline, no changes, changes found).
 /// DB / IO errors propagate.
 pub fn run() -> Result<i32> {
-    let project_root = std::env::current_dir().map_err(|source| DecayError::Io {
-        path: ".".to_string(),
-        source,
-    })?;
-    let canonical = project_root
-        .canonicalize()
-        .map_err(|source| DecayError::Io {
-            path: project_root.display().to_string(),
-            source,
-        })?;
-    let project_id = canonical.to_string_lossy().to_string();
+    let project = crate::cli::common::resolve_project()?;
 
     let conn = store::open_db()?;
-    let snaps = store::load_latest_snapshots(&conn, &project_id, 2)?;
+    let snaps = store::load_latest_snapshots(&conn, &project.project_id, 2)?;
 
     println!("decay v{}", env!("CARGO_PKG_VERSION"));
 
@@ -37,7 +27,7 @@ pub fn run() -> Result<i32> {
     // we cannot diff, so both 0 and 1 collapse to the same message.
     if snaps.len() < 2 {
         println!("No previous snapshot for this project.");
-        println!("Run `decay` to create a baseline snapshot.");
+        println!("Run `decay init` to create a baseline snapshot.");
         return Ok(0);
     }
 
@@ -71,7 +61,7 @@ pub fn run() -> Result<i32> {
 
 /// Print one diff entry: header line + one line per metric that changed (or
 /// every threshold-exceeding metric for `Added`).
-fn print_entry(entry: &DiffEntry, thresholds: &Thresholds) {
+pub(crate) fn print_entry(entry: &DiffEntry, thresholds: &Thresholds) {
     let label = match entry.kind {
         DiffKind::Added => "  [new]",
         DiffKind::Worsened => "  [worsened]",
@@ -80,7 +70,8 @@ fn print_entry(entry: &DiffEntry, thresholds: &Thresholds) {
     let f = &entry.function;
     println!("  {}:{}  {}{}", f.file, f.start_line, f.name, label);
 
-    let breaches = collect_metric_lines(&entry.kind, entry.previous.as_ref(), &f.metrics, thresholds);
+    let breaches =
+        collect_metric_lines(&entry.kind, entry.previous.as_ref(), &f.metrics, thresholds);
     for line in breaches {
         println!("{}", line);
     }
@@ -105,10 +96,7 @@ fn collect_metric_lines(
 }
 
 /// Per-metric tuple shared by both Added and Change paths.
-fn metric_tuples<'a>(
-    curr: &'a Metrics,
-    t: &'a Thresholds,
-) -> [(&'static str, u32, u32); 4] {
+fn metric_tuples<'a>(curr: &'a Metrics, t: &'a Thresholds) -> [(&'static str, u32, u32); 4] {
     [
         ("nesting", curr.nesting, t.nesting),
         ("cyclomatic", curr.cyclomatic, t.cyclomatic),

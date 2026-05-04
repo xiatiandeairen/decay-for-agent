@@ -1,4 +1,4 @@
-//! End-to-end integration tests covering both `decay` and `decay diff`
+//! End-to-end integration tests covering `decay init/check/diff/hotspots`
 //! against the shared fixture under `tests/fixtures/sample_project`.
 //!
 //! Each test copies the fixture into a fresh tempdir and points
@@ -58,35 +58,40 @@ fn fresh_workspace() -> (tempfile::TempDir, PathBuf, PathBuf) {
     (tmp, project, db)
 }
 
-// 1. First run on a fresh db creates snapshot #1.
+// 1. `decay init` on a fresh db creates snapshot #1.
 #[test]
-fn first_run_creates_snapshot() {
+fn init_creates_snapshot() {
     let (_tmp, project, db) = fresh_workspace();
 
     decay_cmd(&project, &db)
+        .arg("init")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Snapshot #1 saved"));
+        .stdout(predicate::str::contains("Baseline snapshot #1 saved."));
 }
 
-// 2. First run includes the "first snapshot" baseline hint.
+// 2. `decay init` includes baseline guidance, not a giant hot-spot dump.
 #[test]
-fn first_run_baseline_msg() {
+fn init_prints_baseline_guidance() {
     let (_tmp, project, db) = fresh_workspace();
 
     decay_cmd(&project, &db)
+        .arg("init")
         .assert()
         .success()
-        .stdout(predicate::str::contains("first snapshot"));
+        .stdout(predicate::str::contains("Baseline snapshot #1 saved."))
+        .stdout(predicate::str::contains("Run `decay hotspots`"))
+        .stdout(predicate::str::contains("Run `decay check`"))
+        .stdout(predicate::str::contains("complex_logic").not());
 }
 
-// 3. The intentionally-complex function is reported with a ⚠ marker on at
-//    least one metric.
+// 3. `decay hotspots` shows the intentionally-complex function.
 #[test]
-fn detects_known_complex_function() {
+fn hotspots_reports_known_complex_function() {
     let (_tmp, project, db) = fresh_workspace();
 
     decay_cmd(&project, &db)
+        .arg("hotspots")
         .assert()
         .success()
         .stdout(predicate::str::contains("complex_logic"))
@@ -100,20 +105,112 @@ fn excluded_dirs_skipped() {
     let (_tmp, project, db) = fresh_workspace();
 
     decay_cmd(&project, &db)
+        .arg("hotspots")
         .assert()
         .success()
         .stdout(predicate::str::contains("junk_complex").not())
         .stdout(predicate::str::contains("target/debug").not());
 }
 
-// 5. Two consecutive scans with no source change → diff reports clean.
+// 5. Custom `--exclude` accepts multiple entries and reaches the walker for
+//    both basename directory skips and glob file skips.
+#[test]
+fn hotspots_honors_multiple_excludes() {
+    let (_tmp, project, db) = fresh_workspace();
+
+    let extra_dir = project.join("examples");
+    fs::create_dir_all(&extra_dir).expect("create examples dir");
+    fs::write(
+        extra_dir.join("noise.rs"),
+        r#"
+pub fn example_noise(x: i32) -> i32 {
+    let mut r = 0;
+    if x > 0 {
+        if x > 1 {
+            if x > 2 {
+                if x > 3 {
+                    if x > 4 {
+                        if x > 5 {
+                            r = x;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    r
+}
+"#,
+    )
+    .expect("write examples/noise.rs");
+
+    decay_cmd(&project, &db)
+        .arg("hotspots")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("example_noise"))
+        .stdout(predicate::str::contains("complex_logic"))
+        .stdout(predicate::str::contains("deeply_nested"));
+
+    decay_cmd(&project, &db)
+        .args([
+            "hotspots",
+            "--exclude",
+            "examples",
+            "--exclude",
+            "src/comp*.rs",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("example_noise").not())
+        .stdout(predicate::str::contains("complex_logic").not())
+        .stdout(predicate::str::contains("deeply_nested"));
+}
+
+// 6. Root `.gitignore` is respected without needing explicit `--exclude`.
+#[test]
+fn hotspots_respects_root_gitignore() {
+    let (_tmp, project, db) = fresh_workspace();
+
+    fs::write(project.join(".gitignore"), "examples/\nsrc/complex.rs\n")
+        .expect("write .gitignore");
+    let extra_dir = project.join("examples");
+    fs::create_dir_all(&extra_dir).expect("create examples dir");
+    fs::write(
+        extra_dir.join("noise.rs"),
+        "pub fn example_noise() { if true { if true { if true { if true { if true {} }}}}}\n",
+    )
+    .expect("write examples/noise.rs");
+
+    decay_cmd(&project, &db)
+        .arg("hotspots")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("example_noise").not())
+        .stdout(predicate::str::contains("complex_logic").not())
+        .stdout(predicate::str::contains("deeply_nested"));
+}
+
+// 7. `decay check` without a baseline gives a friendly init hint.
+#[test]
+fn check_without_baseline_prompts_init() {
+    let (_tmp, project, db) = fresh_workspace();
+
+    decay_cmd(&project, &db)
+        .arg("check")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("No baseline snapshot"))
+        .stdout(predicate::str::contains("decay init"));
+}
+
+// 8. Two consecutive baseline snapshots with no source change → diff reports clean.
 #[test]
 fn diff_no_change_reports_clean() {
     let (_tmp, project, db) = fresh_workspace();
 
-    // Baseline + identical second snapshot.
-    decay_cmd(&project, &db).assert().success();
-    decay_cmd(&project, &db).assert().success();
+    decay_cmd(&project, &db).arg("init").assert().success();
+    decay_cmd(&project, &db).arg("init").assert().success();
 
     decay_cmd(&project, &db)
         .arg("diff")
@@ -122,17 +219,15 @@ fn diff_no_change_reports_clean() {
         .stdout(predicate::str::contains("No functions degraded"));
 }
 
-// 6. Mutating nested.rs to deepen its nesting between snapshots → diff
+// 9. Mutating nested.rs to deepen its nesting after baseline → `decay check`
 //    flags the function as worsened (or as a fresh threshold crossing,
 //    depending on whether it was already over).
 #[test]
-fn diff_added_nesting_reports_worsened() {
+fn check_added_nesting_reports_worsened() {
     let (_tmp, project, db) = fresh_workspace();
 
-    // Baseline snapshot of the unmodified fixture.
-    decay_cmd(&project, &db).assert().success();
+    decay_cmd(&project, &db).arg("init").assert().success();
 
-    // Replace nested.rs with an even deeper version (8 layers — was 6).
     let nested_path = project.join("src").join("nested.rs");
     let deeper = r#"
 pub fn deeply_nested(x: i32) -> i32 {
@@ -159,48 +254,37 @@ pub fn deeply_nested(x: i32) -> i32 {
 "#;
     fs::write(&nested_path, deeper).expect("write deeper nested.rs");
 
-    // Second snapshot picks up the change.
-    decay_cmd(&project, &db).assert().success();
-
     decay_cmd(&project, &db)
-        .arg("diff")
+        .arg("check")
         .assert()
         .success()
-        // We accept either the [worsened] tag (if already-over) or the
-        // "crossed" marker — both are valid §2.9 outcomes for this mutation.
-        .stdout(
-            predicate::str::contains("[worsened]")
-                .or(predicate::str::contains("crossed")),
-        )
+        .stdout(predicate::str::contains("[worsened]").or(predicate::str::contains("crossed")))
         .stdout(predicate::str::contains("deeply_nested"));
 }
 
-// 7. An invalid .rs file produces a parse warning but does not abort the
-//    scan; the rest of the project is still processed and a snapshot is
-//    saved.
+// 10. An invalid .rs file produces a parse warning but does not abort the
+//    scan; the rest of the project is still processed and a baseline is saved.
 #[test]
 fn parse_failure_warns_continues() {
     let (_tmp, project, db) = fresh_workspace();
 
-    // Drop a syntactically invalid file alongside the valid ones.
     let bad = project.join("src").join("invalid.rs");
     fs::write(&bad, "pub fn broken( { not valid rust at all").expect("write invalid.rs");
 
     decay_cmd(&project, &db)
+        .arg("init")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Snapshot #1 saved"))
-        // Other functions still surface — invalid file did not poison the run.
-        .stdout(predicate::str::contains("complex_logic"));
+        .stdout(predicate::str::contains("Baseline snapshot #1 saved."));
 }
 
-// 8. DECAY_DB_PATH actually directs db writes to the requested path.
+// 11. DECAY_DB_PATH actually directs db writes to the requested path.
 #[test]
 fn db_in_temp_dir_via_env() {
     let (_tmp, project, db) = fresh_workspace();
     assert!(!db.exists(), "db should not exist before first run");
 
-    decay_cmd(&project, &db).assert().success();
+    decay_cmd(&project, &db).arg("init").assert().success();
 
     assert!(db.exists(), "DECAY_DB_PATH should have been honored");
     let meta = fs::metadata(&db).expect("db metadata");

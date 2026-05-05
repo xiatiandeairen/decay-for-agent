@@ -45,6 +45,24 @@ fn fresh_workspace() -> (tempfile::TempDir, PathBuf, PathBuf) {
     (tmp, project, db)
 }
 
+fn fresh_healthy_workspace() -> (tempfile::TempDir, PathBuf, PathBuf) {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    fs::create_dir_all(project.join("src")).expect("create src");
+    fs::write(
+        project.join("Cargo.toml"),
+        "[package]\nname='healthy'\nversion='0.1.0'\nedition='2021'\n",
+    )
+    .expect("write Cargo.toml");
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub fn add(a: i32, b: i32) -> i32 { a + b }\n",
+    )
+    .expect("write lib.rs");
+    (tmp, project, db)
+}
+
 #[test]
 fn bare_decay_prints_concise_commands_without_scanning() {
     let (_tmp, project, db) = fresh_workspace();
@@ -95,17 +113,15 @@ fn doctor_reports_current_risks_without_baseline() {
 }
 
 #[test]
-fn doctor_verbose_explains_problem_groups() {
-    let (_tmp, project, db) = fresh_workspace();
+fn doctor_reports_ok_for_healthy_project() {
+    let (_tmp, project, db) = fresh_healthy_workspace();
 
     decay_cmd(&project, &db)
-        .args(["doctor", "--verbose"])
+        .arg("doctor")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Mode: doctor"))
-        .stdout(predicate::str::contains("What this means:"))
-        .stdout(predicate::str::contains("Why it matters:"))
-        .stdout(predicate::str::contains("Bad points:"));
+        .stdout(predicate::str::contains("status=ok findings=0 scope=prod"))
+        .stdout(predicate::str::contains("No complexity risks found"));
 }
 
 #[test]
@@ -146,6 +162,34 @@ pub fn example_noise(x: i32) -> i32 {
         .assert()
         .success()
         .stdout(predicate::str::contains("example_noise").not());
+}
+
+#[test]
+fn doctor_default_prod_scope_excludes_tests_examples_and_target() {
+    let (_tmp, project, db) = fresh_workspace();
+
+    fs::create_dir_all(project.join("examples")).expect("create examples");
+    fs::write(project.join("examples/noise.rs"), noisy_fn("example_noise"))
+        .expect("write example noise");
+    fs::create_dir_all(project.join("tests")).expect("create tests");
+    fs::write(
+        project.join("tests/noise.rs"),
+        noisy_fn("integration_noise"),
+    )
+    .expect("write test noise");
+    fs::write(
+        project.join("target/debug/junk.rs"),
+        noisy_fn("target_noise"),
+    )
+    .expect("write target noise");
+
+    decay_cmd(&project, &db)
+        .arg("doctor")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("example_noise").not())
+        .stdout(predicate::str::contains("integration_noise").not())
+        .stdout(predicate::str::contains("target_noise").not());
 }
 
 #[test]
@@ -251,23 +295,28 @@ fn diff_between_two_baselines_reports_regression() {
 }
 
 #[test]
-fn diff_verbose_explains_change_groups() {
+fn diff_reports_added_high_risk_function() {
     let (_tmp, project, db) = fresh_workspace();
 
     decay_cmd(&project, &db)
         .args(["baseline", "v1"])
         .assert()
         .success();
-    make_nested_worse(&project);
+    fs::write(
+        project.join("src").join("new_complex.rs"),
+        noisy_fn("new_complex"),
+    )
+    .expect("write new complex function");
 
     decay_cmd(&project, &db)
-        .args(["diff", "v1", "--verbose"])
+        .args(["diff", "v1"])
         .assert()
         .failure()
-        .stdout(predicate::str::contains("Mode: diff"))
-        .stdout(predicate::str::contains("What changed:"))
-        .stdout(predicate::str::contains("Why it matters:"))
-        .stdout(predicate::str::contains("Bad points:"));
+        .stdout(predicate::str::contains(
+            "status=degraded from=v1 to=current",
+        ))
+        .stdout(predicate::str::contains("[new high-risk functions]"))
+        .stdout(predicate::str::contains("new_complex"));
 }
 
 #[test]
@@ -312,7 +361,9 @@ fn parse_failure_warns_continues() {
         .args(["baseline", "v1"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("status=created baseline=v1"));
+        .stdout(predicate::str::contains("status=created baseline=v1"))
+        .stdout(predicate::str::contains("partial=true"))
+        .stdout(predicate::str::contains("diagnostics=1"));
 }
 
 #[test]
@@ -356,4 +407,30 @@ pub fn deeply_nested(x: i32) -> i32 {
 }
 "#;
     fs::write(&nested_path, deeper).expect("write deeper nested.rs");
+}
+
+fn noisy_fn(name: &str) -> String {
+    format!(
+        r#"
+pub fn {name}(x: i32) -> i32 {{
+    let mut r = 0;
+    if x > 0 {{
+        if x > 1 {{
+            if x > 2 {{
+                if x > 3 {{
+                    if x > 4 {{
+                        if x > 5 {{
+                            if x > 6 {{
+                                r = x;
+                            }}
+                        }}
+                    }}
+                }}
+            }}
+        }}
+    }}
+    r
+}}
+"#
+    )
 }

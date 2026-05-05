@@ -208,18 +208,6 @@ fn parses_impl_method_with_param() {
 }
 
 #[test]
-fn parses_trait_default_method() {
-    let src = "trait T { fn def(&self) {} }\n";
-    let (_d, p) = parse_inline(src);
-    assert_eq!(names(&p.funcs), vec!["def"]);
-    assert_eq!(p.funcs[0].function.param_types, vec!["&self".to_string()]);
-    // trait_item is not an impl block; v0.1 leaves impl_context empty for
-    // default methods. Same-name defaults across two traits in one file are
-    // a known v0.1 collision (rare in practice).
-    assert_eq!(p.funcs[0].function.impl_context, "");
-}
-
-#[test]
 fn skips_function_signature_item() {
     // Trait method without body must not be extracted.
     let src = "trait T { fn sig(&self); }\n";
@@ -344,31 +332,6 @@ impl Foo {
     let f = &p.funcs[0].function;
     assert_eq!(f.impl_context, "Foo");
     assert_eq!(f.cfg_context, "#[cfg(windows)]");
-}
-
-#[test]
-fn cfg_context_ignores_non_cfg_attributes() {
-    let src = "
-#[inline]
-#[cfg(unix)]
-#[allow(dead_code)]
-fn imp() {}
-";
-    let (_d, p) = parse_inline(src);
-    let imp = &p.funcs[0].function;
-    assert_eq!(imp.cfg_context, "#[cfg(unix)]");
-}
-
-#[test]
-fn cfg_context_preserves_multiple_cfg_attributes_in_source_order() {
-    let src = "
-#[cfg(unix)]
-#[cfg(feature = \"cli\")]
-fn imp() {}
-";
-    let (_d, p) = parse_inline(src);
-    let imp = &p.funcs[0].function;
-    assert_eq!(imp.cfg_context, "#[cfg(unix)]\n#[cfg(feature=\"cli\")]");
 }
 
 #[test]

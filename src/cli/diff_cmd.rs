@@ -8,6 +8,7 @@ use crate::config::{Thresholds, DEFAULT_THRESHOLDS};
 use crate::diff;
 use crate::error::Result;
 use crate::store;
+use crate::cli::common;
 use crate::types::{DiffEntry, DiffKind, Metrics};
 
 /// Run the `decay diff` command.
@@ -15,11 +16,11 @@ use crate::types::{DiffEntry, DiffKind, Metrics};
 /// Loads the two most recent snapshots for the cwd's canonical path. Returns
 /// exit code 0 in every normal case (no baseline, no changes, changes found).
 /// DB / IO errors propagate.
-pub fn run() -> Result<i32> {
+pub fn run(args: &common::ScanArgs) -> Result<i32> {
     let project = crate::cli::common::resolve_project()?;
 
     let conn = store::open_db()?;
-    let snaps = store::load_latest_snapshots(&conn, &project.project_id, 2)?;
+    let snaps = store::load_latest_snapshots(&conn, &project.project_id, args.scope.as_str(), 2)?;
 
     println!("decay v{}", env!("CARGO_PKG_VERSION"));
 
@@ -27,7 +28,10 @@ pub fn run() -> Result<i32> {
     // we cannot diff, so both 0 and 1 collapse to the same message.
     if snaps.len() < 2 {
         println!("No previous snapshot for this project.");
-        println!("Run `decay init` to create a baseline snapshot.");
+        println!(
+            "Run `decay init` to create a baseline snapshot for scope `{}`.",
+            args.scope.as_str()
+        );
         return Ok(0);
     }
 
@@ -96,12 +100,27 @@ fn collect_metric_lines(
 }
 
 /// Per-metric tuple shared by both Added and Change paths.
-fn metric_tuples<'a>(curr: &'a Metrics, t: &'a Thresholds) -> [(&'static str, u32, u32); 4] {
+fn metric_tuples(curr: &Metrics, t: &Thresholds) -> [(&'static str, u32, u32); 7] {
     [
         ("nesting", curr.nesting, t.nesting),
         ("cyclomatic", curr.cyclomatic, t.cyclomatic),
         ("cognitive", curr.cognitive, t.cognitive),
         ("params", curr.params, t.params),
+        (
+            "statement_count",
+            curr.statement_count,
+            t.statement_count,
+        ),
+        (
+            "max_condition_ops",
+            curr.max_condition_ops,
+            t.max_condition_ops,
+        ),
+        (
+            "mutable_bindings",
+            curr.mutable_bindings,
+            t.mutable_bindings,
+        ),
     ]
 }
 
@@ -121,7 +140,15 @@ fn lines_for_added(curr: &Metrics, t: &Thresholds) -> Vec<String> {
 /// strictly increased, with a marker if the new value crosses or sits over
 /// the threshold.
 fn lines_for_change(prev: &Metrics, curr: &Metrics, t: &Thresholds) -> Vec<String> {
-    let prevs = [prev.nesting, prev.cyclomatic, prev.cognitive, prev.params];
+    let prevs = [
+        prev.nesting,
+        prev.cyclomatic,
+        prev.cognitive,
+        prev.params,
+        prev.statement_count,
+        prev.max_condition_ops,
+        prev.mutable_bindings,
+    ];
     metric_tuples(curr, t)
         .into_iter()
         .zip(prevs)

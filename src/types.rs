@@ -19,12 +19,16 @@ pub struct Metrics {
     pub cyclomatic: u32,
     pub cognitive: u32,
     pub params: u32,
+    pub statement_count: u32,
+    pub max_condition_ops: u32,
+    pub mutable_bindings: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
     pub id: i64,
     pub project_id: String, // 项目根绝对路径
+    pub scope: String,      // scan scope, e.g. "prod" / "all"
     pub created_at: i64,    // unix timestamp seconds
     pub functions: Vec<Function>,
 }

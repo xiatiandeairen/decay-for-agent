@@ -15,6 +15,7 @@ pub struct ParsedFile {
 pub struct ParsedFunc {
     pub function: Function, // metrics zeroed; signature_hash 0; pipeline fills both
     pub body_range: Range,
+    pub is_test_like: bool,
 }
 
 /// Parse a Rust source file and extract every concrete `function_item`.
@@ -83,7 +84,7 @@ fn collect_functions(tree: &Tree, source: &str, rel_file: &str) -> Vec<ParsedFun
     let mut out = Vec::new();
     let mut cursor = tree.walk();
     let root = tree.root_node();
-    visit(root, source, rel_file, "", &mut cursor, &mut out);
+    visit(root, source, rel_file, "", false, &mut cursor, &mut out);
     out
 }
 
@@ -103,6 +104,7 @@ fn visit<'a>(
     source: &str,
     rel_file: &str,
     impl_context: &str,
+    in_test_context: bool,
     cursor: &mut tree_sitter::TreeCursor<'a>,
     out: &mut Vec<ParsedFunc>,
 ) {
@@ -111,7 +113,15 @@ fn visit<'a>(
             Some(ctx) => {
                 for child in node.children(cursor) {
                     let mut child_cursor = child.walk();
-                    visit(child, source, rel_file, &ctx, &mut child_cursor, out);
+                    visit(
+                        child,
+                        source,
+                        rel_file,
+                        &ctx,
+                        in_test_context,
+                        &mut child_cursor,
+                        out,
+                    );
                 }
             }
             None => {
@@ -125,8 +135,27 @@ fn visit<'a>(
         return;
     }
 
+    if node.kind() == "mod_item" {
+        let nested_test_context = in_test_context || is_test_module(node, source);
+        for child in node.children(cursor) {
+            let mut child_cursor = child.walk();
+            visit(
+                child,
+                source,
+                rel_file,
+                impl_context,
+                nested_test_context,
+                &mut child_cursor,
+                out,
+            );
+        }
+        return;
+    }
+
     if node.kind() == "function_item" {
-        if let Some(parsed) = extract_function(node, source, rel_file, impl_context) {
+        if let Some(parsed) =
+            extract_function(node, source, rel_file, impl_context, in_test_context)
+        {
             out.push(parsed);
         }
     }
@@ -139,6 +168,7 @@ fn visit<'a>(
             source,
             rel_file,
             impl_context,
+            in_test_context,
             &mut child_cursor,
             out,
         );
@@ -150,10 +180,13 @@ fn extract_function(
     source: &str,
     rel_file: &str,
     impl_context: &str,
+    in_test_context: bool,
 ) -> Option<ParsedFunc> {
     let name_node = node.child_by_field_name("name")?;
     let name = node_text(name_node, source)?.to_string();
-    let cfg_context = extract_cfg_context(node, source);
+    let attrs = collect_attribute_texts(node, source);
+    let cfg_context = extract_cfg_context(&attrs);
+    let is_test_like = in_test_context || is_test_attr_set(&attrs) || cfg_context_is_test(&cfg_context);
 
     let body_node = node.child_by_field_name("body")?;
     let body_range = body_node.range();
@@ -179,12 +212,16 @@ fn extract_function(
             cyclomatic: 0,
             cognitive: 0,
             params: 0,
+            statement_count: 0,
+            max_condition_ops: 0,
+            mutable_bindings: 0,
         },
     };
 
     Some(ParsedFunc {
         function,
         body_range,
+        is_test_like,
     })
 }
 
@@ -224,24 +261,67 @@ fn extract_impl_context(impl_node: Node<'_>, source: &str) -> Option<String> {
 /// Only plain `#[cfg(...)]` participates in identity. Other attributes such
 /// as `#[inline]`, `#[allow]`, doc comments, or `cfg_attr(...)` are ignored so
 /// formatting and lint controls do not perturb fingerprint stability.
-fn extract_cfg_context(function_node: Node<'_>, source: &str) -> String {
+fn collect_attribute_texts(node: Node<'_>, source: &str) -> Vec<String> {
     let mut attrs: Vec<String> = Vec::new();
-    let mut cursor = function_node.prev_named_sibling();
+    let mut cursor = node.prev_named_sibling();
 
     while let Some(node) = cursor {
         if node.kind() != "attribute_item" {
             break;
         }
         if let Some(text) = node_text(node, source) {
-            if let Some(cfg) = canonicalize_cfg_attr(text) {
-                attrs.push(cfg);
-            }
+            attrs.push(text.to_string());
         }
         cursor = node.prev_named_sibling();
     }
 
     attrs.reverse();
-    attrs.join("\n")
+    attrs
+}
+
+fn extract_cfg_context(attrs: &[String]) -> String {
+    attrs.iter()
+        .filter_map(|text| canonicalize_cfg_attr(text))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn is_test_module(node: Node<'_>, source: &str) -> bool {
+    let attrs = collect_attribute_texts(node, source);
+    if is_test_attr_set(&attrs) {
+        return true;
+    }
+    if let Some(name_node) = node.child_by_field_name("name") {
+        if let Some(name) = node_text(name_node, source) {
+            if name == "tests" {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn is_test_attr_set(attrs: &[String]) -> bool {
+    attrs.iter().any(|text| {
+        let normalized: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+        normalized == "#[test]"
+            || normalized.ends_with("::test]")
+            || cfg_attr_is_test(&normalized)
+    })
+}
+
+fn cfg_context_is_test(cfg_context: &str) -> bool {
+    cfg_context
+        .lines()
+        .any(|line| cfg_attr_is_test(line))
+}
+
+fn cfg_attr_is_test(normalized: &str) -> bool {
+    normalized == "#[cfg(test)]"
+        || normalized.contains("(test,")
+        || normalized.contains(",test,")
+        || normalized.contains(",test)")
+        || normalized.contains("(test)")
 }
 
 fn canonicalize_cfg_attr(text: &str) -> Option<String> {
@@ -251,6 +331,7 @@ fn canonicalize_cfg_attr(text: &str) -> Option<String> {
     }
     None
 }
+
 
 /// Truncate a type expression at the first `<` so generic parameters do not
 /// participate in the impl_context. `Foo<T>` and `Foo<U>` should map to the

@@ -47,7 +47,7 @@ pub fn run() -> Result<i32> {
     match cli.command {
         None | Some(Commands::Check) => check_cmd::run(&cli.scan),
         Some(Commands::Init) => init_cmd::run(&cli.scan),
-        Some(Commands::Diff) => diff_cmd::run(),
+        Some(Commands::Diff) => diff_cmd::run(&cli.scan),
         Some(Commands::Hotspots) => hotspots_cmd::run(&cli.scan),
     }
 }

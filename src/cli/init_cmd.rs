@@ -18,7 +18,12 @@ pub fn run(args: &common::ScanArgs) -> Result<i32> {
     println!();
 
     let conn = store::open_db()?;
-    let snapshot_id = store::save_snapshot(&conn, &project.project_id, scan.funcs.clone())?;
+    let snapshot_id = store::save_snapshot(
+        &conn,
+        &project.project_id,
+        args.scope.as_str(),
+        scan.funcs.clone(),
+    )?;
     let exceeded = common::collect_exceeded(&scan.funcs, &crate::config::DEFAULT_THRESHOLDS);
 
     println!("Baseline snapshot #{} saved.", snapshot_id);

@@ -6,6 +6,7 @@ use std::time::Instant;
 use crate::config::{DEFAULT_THRESHOLDS, Thresholds};
 use crate::error::{DecayError, Result};
 use crate::pipeline;
+use crate::scope::ScanScope;
 use crate::store;
 use crate::types::{Function, Metrics};
 
@@ -32,7 +33,8 @@ pub fn run() -> Result<i32> {
     let project_id = canonical.to_string_lossy().to_string();
 
     let started = Instant::now();
-    let funcs = pipeline::scan(&project_root)?;
+    let scope = ScanScope::Prod;
+    let funcs = pipeline::scan_with_excludes(&project_root, &[], scope)?;
     let elapsed = started.elapsed();
 
     // Distinct file count = unique `Function.file` values (project-relative).
@@ -62,11 +64,11 @@ pub fn run() -> Result<i32> {
     println!();
 
     let conn = store::open_db()?;
-    let snapshot_id = store::save_snapshot(&conn, &project_id, funcs.clone())?;
+    let snapshot_id = store::save_snapshot(&conn, &project_id, scope.as_str(), funcs.clone())?;
 
     // First snapshot = no other snapshot exists for this project id after the
     // save (load_latest with n=2 returns just the one we just saved).
-    let recent = store::load_latest_snapshots(&conn, &project_id, 2)?;
+    let recent = store::load_latest_snapshots(&conn, &project_id, scope.as_str(), 2)?;
     let is_first = recent.len() == 1;
 
     if is_first {

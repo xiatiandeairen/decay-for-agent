@@ -28,6 +28,9 @@ fn make_func(file: &str, name: &str, hash: u64, nesting: u32) -> Function {
             cyclomatic: 2,
             cognitive: 3,
             params: 2,
+            statement_count: 4,
+            max_condition_ops: 1,
+            mutable_bindings: 0,
         },
     }
 }
@@ -50,9 +53,10 @@ fn init_for_test(conn: &Connection) {
         "CREATE TABLE IF NOT EXISTS snapshots (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id   TEXT NOT NULL,
+            scope        TEXT NOT NULL DEFAULT 'prod',
             created_at   INTEGER NOT NULL
         );
-        CREATE INDEX IF NOT EXISTS idx_snap_project ON snapshots(project_id, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_snap_project ON snapshots(project_id, scope, id DESC);
 
         CREATE TABLE IF NOT EXISTS functions (
             snapshot_id      INTEGER NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
@@ -67,6 +71,9 @@ fn init_for_test(conn: &Connection) {
             cyclomatic       INTEGER NOT NULL,
             cognitive        INTEGER NOT NULL,
             params           INTEGER NOT NULL,
+            statement_count  INTEGER NOT NULL DEFAULT 0,
+            max_condition_ops INTEGER NOT NULL DEFAULT 0,
+            mutable_bindings INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (snapshot_id, signature_hash)
         );
         CREATE INDEX IF NOT EXISTS idx_func_snap ON functions(snapshot_id);",
@@ -116,14 +123,15 @@ fn save_and_load_round_trip_preserves_u64_hash() {
     let mut f = make_func("src/lib.rs", "deep", u64::MAX, 7);
     f.impl_context = "Display for Foo".to_string();
     f.cfg_context = "#[cfg(unix)]".to_string();
-    let snap_id = save_snapshot(&conn, "proj-A", vec![f.clone()]).unwrap();
+    let snap_id = save_snapshot(&conn, "proj-A", "prod", vec![f.clone()]).unwrap();
     assert!(snap_id > 0);
 
-    let loaded = load_latest_snapshots(&conn, "proj-A", 1).unwrap();
+    let loaded = load_latest_snapshots(&conn, "proj-A", "prod", 1).unwrap();
     assert_eq!(loaded.len(), 1);
     let snap = &loaded[0];
     assert_eq!(snap.id, snap_id);
     assert_eq!(snap.project_id, "proj-A");
+    assert_eq!(snap.scope, "prod");
     assert!(snap.created_at > 0);
     assert_eq!(snap.functions.len(), 1);
 
@@ -144,23 +152,23 @@ fn load_latest_snapshots_n_boundaries() {
     let (_dir, conn) = open_isolated();
 
     // Empty: no snapshots stored yet.
-    let empty = load_latest_snapshots(&conn, "proj-X", 10).unwrap();
+    let empty = load_latest_snapshots(&conn, "proj-X", "prod", 10).unwrap();
     assert!(empty.is_empty());
 
     // n=0 always returns empty regardless of stored data.
-    save_snapshot(&conn, "proj-X", vec![make_func("a.rs", "f", 1, 1)]).unwrap();
-    let n0 = load_latest_snapshots(&conn, "proj-X", 0).unwrap();
+    save_snapshot(&conn, "proj-X", "prod", vec![make_func("a.rs", "f", 1, 1)]).unwrap();
+    let n0 = load_latest_snapshots(&conn, "proj-X", "prod", 0).unwrap();
     assert!(n0.is_empty());
 
     // 1 snapshot stored, n=1 -> returns 1.
-    let one = load_latest_snapshots(&conn, "proj-X", 1).unwrap();
+    let one = load_latest_snapshots(&conn, "proj-X", "prod", 1).unwrap();
     assert_eq!(one.len(), 1);
 
     // Insert 2 more so total = 3, then ask for n=2 -> newest 2 (id DESC).
-    let id2 = save_snapshot(&conn, "proj-X", vec![make_func("b.rs", "g", 2, 2)]).unwrap();
-    let id3 = save_snapshot(&conn, "proj-X", vec![make_func("c.rs", "h", 3, 3)]).unwrap();
+    let id2 = save_snapshot(&conn, "proj-X", "prod", vec![make_func("b.rs", "g", 2, 2)]).unwrap();
+    let id3 = save_snapshot(&conn, "proj-X", "prod", vec![make_func("c.rs", "h", 3, 3)]).unwrap();
 
-    let two = load_latest_snapshots(&conn, "proj-X", 2).unwrap();
+    let two = load_latest_snapshots(&conn, "proj-X", "prod", 2).unwrap();
     assert_eq!(two.len(), 2);
     assert_eq!(two[0].id, id3, "newest first");
     assert_eq!(two[1].id, id2);
@@ -170,17 +178,19 @@ fn load_latest_snapshots_n_boundaries() {
 fn project_id_isolation() {
     let (_dir, conn) = open_isolated();
 
-    save_snapshot(&conn, "proj-A", vec![make_func("a.rs", "fa", 10, 1)]).unwrap();
-    save_snapshot(&conn, "proj-B", vec![make_func("b.rs", "fb", 20, 1)]).unwrap();
+    save_snapshot(&conn, "proj-A", "prod", vec![make_func("a.rs", "fa", 10, 1)]).unwrap();
+    save_snapshot(&conn, "proj-B", "prod", vec![make_func("b.rs", "fb", 20, 1)]).unwrap();
 
-    let a = load_latest_snapshots(&conn, "proj-A", 10).unwrap();
+    let a = load_latest_snapshots(&conn, "proj-A", "prod", 10).unwrap();
     assert_eq!(a.len(), 1);
     assert_eq!(a[0].project_id, "proj-A");
+    assert_eq!(a[0].scope, "prod");
     assert_eq!(a[0].functions[0].name, "fa");
 
-    let b = load_latest_snapshots(&conn, "proj-B", 10).unwrap();
+    let b = load_latest_snapshots(&conn, "proj-B", "prod", 10).unwrap();
     assert_eq!(b.len(), 1);
     assert_eq!(b[0].project_id, "proj-B");
+    assert_eq!(b[0].scope, "prod");
     assert_eq!(b[0].functions[0].name, "fb");
 }
 

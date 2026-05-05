@@ -145,7 +145,7 @@ pub fn example_noise(x: i32) -> i32 {
     .expect("write examples/noise.rs");
 
     decay_cmd(&project, &db)
-        .arg("hotspots")
+        .args(["hotspots", "--scope", "all"])
         .assert()
         .success()
         .stdout(predicate::str::contains("example_noise"))
@@ -155,6 +155,8 @@ pub fn example_noise(x: i32) -> i32 {
     decay_cmd(&project, &db)
         .args([
             "hotspots",
+            "--scope",
+            "all",
             "--exclude",
             "examples",
             "--exclude",
@@ -165,6 +167,218 @@ pub fn example_noise(x: i32) -> i32 {
         .stdout(predicate::str::contains("example_noise").not())
         .stdout(predicate::str::contains("complex_logic").not())
         .stdout(predicate::str::contains("deeply_nested"));
+}
+
+#[test]
+fn hotspots_scope_prod_excludes_non_prod_roles() {
+    let (_tmp, project, db) = fresh_workspace();
+
+    let examples_dir = project.join("examples");
+    fs::create_dir_all(&examples_dir).expect("create examples dir");
+    fs::write(
+        examples_dir.join("noise.rs"),
+        r#"
+pub fn example_noise(x: i32) -> i32 {
+    if x > 0 {
+        if x > 1 {
+            if x > 2 {
+                if x > 3 {
+                    if x > 4 {
+                        return x;
+                    }
+                }
+            }
+        }
+    }
+    0
+}
+"#,
+    )
+    .expect("write examples/noise.rs");
+
+    let tests_dir = project.join("tests");
+    fs::create_dir_all(&tests_dir).expect("create tests dir");
+    fs::write(
+        tests_dir.join("noise.rs"),
+        r#"
+pub fn test_noise(flag: bool) -> i32 {
+    if flag {
+        if true {
+            if true {
+                if true {
+                    if true {
+                        return 1;
+                    }
+                }
+            }
+        }
+    }
+    0
+}
+"#,
+    )
+    .expect("write tests/noise.rs");
+
+    fs::write(
+        project.join("src").join("testutil.rs"),
+        r#"
+pub fn helper_noise(x: i32) -> i32 {
+    if x > 0 {
+        if x > 1 {
+            if x > 2 {
+                if x > 3 {
+                    if x > 4 {
+                        return x;
+                    }
+                }
+            }
+        }
+    }
+    0
+}
+"#,
+    )
+    .expect("write src/testutil.rs");
+
+    fs::write(
+        project.join("src").join("with_tests.rs"),
+        r#"
+#[cfg(test)]
+mod tests {
+    pub fn helper_from_test_module(x: i32) -> i32 {
+        if x > 0 {
+            if x > 1 {
+                if x > 2 {
+                    if x > 3 {
+                        if x > 4 {
+                            return x;
+                        }
+                    }
+                }
+            }
+        }
+        0
+    }
+}
+"#,
+    )
+    .expect("write src/with_tests.rs");
+
+    decay_cmd(&project, &db)
+        .arg("hotspots")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("complex_logic"))
+        .stdout(predicate::str::contains("example_noise").not())
+        .stdout(predicate::str::contains("test_noise").not())
+        .stdout(predicate::str::contains("helper_noise").not())
+        .stdout(predicate::str::contains("helper_from_test_module").not());
+}
+
+#[test]
+fn hotspots_scope_all_includes_non_prod_roles() {
+    let (_tmp, project, db) = fresh_workspace();
+
+    let examples_dir = project.join("examples");
+    fs::create_dir_all(&examples_dir).expect("create examples dir");
+    fs::write(
+        examples_dir.join("noise.rs"),
+        r#"
+pub fn example_noise(x: i32) -> i32 {
+    if x > 0 {
+        if x > 1 {
+            if x > 2 {
+                if x > 3 {
+                    if x > 4 {
+                        return x;
+                    }
+                }
+            }
+        }
+    }
+    0
+}
+"#,
+    )
+    .expect("write examples/noise.rs");
+
+    let tests_dir = project.join("tests");
+    fs::create_dir_all(&tests_dir).expect("create tests dir");
+    fs::write(
+        tests_dir.join("noise.rs"),
+        r#"
+pub fn test_noise(flag: bool) -> i32 {
+    if flag {
+        if true {
+            if true {
+                if true {
+                    if true {
+                        return 1;
+                    }
+                }
+            }
+        }
+    }
+    0
+}
+"#,
+    )
+    .expect("write tests/noise.rs");
+
+    fs::write(
+        project.join("src").join("testutil.rs"),
+        r#"
+pub fn helper_noise(x: i32) -> i32 {
+    if x > 0 {
+        if x > 1 {
+            if x > 2 {
+                if x > 3 {
+                    if x > 4 {
+                        return x;
+                    }
+                }
+            }
+        }
+    }
+    0
+}
+"#,
+    )
+    .expect("write src/testutil.rs");
+
+    fs::write(
+        project.join("src").join("with_tests.rs"),
+        r#"
+#[cfg(test)]
+mod tests {
+    pub fn helper_from_test_module(x: i32) -> i32 {
+        if x > 0 {
+            if x > 1 {
+                if x > 2 {
+                    if x > 3 {
+                        if x > 4 {
+                            return x;
+                        }
+                    }
+                }
+            }
+        }
+        0
+    }
+}
+"#,
+    )
+    .expect("write src/with_tests.rs");
+
+    decay_cmd(&project, &db)
+        .args(["hotspots", "--scope", "all"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("complex_logic"))
+        .stdout(predicate::str::contains("example_noise"))
+        .stdout(predicate::str::contains("test_noise"))
+        .stdout(predicate::str::contains("helper_noise"))
+        .stdout(predicate::str::contains("helper_from_test_module"));
 }
 
 // 6. Root `.gitignore` is respected without needing explicit `--exclude`.
@@ -265,6 +479,60 @@ pub fn deeply_nested(x: i32) -> i32 {
 // 10. An invalid .rs file produces a parse warning but does not abort the
 //    scan; the rest of the project is still processed and a baseline is saved.
 #[test]
+fn check_prints_new_metric_details() {
+    let (_tmp, project, db) = fresh_workspace();
+
+    decay_cmd(&project, &db).arg("init").assert().success();
+
+    let complex_path = project.join("src").join("complex.rs");
+    let heavier = r#"
+pub fn complex_logic(input: i32) -> i32 {
+    let a0 = input + 0;
+    let a1 = a0 + 1;
+    let a2 = a1 + 1;
+    let a3 = a2 + 1;
+    let a4 = a3 + 1;
+    let a5 = a4 + 1;
+    let a6 = a5 + 1;
+    let a7 = a6 + 1;
+    let a8 = a7 + 1;
+    let a9 = a8 + 1;
+    let a10 = a9 + 1;
+    let a11 = a10 + 1;
+    let a12 = a11 + 1;
+    let a13 = a12 + 1;
+    let a14 = a13 + 1;
+    let a15 = a14 + 1;
+    let a16 = a15 + 1;
+    let a17 = a16 + 1;
+    let a18 = a17 + 1;
+    let a19 = a18 + 1;
+    let a20 = a19 + 1;
+    let a21 = a20 + 1;
+    let a22 = a21 + 1;
+    let a23 = a22 + 1;
+    let a24 = a23 + 1;
+    let a25 = a24 + 1;
+    if a25 > 0 && input > 0 && input < 100 && input % 2 == 0 && input != 42 {
+        a25
+    } else {
+        input
+    }
+}
+"#;
+    fs::write(&complex_path, heavier).expect("write heavier complex.rs");
+
+    decay_cmd(&project, &db)
+        .arg("check")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("statement_count"))
+        .stdout(predicate::str::contains("max_condition_ops"));
+}
+
+// 11. An invalid .rs file produces a parse warning but does not abort the
+//     scan; the rest of the project is still processed and a baseline is saved.
+#[test]
 fn parse_failure_warns_continues() {
     let (_tmp, project, db) = fresh_workspace();
 
@@ -278,7 +546,7 @@ fn parse_failure_warns_continues() {
         .stdout(predicate::str::contains("Baseline snapshot #1 saved."));
 }
 
-// 11. DECAY_DB_PATH actually directs db writes to the requested path.
+// 12. DECAY_DB_PATH actually directs db writes to the requested path.
 #[test]
 fn db_in_temp_dir_via_env() {
     let (_tmp, project, db) = fresh_workspace();

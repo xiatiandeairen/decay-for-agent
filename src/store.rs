@@ -59,9 +59,10 @@ fn init_schema(conn: &Connection) -> Result<()> {
         "CREATE TABLE IF NOT EXISTS snapshots (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id   TEXT NOT NULL,
+            scope        TEXT NOT NULL DEFAULT 'prod',
             created_at   INTEGER NOT NULL
         );
-        CREATE INDEX IF NOT EXISTS idx_snap_project ON snapshots(project_id, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_snap_project ON snapshots(project_id, scope, id DESC);
 
         CREATE TABLE IF NOT EXISTS functions (
             snapshot_id      INTEGER NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
@@ -76,11 +77,38 @@ fn init_schema(conn: &Connection) -> Result<()> {
             cyclomatic       INTEGER NOT NULL,
             cognitive        INTEGER NOT NULL,
             params           INTEGER NOT NULL,
+            statement_count  INTEGER NOT NULL DEFAULT 0,
+            max_condition_ops INTEGER NOT NULL DEFAULT 0,
+            mutable_bindings INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (snapshot_id, signature_hash)
         );
         CREATE INDEX IF NOT EXISTS idx_func_snap ON functions(snapshot_id);",
     )
     .map_err(map_db_err("failed to init schema"))?;
+    ensure_snapshots_column(conn, "scope", "TEXT NOT NULL DEFAULT 'prod'")?;
+    ensure_functions_column(conn, "statement_count", "INTEGER NOT NULL DEFAULT 0")?;
+    ensure_functions_column(conn, "max_condition_ops", "INTEGER NOT NULL DEFAULT 0")?;
+    ensure_functions_column(conn, "mutable_bindings", "INTEGER NOT NULL DEFAULT 0")?;
+    Ok(())
+}
+
+fn ensure_snapshots_column(conn: &Connection, name: &str, ddl: &str) -> Result<()> {
+    if has_table_column(conn, "snapshots", name)? {
+        return Ok(());
+    }
+    let sql = format!("ALTER TABLE snapshots ADD COLUMN {name} {ddl}");
+    conn.execute(&sql, [])
+        .map_err(map_db_err(format!("failed to add snapshots.{name} column")))?;
+    Ok(())
+}
+
+fn ensure_functions_column(conn: &Connection, name: &str, ddl: &str) -> Result<()> {
+    if has_table_column(conn, "functions", name)? {
+        return Ok(());
+    }
+    let sql = format!("ALTER TABLE functions ADD COLUMN {name} {ddl}");
+    conn.execute(&sql, [])
+        .map_err(map_db_err(format!("failed to add functions.{name} column")))?;
     Ok(())
 }
 
@@ -117,11 +145,33 @@ fn has_outdated_functions_schema(conn: &Connection) -> Result<bool> {
     Ok(!(has_impl_context && has_cfg_context))
 }
 
+fn has_table_column(conn: &Connection, table: &str, target: &str) -> Result<bool> {
+    let mut stmt = conn
+        .prepare(&format!("SELECT name FROM pragma_table_info('{table}')"))
+        .map_err(map_db_err(format!("failed to read {table} columns")))?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(map_db_err(format!("failed to read {table} columns")))?;
+
+    for row in rows {
+        let name = row.map_err(map_db_err("failed to read column row"))?;
+        if name == target {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Persist a snapshot of `funcs` for `project_id`. Returns the new snapshot id.
 ///
 /// Wrapped in a single transaction: snapshots row + all functions rows succeed
 /// or roll back together.
-pub fn save_snapshot(conn: &Connection, project_id: &str, funcs: Vec<Function>) -> Result<i64> {
+pub fn save_snapshot(
+    conn: &Connection,
+    project_id: &str,
+    scope: &str,
+    funcs: Vec<Function>,
+) -> Result<i64> {
     let created_at: i64 = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -132,8 +182,8 @@ pub fn save_snapshot(conn: &Connection, project_id: &str, funcs: Vec<Function>) 
         .map_err(map_db_err("failed to begin tx"))?;
 
     tx.execute(
-        "INSERT INTO snapshots (project_id, created_at) VALUES (?1, ?2)",
-        params![project_id, created_at],
+        "INSERT INTO snapshots (project_id, scope, created_at) VALUES (?1, ?2, ?3)",
+        params![project_id, scope, created_at],
     )
     .map_err(map_db_err("failed to insert snapshot"))?;
     let snapshot_id = tx.last_insert_rowid();
@@ -143,8 +193,9 @@ pub fn save_snapshot(conn: &Connection, project_id: &str, funcs: Vec<Function>) 
             .prepare(
                 "INSERT INTO functions (
                     snapshot_id, signature_hash, file, impl_context, cfg_context, name,
-                    start_line, end_line, nesting, cyclomatic, cognitive, params
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                    start_line, end_line, nesting, cyclomatic, cognitive, params,
+                    statement_count, max_condition_ops, mutable_bindings
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             )
             .map_err(map_db_err("failed to prepare functions insert"))?;
         for f in &funcs {
@@ -163,6 +214,9 @@ pub fn save_snapshot(conn: &Connection, project_id: &str, funcs: Vec<Function>) 
                 f.metrics.cyclomatic,
                 f.metrics.cognitive,
                 f.metrics.params,
+                f.metrics.statement_count,
+                f.metrics.max_condition_ops,
+                f.metrics.mutable_bindings,
             ])
             .map_err(map_db_err("failed to insert function"))?;
         }
@@ -176,12 +230,13 @@ pub fn save_snapshot(conn: &Connection, project_id: &str, funcs: Vec<Function>) 
 pub fn load_latest_snapshots(
     conn: &Connection,
     project_id: &str,
+    scope: &str,
     n: usize,
 ) -> Result<Vec<Snapshot>> {
     if n == 0 {
         return Ok(Vec::new());
     }
-    let mut snapshots = query_snapshots(conn, project_id, n)?;
+    let mut snapshots = query_snapshots(conn, project_id, scope, n)?;
     for snap in &mut snapshots {
         snap.functions = load_functions(conn, snap.id)?;
     }
@@ -190,19 +245,19 @@ pub fn load_latest_snapshots(
 
 /// Read snapshot metadata rows (id / project_id / created_at) only; the
 /// `functions` field is left empty for `load_functions` to populate.
-fn query_snapshots(conn: &Connection, project_id: &str, n: usize) -> Result<Vec<Snapshot>> {
+fn query_snapshots(conn: &Connection, project_id: &str, scope: &str, n: usize) -> Result<Vec<Snapshot>> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, project_id, created_at
+            "SELECT id, project_id, scope, created_at
              FROM snapshots
-             WHERE project_id = ?1
+             WHERE project_id = ?1 AND scope = ?2
              ORDER BY id DESC
-             LIMIT ?2",
+             LIMIT ?3",
         )
         .map_err(map_db_err("failed to prepare snapshot select"))?;
 
     let rows = stmt
-        .query_map(params![project_id, n as i64], row_to_snapshot)
+        .query_map(params![project_id, scope, n as i64], row_to_snapshot)
         .map_err(map_db_err("failed to query snapshots"))?;
 
     let mut snapshots: Vec<Snapshot> = Vec::new();
@@ -218,7 +273,8 @@ fn load_functions(conn: &Connection, snapshot_id: i64) -> Result<Vec<Function>> 
     let mut stmt = conn
         .prepare(
             "SELECT signature_hash, file, impl_context, cfg_context, name, start_line, end_line,
-                    nesting, cyclomatic, cognitive, params
+                    nesting, cyclomatic, cognitive, params,
+                    statement_count, max_condition_ops, mutable_bindings
              FROM functions
              WHERE snapshot_id = ?1",
         )
@@ -242,7 +298,8 @@ fn row_to_snapshot(row: &rusqlite::Row<'_>) -> rusqlite::Result<Snapshot> {
     Ok(Snapshot {
         id: row.get(0)?,
         project_id: row.get(1)?,
-        created_at: row.get(2)?,
+        scope: row.get(2)?,
+        created_at: row.get(3)?,
         functions: Vec::new(),
     })
 }
@@ -266,6 +323,9 @@ fn row_to_function(row: &rusqlite::Row<'_>) -> rusqlite::Result<Function> {
             cyclomatic: row.get(8)?,
             cognitive: row.get(9)?,
             params: row.get(10)?,
+            statement_count: row.get(11)?,
+            max_condition_ops: row.get(12)?,
+            mutable_bindings: row.get(13)?,
         },
     })
 }

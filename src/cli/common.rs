@@ -6,6 +6,7 @@ use clap::Args;
 use crate::config::{Thresholds, DEFAULT_THRESHOLDS};
 use crate::error::{DecayError, Result};
 use crate::pipeline;
+use crate::scope::ScanScope;
 use crate::types::{Function, Metrics};
 
 #[derive(Args, Clone, Debug, Default)]
@@ -13,6 +14,10 @@ pub struct ScanArgs {
     /// Exclude a basename, relative path prefix, or simple glob from scanning.
     #[arg(long = "exclude", value_name = "PATTERN", global = true)]
     pub excludes: Vec<String>,
+
+    /// Select which Rust source roles to scan.
+    #[arg(long = "scope", value_enum, default_value_t = ScanScope::Prod, global = true)]
+    pub scope: ScanScope,
 }
 
 pub(crate) struct ProjectContext {
@@ -50,7 +55,7 @@ pub(crate) fn resolve_project() -> Result<ProjectContext> {
 
 pub(crate) fn scan_current(project_root: &std::path::Path, args: &ScanArgs) -> Result<ScanResult> {
     let started = Instant::now();
-    let funcs = pipeline::scan_with_excludes(project_root, &args.excludes)?;
+    let funcs = pipeline::scan_with_excludes(project_root, &args.excludes, args.scope)?;
     let elapsed_secs = started.elapsed().as_secs_f64();
 
     let mut files: Vec<&str> = funcs.iter().map(|f| f.file.as_str()).collect();
@@ -145,6 +150,30 @@ fn collect_breaches(m: &Metrics, t: &Thresholds) -> Vec<MetricBreach> {
             value: m.params,
             threshold: t.params,
             overage: m.params - t.params,
+        });
+    }
+    if m.statement_count > t.statement_count {
+        out.push(MetricBreach {
+            metric: "statement_count",
+            value: m.statement_count,
+            threshold: t.statement_count,
+            overage: m.statement_count - t.statement_count,
+        });
+    }
+    if m.max_condition_ops > t.max_condition_ops {
+        out.push(MetricBreach {
+            metric: "max_condition_ops",
+            value: m.max_condition_ops,
+            threshold: t.max_condition_ops,
+            overage: m.max_condition_ops - t.max_condition_ops,
+        });
+    }
+    if m.mutable_bindings > t.mutable_bindings {
+        out.push(MetricBreach {
+            metric: "mutable_bindings",
+            value: m.mutable_bindings,
+            threshold: t.mutable_bindings,
+            overage: m.mutable_bindings - t.mutable_bindings,
         });
     }
     out

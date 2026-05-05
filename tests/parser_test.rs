@@ -370,3 +370,51 @@ fn imp() {}
     let imp = &p.funcs[0].function;
     assert_eq!(imp.cfg_context, "#[cfg(unix)]\n#[cfg(feature=\"cli\")]");
 }
+
+#[test]
+fn test_attribute_marks_function_as_test_like() {
+    let src = "
+#[test]
+fn smoke() {}
+";
+    let (_d, p) = parse_inline(src);
+    assert!(p.funcs[0].is_test_like);
+}
+
+#[test]
+fn cfg_test_marks_function_as_test_like() {
+    let src = "
+#[cfg(test)]
+fn helper() {}
+";
+    let (_d, p) = parse_inline(src);
+    assert!(p.funcs[0].is_test_like);
+}
+
+#[test]
+fn cfg_test_module_marks_nested_helpers_as_test_like() {
+    let src = "
+#[cfg(test)]
+mod tests {
+    fn helper() {}
+
+    #[test]
+    fn smoke() {}
+}
+";
+    let (_d, p) = parse_inline(src);
+    assert_eq!(names(&p.funcs), vec!["helper", "smoke"]);
+    assert!(p.funcs.iter().all(|f| f.is_test_like));
+}
+
+#[test]
+fn tests_module_marks_nested_helpers_as_test_like() {
+    let src = "
+mod tests {
+    fn helper() {}
+}
+";
+    let (_d, p) = parse_inline(src);
+    assert_eq!(names(&p.funcs), vec!["helper"]);
+    assert!(p.funcs[0].is_test_like);
+}

@@ -63,6 +63,9 @@ fn exceeds_any_threshold(m: &Metrics, t: &Thresholds) -> bool {
         || m.cyclomatic >= t.cyclomatic
         || m.cognitive >= t.cognitive
         || m.params >= t.params
+        || m.statement_count >= t.statement_count
+        || m.max_condition_ops >= t.max_condition_ops
+        || m.mutable_bindings >= t.mutable_bindings
 }
 
 /// Decide which `DiffKind` (if any) applies for a function present in both snapshots.
@@ -77,6 +80,21 @@ fn classify_change(prev: &Metrics, curr: &Metrics, t: &Thresholds) -> Option<Dif
         (prev.cyclomatic, curr.cyclomatic, t.cyclomatic),
         (prev.cognitive, curr.cognitive, t.cognitive),
         (prev.params, curr.params, t.params),
+        (
+            prev.statement_count,
+            curr.statement_count,
+            t.statement_count,
+        ),
+        (
+            prev.max_condition_ops,
+            curr.max_condition_ops,
+            t.max_condition_ops,
+        ),
+        (
+            prev.mutable_bindings,
+            curr.mutable_bindings,
+            t.mutable_bindings,
+        ),
     ];
 
     for (p, c, th) in pairs {
@@ -104,6 +122,9 @@ fn max_excess(m: &Metrics, t: &Thresholds) -> i64 {
         m.cyclomatic as i64 - t.cyclomatic as i64,
         m.cognitive as i64 - t.cognitive as i64,
         m.params as i64 - t.params as i64,
+        m.statement_count as i64 - t.statement_count as i64,
+        m.max_condition_ops as i64 - t.max_condition_ops as i64,
+        m.mutable_bindings as i64 - t.mutable_bindings as i64,
     ];
     candidates.into_iter().max().unwrap_or(0)
 }

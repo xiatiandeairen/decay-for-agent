@@ -7,5 +7,6 @@ pub mod metric;
 pub mod parser;
 pub mod pipeline;
 pub mod store;
+pub mod scope;
 pub mod types;
 pub mod walk;

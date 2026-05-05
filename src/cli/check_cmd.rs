@@ -22,10 +22,10 @@ pub fn run(args: &common::ScanArgs) -> Result<i32> {
     println!();
 
     let conn = store::open_db()?;
-    let snaps = store::load_latest_snapshots(&conn, &project.project_id, 1)?;
+    let snaps = store::load_latest_snapshots(&conn, &project.project_id, args.scope.as_str(), 1)?;
     if snaps.is_empty() {
         println!("No baseline snapshot for this project.");
-        println!("Run `decay init` to create one.");
+        println!("Run `decay init` to create one for scope `{}`.", args.scope.as_str());
         return Ok(0);
     }
 
@@ -33,6 +33,7 @@ pub fn run(args: &common::ScanArgs) -> Result<i32> {
     let current = Snapshot {
         id: 0,
         project_id: project.project_id,
+        scope: args.scope.as_str().to_string(),
         created_at: 0,
         functions: scan.funcs,
     };

@@ -23,7 +23,8 @@ use tree_sitter::{Node, Range, Tree};
 /// range produced by `parser::parse_file`).
 pub fn compute(tree: &Tree, _source: &str, body_range: Range) -> u32 {
     let root = tree.root_node();
-    let Some(body_node) = root.descendant_for_byte_range(body_range.start_byte, body_range.end_byte)
+    let Some(body_node) =
+        root.descendant_for_byte_range(body_range.start_byte, body_range.end_byte)
     else {
         return 0;
     };
@@ -45,15 +46,11 @@ fn walk(node: Node<'_>, depth: u32, max_depth: &mut u32) {
     match node.kind() {
         "if_expression" => walk_if(node, depth, max_depth),
         "match_expression" => walk_match(node, depth, max_depth),
-        "while_expression" | "while_let_expression" => {
-            walk_while(node, depth, max_depth)
-        }
+        "while_expression" | "while_let_expression" => walk_while(node, depth, max_depth),
         "for_expression" => walk_for(node, depth, max_depth),
         // loop / closure body deepens by 1; no condition / pattern children
         // contribute at the outer depth.
-        "loop_expression" | "closure_expression" => {
-            walk_simple_body(node, depth, max_depth)
-        }
+        "loop_expression" | "closure_expression" => walk_simple_body(node, depth, max_depth),
         // Plain block / expression / statement: pass through at same depth.
         _ => walk_passthrough(node, depth, max_depth),
     }

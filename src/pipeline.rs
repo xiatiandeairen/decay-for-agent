@@ -11,6 +11,7 @@ use crate::error::Result;
 use crate::fingerprint;
 use crate::metric;
 use crate::parser;
+use crate::scope::ScanScope;
 use crate::types::{Function, Metrics};
 use crate::walk;
 
@@ -25,13 +26,20 @@ use crate::walk;
 /// IO errors at the directory-walk level (e.g. `project_root` does not exist)
 /// propagate as `DecayError::Io` and abort the scan.
 pub fn scan(project_root: &Path) -> Result<Vec<Function>> {
-    scan_with_excludes(project_root, &[])
+    scan_with_excludes(project_root, &[], ScanScope::Prod)
 }
 
 /// Same as [`scan`], but adds caller-controlled excludes on top of the
 /// default walker exclusions.
-pub fn scan_with_excludes(project_root: &Path, excludes: &[String]) -> Result<Vec<Function>> {
-    let files = walk::walk_rust_files_with_excludes(project_root, excludes)?;
+pub fn scan_with_excludes(
+    project_root: &Path,
+    excludes: &[String],
+    scope: ScanScope,
+) -> Result<Vec<Function>> {
+    let files = walk::walk_rust_files_with_excludes(project_root, excludes)?
+        .into_iter()
+        .filter(|path| scope.includes_path(project_root, path))
+        .collect::<Vec<_>>();
     let mut out: Vec<Function> = Vec::new();
 
     for file in files {
@@ -44,6 +52,9 @@ pub fn scan_with_excludes(project_root: &Path, excludes: &[String]) -> Result<Ve
         };
 
         for pf in parsed.funcs {
+            if !scope.includes_function(project_root, &file, &pf) {
+                continue;
+            }
             let metrics = Metrics {
                 nesting: metric::nesting::compute(&parsed.tree, &parsed.source, pf.body_range),
                 cyclomatic: metric::cyclomatic::compute(
@@ -53,6 +64,17 @@ pub fn scan_with_excludes(project_root: &Path, excludes: &[String]) -> Result<Ve
                 ),
                 cognitive: metric::cognitive::compute(&parsed.tree, &parsed.source, pf.body_range),
                 params: metric::params::compute(&parsed.tree, &parsed.source, pf.body_range),
+                statement_count: metric::statements::compute(
+                    &parsed.tree,
+                    &parsed.source,
+                    pf.body_range,
+                ),
+                max_condition_ops: metric::condition_ops::compute(
+                    &parsed.tree,
+                    &parsed.source,
+                    pf.body_range,
+                ),
+                mutable_bindings: 0,
             };
 
             let signature_hash = fingerprint::compute(

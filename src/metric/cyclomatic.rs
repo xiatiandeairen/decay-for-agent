@@ -62,10 +62,7 @@ fn visit<'a>(
 
 fn count_node(node: Node<'_>, score: &mut u32) {
     match node.kind() {
-        "if_expression"
-        | "while_expression"
-        | "for_expression"
-        | "loop_expression"
+        "if_expression" | "while_expression" | "for_expression" | "loop_expression"
         | "try_expression" => {
             *score += 1;
         }

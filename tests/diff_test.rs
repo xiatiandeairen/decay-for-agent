@@ -20,6 +20,7 @@ fn snapshot(id: i64, functions: Vec<Function>) -> Snapshot {
     Snapshot {
         id,
         project_id: "/tmp/proj".to_string(),
+        scope: "prod".to_string(),
         created_at: 0,
         functions,
     }
@@ -31,6 +32,9 @@ fn metrics(nesting: u32, cyclomatic: u32, cognitive: u32, params: u32) -> Metric
         cyclomatic,
         cognitive,
         params,
+        statement_count: 0,
+        max_condition_ops: 0,
+        mutable_bindings: 0,
     }
 }
 
@@ -40,6 +44,9 @@ fn thresholds() -> Thresholds {
         cyclomatic: DEFAULT_THRESHOLDS.cyclomatic,
         cognitive: DEFAULT_THRESHOLDS.cognitive,
         params: DEFAULT_THRESHOLDS.params,
+        statement_count: DEFAULT_THRESHOLDS.statement_count,
+        max_condition_ops: DEFAULT_THRESHOLDS.max_condition_ops,
+        mutable_bindings: DEFAULT_THRESHOLDS.mutable_bindings,
     }
 }
 

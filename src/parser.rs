@@ -186,7 +186,8 @@ fn extract_function(
     let name = node_text(name_node, source)?.to_string();
     let attrs = collect_attribute_texts(node, source);
     let cfg_context = extract_cfg_context(&attrs);
-    let is_test_like = in_test_context || is_test_attr_set(&attrs) || cfg_context_is_test(&cfg_context);
+    let is_test_like =
+        in_test_context || is_test_attr_set(&attrs) || cfg_context_is_test(&cfg_context);
 
     let body_node = node.child_by_field_name("body")?;
     let body_range = body_node.range();
@@ -214,7 +215,6 @@ fn extract_function(
             params: 0,
             statement_count: 0,
             max_condition_ops: 0,
-            mutable_bindings: 0,
         },
     };
 
@@ -280,7 +280,8 @@ fn collect_attribute_texts(node: Node<'_>, source: &str) -> Vec<String> {
 }
 
 fn extract_cfg_context(attrs: &[String]) -> String {
-    attrs.iter()
+    attrs
+        .iter()
         .filter_map(|text| canonicalize_cfg_attr(text))
         .collect::<Vec<_>>()
         .join("\n")
@@ -304,16 +305,12 @@ fn is_test_module(node: Node<'_>, source: &str) -> bool {
 fn is_test_attr_set(attrs: &[String]) -> bool {
     attrs.iter().any(|text| {
         let normalized: String = text.chars().filter(|c| !c.is_whitespace()).collect();
-        normalized == "#[test]"
-            || normalized.ends_with("::test]")
-            || cfg_attr_is_test(&normalized)
+        normalized == "#[test]" || normalized.ends_with("::test]") || cfg_attr_is_test(&normalized)
     })
 }
 
 fn cfg_context_is_test(cfg_context: &str) -> bool {
-    cfg_context
-        .lines()
-        .any(|line| cfg_attr_is_test(line))
+    cfg_context.lines().any(cfg_attr_is_test)
 }
 
 fn cfg_attr_is_test(normalized: &str) -> bool {
@@ -331,7 +328,6 @@ fn canonicalize_cfg_attr(text: &str) -> Option<String> {
     }
     None
 }
-
 
 /// Truncate a type expression at the first `<` so generic parameters do not
 /// participate in the impl_context. `Foo<T>` and `Foo<U>` should map to the

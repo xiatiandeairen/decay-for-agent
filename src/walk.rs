@@ -303,9 +303,7 @@ fn path_rule_matches(pattern: &str, rel: &str, basename: Option<&str>) -> bool {
 
 fn basename_rule_matches(pattern: &str, rel: &str, basename: Option<&str>) -> bool {
     if has_glob(pattern) {
-        return rel
-            .split('/')
-            .any(|part| wildcard_match(pattern, part))
+        return rel.split('/').any(|part| wildcard_match(pattern, part))
             || wildcard_match(pattern, rel);
     }
     basename == Some(pattern) || rel.split('/').any(|part| part == pattern)

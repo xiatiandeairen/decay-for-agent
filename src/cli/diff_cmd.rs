@@ -1,176 +1,484 @@
-//! `decay diff` — compare the two most recent snapshots without writing a new one.
-//!
-//! Side effects: opens (and may create) the SQLite db, but does not insert rows.
-//! Output goes to stdout (program output, mirrors `scan::run`); friendly notices
-//! when there is no baseline. Exit code follows §2.8: 0 for any normal run.
-
-use crate::config::{Thresholds, DEFAULT_THRESHOLDS};
+use crate::cli::common;
 use crate::diff;
 use crate::error::Result;
+use crate::metric::{self, ProblemGroupId};
 use crate::store;
-use crate::cli::common;
-use crate::types::{DiffEntry, DiffKind, Metrics};
+use crate::types::{DiffEntry, DiffKind, FunctionSet, MetricId};
 
-/// Run the `decay diff` command.
+/// Run `decay diff <from> [to]`.
 ///
-/// Loads the two most recent snapshots for the cwd's canonical path. Returns
-/// exit code 0 in every normal case (no baseline, no changes, changes found).
-/// DB / IO errors propagate.
-pub fn run(args: &common::ScanArgs) -> Result<i32> {
-    let project = crate::cli::common::resolve_project()?;
-
+/// One version compares baseline `<from>` to the current workspace.
+/// Two versions compare baseline `<from>` to baseline `<to>`.
+pub fn run(args: &common::ScanArgs, from: &str, to: Option<&str>) -> Result<i32> {
+    let project = common::resolve_project()?;
     let conn = store::open_db()?;
-    let snaps = store::load_latest_snapshots(&conn, &project.project_id, args.scope.as_str(), 2)?;
+    let from_baseline =
+        match store::load_baseline(&conn, &project.project_id, args.scope.as_str(), from)? {
+            Some(b) => b,
+            None => {
+                print_missing(args, from);
+                return Ok(2);
+            }
+        };
 
-    println!("decay v{}", env!("CARGO_PKG_VERSION"));
+    let from_partial = from_baseline.is_partial;
+    let from_diagnostics = from_baseline.diagnostic_count;
 
-    // §2.8: no baseline → friendly notice, exit 0. Less than 2 snapshots means
-    // we cannot diff, so both 0 and 1 collapse to the same message.
-    if snaps.len() < 2 {
-        println!("No previous snapshot for this project.");
-        println!(
-            "Run `decay init` to create a baseline snapshot for scope `{}`.",
-            args.scope.as_str()
-        );
-        return Ok(0);
-    }
-
-    // load_latest_snapshots returns id DESC, so [0] is current, [1] is previous.
-    let curr = &snaps[0];
-    let prev = &snaps[1];
-    let diffs = diff::diff(prev, curr, &DEFAULT_THRESHOLDS);
-
-    let elapsed_minutes = ((curr.created_at - prev.created_at).max(0)) / 60;
-    println!(
-        "Diff: snapshot #{} vs #{} ({} minutes ago)",
-        curr.id, prev.id, elapsed_minutes,
-    );
-
-    if diffs.is_empty() {
-        println!();
-        println!("\u{2713} No functions degraded since last snapshot.");
-        return Ok(0);
-    }
-
-    println!();
-    println!("{} functions degraded:", diffs.len());
-    println!();
-
-    for entry in &diffs {
-        print_entry(entry, &DEFAULT_THRESHOLDS);
-    }
-
-    Ok(0)
-}
-
-/// Print one diff entry: header line + one line per metric that changed (or
-/// every threshold-exceeding metric for `Added`).
-pub(crate) fn print_entry(entry: &DiffEntry, thresholds: &Thresholds) {
-    let label = match entry.kind {
-        DiffKind::Added => "  [new]",
-        DiffKind::Worsened => "  [worsened]",
-        DiffKind::CrossedThreshold => "",
+    let (to_label, current_scan, to_partial, to_diagnostics, to_set) = match to {
+        Some(version) => {
+            let baseline = match store::load_baseline(
+                &conn,
+                &project.project_id,
+                args.scope.as_str(),
+                version,
+            )? {
+                Some(b) => b,
+                None => {
+                    print_missing(args, version);
+                    return Ok(2);
+                }
+            };
+            (
+                version.to_string(),
+                None,
+                baseline.is_partial,
+                baseline.diagnostic_count,
+                FunctionSet {
+                    functions: baseline.functions,
+                },
+            )
+        }
+        None => {
+            let scan = common::scan_current(&project.root, args)?;
+            let set = FunctionSet {
+                functions: scan.funcs.clone(),
+            };
+            ("current".to_string(), Some(scan), false, 0, set)
+        }
     };
-    let f = &entry.function;
-    println!("  {}:{}  {}{}", f.file, f.start_line, f.name, label);
 
-    let breaches =
-        collect_metric_lines(&entry.kind, entry.previous.as_ref(), &f.metrics, thresholds);
-    for line in breaches {
-        println!("{}", line);
+    let from_set = FunctionSet {
+        functions: from_baseline.functions,
+    };
+    let entries = diff::diff(&from_set, &to_set);
+    let report = build_report(&entries);
+    let print_ctx = DiffPrintContext {
+        from,
+        to: &to_label,
+        scan: current_scan.as_ref(),
+        from_partial,
+        from_diagnostics,
+        to_partial,
+        to_diagnostics,
+    };
+
+    if args.verbose {
+        print_verbose(args, &print_ctx, &report);
+    } else {
+        print_concise(&print_ctx, &report);
+    }
+
+    Ok(if entries.is_empty() { 0 } else { 1 })
+}
+
+fn print_missing(args: &common::ScanArgs, version: &str) {
+    println!(
+        "status=error reason=baseline_not_found version={} scope={}",
+        version,
+        args.scope.as_str()
+    );
+}
+
+struct DiffPrintContext<'a> {
+    from: &'a str,
+    to: &'a str,
+    scan: Option<&'a common::ScanResult>,
+    from_partial: bool,
+    from_diagnostics: u32,
+    to_partial: bool,
+    to_diagnostics: u32,
+}
+
+fn print_concise(ctx: &DiffPrintContext<'_>, report: &[ChangeGroup]) {
+    let count = total_records(report);
+    if count == 0 {
+        println!("status=ok from={} to={} degradations=0", ctx.from, ctx.to);
+        print_partial_warnings(ctx);
+        return;
+    }
+
+    println!(
+        "status=degraded from={} to={} degradations={}",
+        ctx.from, ctx.to, count
+    );
+    print_partial_warnings(ctx);
+    for change_group in report {
+        println!();
+        println!("[{}]", change_group.name);
+        for problem_group in &change_group.problem_groups {
+            for record in &problem_group.records {
+                print_record(record, false);
+            }
+        }
     }
 }
 
-/// Build per-metric output lines according to §2.8 + §2.9:
-/// - `Added`: list every metric ≥ threshold (no prev value).
-/// - `CrossedThreshold` / `Worsened`: list every metric whose value increased.
-fn collect_metric_lines(
-    kind: &DiffKind,
-    prev: Option<&Metrics>,
-    curr: &Metrics,
-    t: &Thresholds,
-) -> Vec<String> {
-    match (kind, prev) {
-        (DiffKind::Added, _) => lines_for_added(curr, t),
-        (_, Some(prev)) => lines_for_change(prev, curr, t),
-        // Crossed/Worsened without prev shouldn't happen — diff::diff only
-        // emits those kinds when prev exists. Defensive empty if it does.
-        (_, None) => Vec::new(),
+fn print_verbose(args: &common::ScanArgs, ctx: &DiffPrintContext<'_>, report: &[ChangeGroup]) {
+    println!("decay v{}", env!("CARGO_PKG_VERSION"));
+    println!("Mode: diff");
+    println!("Scope: {}", args.scope.as_str());
+    println!("From: baseline {}", ctx.from);
+    if ctx.to == "current" {
+        println!("To: current workspace");
+    } else {
+        println!("To: baseline {}", ctx.to);
+    }
+    if let Some(scan) = ctx.scan {
+        println!(
+            "Scanned: {} files, {} functions in {:.2}s",
+            scan.file_count,
+            scan.funcs.len(),
+            scan.elapsed_secs
+        );
+    }
+    print_partial_warnings(ctx);
+    println!();
+
+    let count = total_records(report);
+    if count == 0 {
+        println!("Result:");
+        println!("  No maintainability regressions found.");
+        return;
+    }
+
+    println!("Result:");
+    println!("  {} maintainability regressions found.", count);
+
+    for change_group in report {
+        println!();
+        println!("[{}]", change_group.name);
+        println!();
+        println!("What changed:");
+        println!("  {}", change_group.what_changed);
+        println!();
+        println!("Why it matters:");
+        println!("  {}", change_group.why);
+        println!();
+        println!("Records:");
+        for problem_group in &change_group.problem_groups {
+            println!("  [{}]", problem_group.name);
+            for record in &problem_group.records {
+                print_record(record, true);
+            }
+        }
     }
 }
 
-/// Per-metric tuple shared by both Added and Change paths.
-fn metric_tuples(curr: &Metrics, t: &Thresholds) -> [(&'static str, u32, u32); 7] {
-    [
-        ("nesting", curr.nesting, t.nesting),
-        ("cyclomatic", curr.cyclomatic, t.cyclomatic),
-        ("cognitive", curr.cognitive, t.cognitive),
-        ("params", curr.params, t.params),
-        (
-            "statement_count",
-            curr.statement_count,
-            t.statement_count,
-        ),
-        (
-            "max_condition_ops",
-            curr.max_condition_ops,
-            t.max_condition_ops,
-        ),
-        (
-            "mutable_bindings",
-            curr.mutable_bindings,
-            t.mutable_bindings,
-        ),
-    ]
+fn print_partial_warnings(ctx: &DiffPrintContext<'_>) {
+    if ctx.from_partial {
+        println!(
+            "warning=from_baseline_partial diagnostics={}",
+            ctx.from_diagnostics
+        );
+    }
+    if ctx.to_partial {
+        println!(
+            "warning=to_baseline_partial diagnostics={}",
+            ctx.to_diagnostics
+        );
+    }
+    if let Some(scan) = ctx.scan {
+        if scan.diagnostic_count > 0 {
+            println!(
+                "warning=current_scan_partial diagnostics={}",
+                scan.diagnostic_count
+            );
+        }
+    }
 }
 
-/// Newly added function: list every metric currently ≥ threshold.
-fn lines_for_added(curr: &Metrics, t: &Thresholds) -> Vec<String> {
-    metric_tuples(curr, t)
+fn print_record(record: &DiffRecord, verbose: bool) {
+    let f = &record.entry.function;
+    if verbose {
+        println!("  - {}:{} {}", f.file, f.start_line, f.name);
+        println!("    Problem:");
+        println!("      {}", record.problem);
+        if !record.changes.is_empty() {
+            println!("    Change:");
+            for change in &record.changes {
+                println!("      - {}", change.change_sentence());
+            }
+        }
+        println!("    Bad points:");
+        for change in &record.changes {
+            println!("      - {}", change.evidence_sentence());
+        }
+    } else {
+        println!("- {}:{} {}", f.file, f.start_line, f.name);
+        println!("  problem={}", record.problem);
+        let changes = record
+            .changes
+            .iter()
+            .map(ChangeEvidence::concise_sentence)
+            .collect::<Vec<_>>()
+            .join("; ");
+        match record.entry.kind {
+            DiffKind::Added => println!("  evidence={}", changes),
+            _ => println!("  change={}", changes),
+        }
+    }
+}
+
+fn build_report(entries: &[DiffEntry]) -> Vec<ChangeGroup> {
+    let mut groups = change_groups();
+    for entry in entries {
+        let changes = changes_for_entry(entry);
+        for change_group in &mut groups {
+            if change_group.kind != entry.kind {
+                continue;
+            }
+            for problem_group in &mut change_group.problem_groups {
+                let matched: Vec<ChangeEvidence> = changes
+                    .iter()
+                    .filter(|c| problem_group.group == metric::def(c.metric).group)
+                    .cloned()
+                    .collect();
+                if !matched.is_empty() {
+                    problem_group.records.push(DiffRecord {
+                        entry: entry.clone(),
+                        problem: problem_for(&matched, entry.kind),
+                        changes: matched,
+                    });
+                }
+            }
+        }
+    }
+
+    groups
         .into_iter()
-        .filter(|(_, value, threshold)| value >= threshold)
-        // \u{26a0} = ⚠
-        .map(|(name, value, threshold)| {
-            format!("    {}: {} \u{26a0} over (>{})", name, value, threshold)
+        .filter_map(|mut group| {
+            group
+                .problem_groups
+                .retain(|problem_group| !problem_group.records.is_empty());
+            (!group.problem_groups.is_empty()).then_some(group)
         })
         .collect()
 }
 
-/// Existing function whose metrics rose: list every metric whose value
-/// strictly increased, with a marker if the new value crosses or sits over
-/// the threshold.
-fn lines_for_change(prev: &Metrics, curr: &Metrics, t: &Thresholds) -> Vec<String> {
-    let prevs = [
-        prev.nesting,
-        prev.cyclomatic,
-        prev.cognitive,
-        prev.params,
-        prev.statement_count,
-        prev.max_condition_ops,
-        prev.mutable_bindings,
-    ];
-    metric_tuples(curr, t)
-        .into_iter()
-        .zip(prevs)
-        .filter(|((_, value, _), prev_value)| value > prev_value)
-        .map(|((name, value, threshold), prev_value)| {
-            let delta = value - prev_value;
-            let marker = change_marker(prev_value, value, threshold);
-            format!(
-                "    {}: {}\u{2192}{}  (+{}){}",
-                name, prev_value, value, delta, marker
+fn changes_for_entry(entry: &DiffEntry) -> Vec<ChangeEvidence> {
+    match (entry.kind, entry.previous) {
+        (DiffKind::Added, _) => current_metric_values(entry.function.metrics)
+            .into_iter()
+            .filter(|m| metric::breaches_threshold(m.value, m.threshold))
+            .map(|m| ChangeEvidence {
+                metric: m.metric,
+                previous: None,
+                value: m.value,
+                threshold: m.threshold,
+            })
+            .collect(),
+        (_, Some(prev)) => {
+            let curr = entry.function.metrics;
+            metric_pairs(prev, curr)
+                .into_iter()
+                .filter(|m| {
+                    let p = m.previous.unwrap_or(0);
+                    metric::crossed_threshold(p, m.value, m.threshold)
+                        || metric::worsened_over_threshold(p, m.value, m.threshold)
+                })
+                .collect()
+        }
+        (_, None) => Vec::new(),
+    }
+}
+
+fn current_metric_values(m: crate::types::Metrics) -> Vec<ChangeEvidence> {
+    metric::active_values(m)
+        .map(|(def, value)| ChangeEvidence::current(def.id, value, def.threshold))
+        .collect()
+}
+
+fn metric_pairs(prev: crate::types::Metrics, curr: crate::types::Metrics) -> Vec<ChangeEvidence> {
+    metric::ACTIVE_METRICS
+        .iter()
+        .map(|def| {
+            ChangeEvidence::changed(
+                def.id,
+                prev.value(def.id),
+                curr.value(def.id),
+                def.threshold,
             )
         })
         .collect()
 }
 
-fn change_marker(prev_value: u32, value: u32, threshold: u32) -> String {
-    if prev_value < threshold && value >= threshold {
-        format!(" \u{26a0} crossed (>{})", threshold)
-    } else if prev_value >= threshold {
-        format!(" \u{26a0} already over (>{})", threshold)
-    } else {
-        // Increase but still under threshold — don't flag, but still show line.
-        String::new()
+fn total_records(groups: &[ChangeGroup]) -> usize {
+    groups
+        .iter()
+        .flat_map(|g| &g.problem_groups)
+        .map(|g| g.records.len())
+        .sum()
+}
+
+#[derive(Clone)]
+struct ChangeEvidence {
+    metric: MetricId,
+    previous: Option<u32>,
+    value: u32,
+    threshold: u32,
+}
+
+impl ChangeEvidence {
+    fn current(metric: MetricId, value: u32, threshold: u32) -> Self {
+        Self {
+            metric,
+            previous: None,
+            value,
+            threshold,
+        }
     }
+
+    fn changed(metric: MetricId, previous: u32, value: u32, threshold: u32) -> Self {
+        Self {
+            metric,
+            previous: Some(previous),
+            value,
+            threshold,
+        }
+    }
+
+    fn concise_sentence(&self) -> String {
+        match self.previous {
+            Some(previous) => format!(
+                "{} changed from {} to {}; recommended limit is {}.",
+                metric::def(self.metric).measure_name,
+                format_metric(self.metric, previous),
+                format_metric(self.metric, self.value),
+                format_metric(self.metric, self.threshold)
+            ),
+            None => format!(
+                "{} is {}; recommended limit is {}.",
+                metric::def(self.metric).measure_name,
+                format_metric(self.metric, self.value),
+                format_metric(self.metric, self.threshold)
+            ),
+        }
+    }
+
+    fn change_sentence(&self) -> String {
+        match self.previous {
+            Some(previous) => format!(
+                "{} changed from {} to {}.",
+                metric::def(self.metric).measure_name,
+                format_metric(self.metric, previous),
+                format_metric(self.metric, self.value)
+            ),
+            None => "New function.".to_string(),
+        }
+    }
+
+    fn evidence_sentence(&self) -> String {
+        format!(
+            "{} recommended limit is {}; current value is {}.",
+            metric::def(self.metric).measure_name,
+            format_metric(self.metric, self.threshold),
+            format_metric(self.metric, self.value)
+        )
+    }
+}
+
+#[derive(Clone)]
+struct DiffRecord {
+    entry: DiffEntry,
+    problem: &'static str,
+    changes: Vec<ChangeEvidence>,
+}
+
+struct ProblemGroup {
+    name: &'static str,
+    group: ProblemGroupId,
+    records: Vec<DiffRecord>,
+}
+
+struct ChangeGroup {
+    kind: DiffKind,
+    name: &'static str,
+    what_changed: &'static str,
+    why: &'static str,
+    problem_groups: Vec<ProblemGroup>,
+}
+
+fn change_groups() -> Vec<ChangeGroup> {
+    vec![
+        ChangeGroup {
+            kind: DiffKind::Added,
+            name: "new high-risk functions",
+            what_changed: "These functions did not exist in the baseline and are already above recommended complexity limits.",
+            why: "New code entering the project above the risk boundary is likely to become expensive to modify quickly.",
+            problem_groups: problem_groups(),
+        },
+        ChangeGroup {
+            kind: DiffKind::CrossedThreshold,
+            name: "functions that crossed a risk boundary",
+            what_changed: "These functions existed in the baseline, but moved from acceptable complexity into risky territory.",
+            why: "This is a clear regression signal: code that was previously within limits now needs attention.",
+            problem_groups: problem_groups(),
+        },
+        ChangeGroup {
+            kind: DiffKind::Worsened,
+            name: "risks that got worse",
+            what_changed: "These functions were already above recommended limits, and became worse.",
+            why: "Existing complexity debt increased, which raises the cost and risk of future edits.",
+            problem_groups: problem_groups(),
+        },
+    ]
+}
+
+fn problem_groups() -> Vec<ProblemGroup> {
+    vec![
+        ProblemGroup {
+            name: "hard-to-follow logic",
+            group: ProblemGroupId::HardToFollowLogic,
+            records: Vec::new(),
+        },
+        ProblemGroup {
+            name: "large function body",
+            group: ProblemGroupId::LargeFunctionBody,
+            records: Vec::new(),
+        },
+        ProblemGroup {
+            name: "wide interface",
+            group: ProblemGroupId::WideInterface,
+            records: Vec::new(),
+        },
+        ProblemGroup {
+            name: "compound conditions",
+            group: ProblemGroupId::CompoundConditions,
+            records: Vec::new(),
+        },
+    ]
+}
+
+fn problem_for(changes: &[ChangeEvidence], kind: DiffKind) -> &'static str {
+    if kind == DiffKind::Added {
+        return "New function is already hard to maintain safely.";
+    }
+    if changes.iter().any(|c| c.metric == MetricId::StatementCount) {
+        "Function body grew beyond a focused size."
+    } else if changes.iter().any(|c| c.metric == MetricId::Params) {
+        "Function interface grew too wide."
+    } else if changes
+        .iter()
+        .any(|c| c.metric == MetricId::MaxConditionOps)
+    {
+        "Condition logic became too dense."
+    } else if kind == DiffKind::Worsened {
+        "Already complex logic became more difficult to change safely."
+    } else {
+        "Control flow moved into risky complexity."
+    }
+}
+
+fn format_metric(metric: MetricId, value: u32) -> String {
+    (metric::def(metric).format)(value)
 }

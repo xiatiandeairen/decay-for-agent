@@ -2,98 +2,122 @@
 
 # decay
 
-A function-level complexity regression detector for projects written with AI assistance.
+`decay` is a Rust function-level complexity regression detector for AI-assisted coding.
 
-> **Status: v0.1 — Rust only, actively dogfooding, expect rough edges.**
-> No external users yet. Interfaces, thresholds, and output format may change.
+It currently answers one narrow question:
 
-## Why
+> Compared with a baseline, did this change make any function locally harder to maintain?
 
-AI coding assistants tend to fix bugs by adding another `if`. The problem: when you ask the same assistant whether the code got worse, it has a structural bias toward saying no (sycophancy). You end up with slow, invisible complexity creep.
+It is not a general code-quality platform, and it is not another complex-function leaderboard. v0.1.0 is still being dogfooded.
 
-`decay` is a small, opinionated outsider:
+## Status
 
-- It does not generate code, so it has no stake in defending what was written.
-- It looks at **delta**, not absolute values. `lizard`, Clippy, and ESLint complexity rules tell you the function is complex right now. `decay` tells you that *this change* made it worse.
-- It works at function granularity, persisted across snapshots, so slow regressions across many sessions are visible.
+v0.1.0:
 
-## What it does
+- Rust only
+- dogfooding by the author
+- no external users
+- CLI output, SQLite schema, and thresholds may change without compatibility guarantees
+- feature loop is implemented, but product value is not proven yet
 
-Run `decay` in a Rust project. It parses every `.rs` file with tree-sitter, computes four metrics per function, and stores a snapshot. Run it again later and `decay diff` shows you which functions regressed.
-
-Real output from running `decay` on this repo during development — the tool flagged three functions the AI had just written without realizing they had crossed thresholds:
-
-```
-decay v0.1.0
-Scanned 225 files, 896 functions in 0.27s
-Snapshot #2 saved
-
-34 functions exceed threshold:
-
-  src/cli/diff_cmd.rs:92  collect_metric_lines
-    cognitive: 23 ⚠ (>15)
-
-  src/cli/scan.rs:92  print_exceeded
-    cognitive: 16 ⚠ (>15)
-
-  src/metric/cognitive.rs:131  score_match
-    nesting: 5 ⚠ (>4)
-  ...
-```
-
-These three were genuine regressions written by AI subagents during v0.1 implementation, not caught in review, surfaced by the tool on its first self-scan. They have since been refactored.
-
-## Install
-
-From source (no crates.io release yet):
-
-```bash
-git clone <this repo>
-cd decay
-cargo install --path .
-```
-
-## Quick start
+## Quick Start
 
 ```bash
 cd /path/to/your/rust/project
 
-decay         # scan, save snapshot, list functions over threshold
-# ... edit code, let an AI assistant edit code, etc. ...
-decay         # take another snapshot
-decay diff    # compare against previous snapshot
+decay doctor             # diagnose current code risks; no baseline required; not a gate
+decay baseline v1.0.0    # save the current tree as a named baseline
+# ... edit code, or let an AI assistant edit code ...
+decay diff v1.0.0        # compare current workspace against v1.0.0
+decay baseline v1.1.0    # save a new named baseline
+decay diff v1.0.0 v1.1.0 # compare two named baselines
 ```
 
-`decay diff` reports a function only when it is genuinely worse: newly added and over threshold, newly crossed a threshold, or already over and got worse. Drops and unchanged functions are silent.
+Bare `decay` prints a concise command list. It does not scan or write storage.
+Use `decay --help` for detailed options.
 
-## Status & limits
+## Command Semantics
 
-This is an honest list. Read it before relying on the output.
+| Command | Purpose | Exit code |
+|---|---|---|
+| `decay` | concise command list | 0 |
+| `decay doctor` | current-risk diagnosis | 0 unless runtime error |
+| `decay baseline <version>` | save named baseline | 0 on success; 1 if same name differs without `--replace` |
+| `decay diff <version>` | current workspace vs baseline | 0 clean; 1 degraded |
+| `decay diff <from> <to>` | baseline vs baseline | 0 clean; 1 degraded |
 
-- **Rust only.** No TypeScript, Python, or anything else. Multi-language is on the roadmap, not implemented.
-- **Function rename/move is reported as `delete + add`.** The fingerprint is `xxh3(file + name + param_types)`, so renaming or moving a function across files breaks tracking.
-- **Closures are not tracked separately.** Their complexity rolls into the enclosing function. A long `query_map` closure will inflate the outer function's score.
-- **Exit code does not distinguish "regressed" from "clean."** Both return 0. Agent integration that gates on exit code is not reliable yet.
-- **`.gitignore` is not read.** Only `target/` and `.git/` are excluded. You may need to clean build artifacts or vendored copies before scanning.
-- **Thresholds are hard-coded** (`nesting 4`, `cyclomatic 10`, `cognitive 15`, `params 5`). Not configurable in v0.1.
-- **No external validation yet.** The author is the only user. The thresholds and the cognitive complexity formula's behavior on idiomatic Rust (`?` chains, match arms) are calibrated against intuition, not a corpus.
-- **Same name + same params across different `impl` blocks share a fingerprint.** Rare in practice, accepted for v0.1.
+`doctor` is a health check. `diff` is the commit-time regression judge.
 
-If any of these blocks your use case, `decay` is not ready for you yet.
+## What Diff Reports
 
-## How it works
+`decay diff` reports only regressions:
 
-- **Parse** — tree-sitter-rust extracts every `function_item` (including `impl` methods and trait default implementations). Function signatures without bodies, closures, and macro-generated functions are skipped.
-- **Measure** — four metrics per function:
-  - **Nesting** — maximum block depth.
-  - **Cyclomatic** — McCabe (branches + 1).
-  - **Cognitive** — SonarSource formula, with a nesting bonus so deeply nested branches weigh more than shallow ones.
-  - **Params** — signature arity.
-- **Fingerprint** — `xxh3_64(file ⊕ name ⊕ param_types)`, with parameter types normalized (lifetimes stripped, whitespace removed). Stable across processes.
-- **Persist** — SQLite at `dirs::data_dir()/decay/snapshots.db`. Two tables: `snapshots`, `functions`.
-- **Diff** — align two snapshots by fingerprint, classify each function as `Added`, `CrossedThreshold`, or `Worsened`, sort by `max(value − threshold)` descending.
+- newly added high-risk functions
+- existing functions that crossed a risk boundary
+- existing high-risk functions that got worse
 
-Details and rationale: [`docs/plans/v0.1.md`](docs/plans/v0.1.md), [`docs/audit.md`](docs/audit.md).
+It does not report deletions, improvements, unchanged functions, or below-threshold small increases.
+
+Example:
+
+```text
+status=degraded from=v1.0.0 to=current degradations=2
+
+[functions that crossed a risk boundary]
+- src/store.rs:130 save_baseline
+  problem=Function body grew beyond a focused size.
+  change=Function size changed from 22 statements to 31 statements; recommended limit is 25 statements.
+```
+
+## Metrics
+
+Active metrics:
+
+| Metric | Threshold | Meaning |
+|---|---:|---|
+| `nesting` | 4 | maximum control-flow nesting depth |
+| `cyclomatic` | 10 | McCabe branch complexity |
+| `cognitive` | 15 | branch complexity weighted for reading burden |
+| `params` | 5 | function parameter count |
+| `statement_count` | 25 | executable steps inside the function |
+| `max_condition_ops` | 4 | maximum boolean operators in one condition |
+
+Threshold rule:
+
+```text
+value > threshold => breach
+```
+
+## Scope
+
+Default `--scope prod` focuses on the primary maintained Rust source and filters common test/example/fixture noise.
+
+Use a full view when needed:
+
+```bash
+decay doctor --scope all
+decay diff v1.0.0 --scope all
+```
+
+`decay` reads root `.gitignore` and also supports `--exclude <pattern>`.
+
+## Limits
+
+- Rust only.
+- No JSON output.
+- No configurable thresholds.
+- No semantic rename/move tracking; rename or move may look like delete + add.
+- Closures are not tracked separately; their complexity rolls into the enclosing function.
+- Per-file parse failure does not abort the scan, but the result is marked partial.
+- No DB migration compatibility in v0.1.0.
+
+## Docs
+
+- [docs/roadmap.md](docs/roadmap.md): product direction and current status
+- [docs/requirements/function-complexity-detection/prd.md](docs/requirements/function-complexity-detection/prd.md): v0.1.0 PRD
+- [docs/arch/decay.md](docs/arch/decay.md): current architecture
+- [docs/ops.md](docs/ops.md): dogfood / operations loop
+- [docs/decision/v0.1.0-closeout.md](docs/decision/v0.1.0-closeout.md): v0.1.0 closeout decision
 
 ## License
 

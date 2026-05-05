@@ -19,9 +19,6 @@ pub enum DecayError {
         source: rusqlite::Error,
     },
 
-    #[error("no snapshots for this project — run `decay` first to create one")]
-    NoSnapshots,
-
     #[error("invalid project: {0}")]
     InvalidProject(String),
 }

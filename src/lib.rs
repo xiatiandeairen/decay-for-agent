@@ -1,12 +1,12 @@
 pub mod cli;
-pub mod config;
+pub(crate) mod config;
 pub mod diff;
 pub mod error;
 pub mod fingerprint;
 pub mod metric;
 pub mod parser;
-pub mod pipeline;
+pub(crate) mod pipeline;
+pub(crate) mod scope;
 pub mod store;
-pub mod scope;
 pub mod types;
 pub mod walk;

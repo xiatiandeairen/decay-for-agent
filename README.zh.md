@@ -2,98 +2,127 @@
 
 # decay
 
-一个面向"用 AI 协作写代码"项目的函数级复杂度退化检测器。
+`decay` 是一个 Rust 函数级复杂度退化检测 CLI，面向 AI 协作编程场景。
 
-> **状态：v0.1 — 仅支持 Rust，作者本人 dogfood 中，粗糙之处在所难免。**
-> 暂无外部用户。接口、阈值、输出格式都可能变化。
+它当前只回答一个窄问题:
 
-## 为什么做这个
+> 相对某个 baseline，这次改动有没有让某个函数在局部结构上明显变糟？
 
-AI 编程助手有个倾向：修 bug 就是再加一个 `if`。问题是，当你回头问同一个助手"代码是不是变复杂了"，它有结构性的"说没问题"偏见（sycophancy）。结果就是——复杂度悄悄爬升，没人察觉。
+它不是通用代码质量平台，也不是另一个复杂函数排行榜。v0.1.0 的核心价值还在 dogfood 验证中。
 
-`decay` 是一个小而克制的"局外人"：
+## 状态
 
-- 它不参与代码生产，所以没有动机替已经写出来的代码辩护。
-- 它看的是 **delta**，不是绝对值。`lizard`、Clippy、ESLint 的复杂度规则告诉你"这个函数现在很复杂"；`decay` 告诉你"*这次改动*让它变更糟了"。
-- 函数粒度，跨快照持久化——多个 session 累积下来的慢性退化也能看见。
+v0.1.0:
 
-## 它做什么
-
-在 Rust 项目里跑 `decay`。它用 tree-sitter 解析每个 `.rs` 文件，给每个函数算 4 个 metric，存一个快照。之后再跑一次，`decay diff` 告诉你哪些函数退化了。
-
-下面是 v0.1 开发期间在本仓库自查的真实输出——工具识别出 3 个 AI 刚写完、自己没意识到已经超阈值的函数：
-
-```
-decay v0.1.0
-Scanned 225 files, 896 functions in 0.27s
-Snapshot #2 saved
-
-34 functions exceed threshold:
-
-  src/cli/diff_cmd.rs:92  collect_metric_lines
-    cognitive: 23 ⚠ (>15)
-
-  src/cli/scan.rs:92  print_exceeded
-    cognitive: 16 ⚠ (>15)
-
-  src/metric/cognitive.rs:131  score_match
-    nesting: 5 ⚠ (>4)
-  ...
-```
-
-这三个都是 v0.1 实施期间 AI subagent 写出、人工 review 没拦住、被工具首次自查抓出来的真实退化。后续都已重构。
-
-## 安装
-
-目前仅源码安装（暂未发布到 crates.io）：
-
-```bash
-git clone <本仓库>
-cd decay
-cargo install --path .
-```
+- 仅支持 Rust
+- 作者本人 dogfood 中
+- 没有外部用户
+- CLI 输出、SQLite schema、阈值都可能破坏式变化
+- 功能闭环已实现，但产品假设尚未被真实案例证明
 
 ## 快速开始
 
 ```bash
 cd /path/to/your/rust/project
 
-decay         # 扫描 + 保存快照 + 列出超阈值函数
-# ... 自己改 / 让 AI 助手改 ...
-decay         # 再来一次快照
-decay diff    # 对比上一次快照
+decay doctor             # 诊断当前代码风险；不依赖 baseline，不作为 gate
+decay baseline v1.0.0    # 保存当前代码为命名 baseline
+# ... 修改代码 / 让 AI 修改代码 ...
+decay diff v1.0.0        # 当前工作区 vs v1.0.0 baseline
+decay baseline v1.1.0    # 保存新的命名 baseline
+decay diff v1.0.0 v1.1.0 # 两个 baseline 互比
 ```
 
-`decay diff` 只会报真正变糟的函数：新增并超阈值、首次跨过阈值、已超阈值且更高。下降和未变化的函数静默。
+裸 `decay` 只展示简洁命令列表，不扫描、不写存储。
+详细参数说明使用 `decay --help`。
 
-## 状态与边界
+## 命令语义
 
-下面这份清单是诚实的。在你依赖工具输出之前请先读一遍。
+| 命令 | 作用 | 退出码 |
+|---|---|---|
+| `decay` | 展示简洁命令列表 | 0 |
+| `decay doctor` | 查看当前代码中已存在的风险 | 总是 0，除非运行错误 |
+| `decay baseline <version>` | 保存命名 baseline | 成功 0；同名不同内容且未 `--replace` 返回 1 |
+| `decay diff <version>` | 当前工作区相对 baseline 的退化裁决 | 无退化 0；有退化 1 |
+| `decay diff <from> <to>` | 两个 baseline 之间的退化裁决 | 无退化 0；有退化 1 |
 
-- **仅支持 Rust。** 不支持 TypeScript / Python / 其他。多语言在 roadmap 上，未实现。
-- **函数重命名 / 跨文件移动会被识别为"删除 + 新增"。** 指纹是 `xxh3(file + name + param_types)`，重命名或换文件就追不上了。
-- **Closure 不独立计入。** 它的复杂度算在外层函数头上。一个长 `query_map` 闭包会让外层函数 metric 暴增。
-- **退出码不区分"有退化 / 无退化"。** 两种情况都返回 0。靠退出码做 agent 集成 gate 暂不可靠。
-- **不读 `.gitignore`。** 排除目录只有 `target/` 和 `.git/`。扫描前可能需要先清掉构建产物或 vendored 副本。
-- **阈值硬编码**（`nesting 4`、`cyclomatic 10`、`cognitive 15`、`params 5`）。v0.1 不支持配置。
-- **暂无外部验证。** 用户只有作者一人。阈值和认知复杂度公式在 Rust 惯用语法（`?` 链、match arm）上的表现是按直觉校准的，不是在语料上验证过的。
-- **同一 `impl` 块外，同名同参的函数共享指纹。** 实际项目里很少遇到，v0.1 接受这个偏差。
+`doctor` 是体检。`diff` 才是 commit 前裁决。
 
-如果上面任何一条挡住了你的使用场景，`decay` 暂时还没准备好给你用。
+## Diff 报告什么
 
-## 工作原理
+`decay diff` 只报告退化:
 
-- **解析** — tree-sitter-rust 提取每个 `function_item`（含 `impl` 方法、trait 默认实现）。无函数体的签名、closure、宏生成的函数不提取。
-- **度量** — 每个函数 4 个 metric：
-  - **Nesting** — 最大代码块嵌套深度。
-  - **Cyclomatic** — McCabe 圈复杂度（分支数 + 1）。
-  - **Cognitive** — SonarSource 公式，带 nesting bonus，深嵌套权重高于浅分支。
-  - **Params** — 签名参数数。
-- **指纹** — `xxh3_64(file ⊕ name ⊕ param_types)`，参数类型归一化（去掉 lifetime、去空白）。跨进程稳定。
-- **持久化** — SQLite，路径 `dirs::data_dir()/decay/snapshots.db`，两张表：`snapshots`、`functions`。
-- **对比** — 按指纹对齐两快照，把每个函数分为 `Added` / `CrossedThreshold` / `Worsened`，按 `max(value − threshold)` 降序输出。
+- 新增函数已经超阈值
+- 已有函数从未超阈值变为超阈值
+- 已有函数原本已超阈值，并继续变糟
 
-更多细节与设计依据：[`docs/plans/v0.1.md`](docs/plans/v0.1.md)、[`docs/audit.md`](docs/audit.md)。
+不报告:
+
+- 删除函数
+- 指标下降
+- 指标不变
+- 仍在阈值内的小幅上升
+
+示例:
+
+```text
+status=degraded from=v1.0.0 to=current degradations=2
+
+[functions that crossed a risk boundary]
+- src/store.rs:130 save_baseline
+  problem=Function body grew beyond a focused size.
+  change=Function size changed from 22 statements to 31 statements; recommended limit is 25 statements.
+```
+
+## Metrics
+
+当前 active metrics:
+
+| Metric | 阈值 | 含义 |
+|---|---:|---|
+| `nesting` | 4 | 最大控制流嵌套深度 |
+| `cyclomatic` | 10 | McCabe 分支复杂度 |
+| `cognitive` | 15 | 更贴近阅读负担的分支复杂度 |
+| `params` | 5 | 函数参数数 |
+| `statement_count` | 25 | 函数体可执行步骤数量 |
+| `max_condition_ops` | 4 | 单个条件表达式中的布尔操作符最大数量 |
+
+阈值语义:
+
+```text
+value > threshold => breach
+```
+
+## 扫描范围
+
+默认 `--scope prod` 关注主维护面 Rust 代码，会排除常见测试/示例/fixture 噪音。
+
+需要完整视图时使用:
+
+```bash
+decay doctor --scope all
+decay diff v1.0.0 --scope all
+```
+
+工具读取项目根 `.gitignore`，同时支持 `--exclude <pattern>`。
+
+## 边界
+
+- 不支持 Rust 之外语言。
+- 不支持 JSON 输出。
+- 不支持阈值配置。
+- 不支持语义级 rename/move 追踪；改名或移动可能表现为删除 + 新增。
+- Closure 不独立计入，它的复杂度算入外层函数。
+- 单文件 parse 失败不会中断扫描，但结果会标记 partial。
+- 不做 DB migration；v0.1.0 没有外部兼容承诺。
+
+## 文档
+
+- [docs/roadmap.md](docs/roadmap.md): 产品路线和当前状态
+- [docs/requirements/function-complexity-detection/prd.md](docs/requirements/function-complexity-detection/prd.md): v0.1.0 PRD
+- [docs/arch/decay.md](docs/arch/decay.md): 当前架构
+- [docs/ops.md](docs/ops.md): dogfood / 运维闭环
+- [docs/decision/v0.1.0-closeout.md](docs/decision/v0.1.0-closeout.md): v0.1.0 收尾决策
 
 ## License
 

@@ -50,9 +50,8 @@ fn is_prod_path(project_root: &Path, path: &Path) -> bool {
         return true;
     }
 
-    !rel.split('/').any(|part| {
-        matches!(part, "tests" | "examples" | "benches" | "fixtures")
-    })
+    !rel.split('/')
+        .any(|part| matches!(part, "tests" | "examples" | "benches" | "fixtures"))
 }
 
 fn is_test_support_path(project_root: &Path, path: &Path) -> bool {

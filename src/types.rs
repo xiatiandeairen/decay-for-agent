@@ -1,5 +1,15 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum MetricId {
+    Nesting,
+    Cyclomatic,
+    Cognitive,
+    Params,
+    StatementCount,
+    MaxConditionOps,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Function {
     pub file: String,             // 项目根相对路径, 正斜杠
@@ -21,15 +31,36 @@ pub struct Metrics {
     pub params: u32,
     pub statement_count: u32,
     pub max_condition_ops: u32,
-    pub mutable_bindings: u32,
+}
+
+impl Metrics {
+    pub fn value(self, id: MetricId) -> u32 {
+        match id {
+            MetricId::Nesting => self.nesting,
+            MetricId::Cyclomatic => self.cyclomatic,
+            MetricId::Cognitive => self.cognitive,
+            MetricId::Params => self.params,
+            MetricId::StatementCount => self.statement_count,
+            MetricId::MaxConditionOps => self.max_condition_ops,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Snapshot {
+pub struct Baseline {
     pub id: i64,
     pub project_id: String, // 项目根绝对路径
     pub scope: String,      // scan scope, e.g. "prod" / "all"
-    pub created_at: i64,    // unix timestamp seconds
+    pub version: String,
+    pub created_at: i64, // unix timestamp seconds
+    pub updated_at: i64, // unix timestamp seconds
+    pub is_partial: bool,
+    pub diagnostic_count: u32,
+    pub functions: Vec<Function>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionSet {
     pub functions: Vec<Function>,
 }
 

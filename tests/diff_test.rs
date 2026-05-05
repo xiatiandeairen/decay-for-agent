@@ -1,6 +1,5 @@
-use decay::config::{Thresholds, DEFAULT_THRESHOLDS};
 use decay::diff::diff;
-use decay::types::{DiffKind, Function, Metrics, Snapshot};
+use decay::types::{DiffKind, Function, FunctionSet, Metrics};
 
 fn make_function(signature_hash: u64, name: &str, metrics: Metrics) -> Function {
     Function {
@@ -16,14 +15,8 @@ fn make_function(signature_hash: u64, name: &str, metrics: Metrics) -> Function 
     }
 }
 
-fn snapshot(id: i64, functions: Vec<Function>) -> Snapshot {
-    Snapshot {
-        id,
-        project_id: "/tmp/proj".to_string(),
-        scope: "prod".to_string(),
-        created_at: 0,
-        functions,
-    }
+fn function_set(functions: Vec<Function>) -> FunctionSet {
+    FunctionSet { functions }
 }
 
 fn metrics(nesting: u32, cyclomatic: u32, cognitive: u32, params: u32) -> Metrics {
@@ -34,30 +27,17 @@ fn metrics(nesting: u32, cyclomatic: u32, cognitive: u32, params: u32) -> Metric
         params,
         statement_count: 0,
         max_condition_ops: 0,
-        mutable_bindings: 0,
-    }
-}
-
-fn thresholds() -> Thresholds {
-    Thresholds {
-        nesting: DEFAULT_THRESHOLDS.nesting,
-        cyclomatic: DEFAULT_THRESHOLDS.cyclomatic,
-        cognitive: DEFAULT_THRESHOLDS.cognitive,
-        params: DEFAULT_THRESHOLDS.params,
-        statement_count: DEFAULT_THRESHOLDS.statement_count,
-        max_condition_ops: DEFAULT_THRESHOLDS.max_condition_ops,
-        mutable_bindings: DEFAULT_THRESHOLDS.mutable_bindings,
     }
 }
 
 #[test]
 fn added_above_threshold() {
-    let prev = snapshot(1, Vec::new());
+    let prev = function_set(Vec::new());
     // cognitive=20 exceeds default threshold (15)
     let f = make_function(0xAAAA, "complex_fn", metrics(0, 0, 20, 0));
-    let curr = snapshot(2, vec![f]);
+    let curr = function_set(vec![f]);
 
-    let entries = diff(&prev, &curr, &thresholds());
+    let entries = diff(&prev, &curr);
 
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].kind, DiffKind::Added);
@@ -67,12 +47,12 @@ fn added_above_threshold() {
 
 #[test]
 fn added_below_threshold_filtered() {
-    let prev = snapshot(1, Vec::new());
+    let prev = function_set(Vec::new());
     // cognitive=10 is below default threshold (15) — must not be reported.
     let f = make_function(0xBBBB, "small_fn", metrics(0, 0, 10, 0));
-    let curr = snapshot(2, vec![f]);
+    let curr = function_set(vec![f]);
 
-    let entries = diff(&prev, &curr, &thresholds());
+    let entries = diff(&prev, &curr);
 
     assert!(entries.is_empty());
 }
@@ -83,10 +63,10 @@ fn crossed_threshold() {
     let prev_f = make_function(0xCCCC, "fn_a", metrics(0, 0, 10, 0));
     let curr_f = make_function(0xCCCC, "fn_a", metrics(0, 0, 20, 0));
 
-    let prev = snapshot(1, vec![prev_f]);
-    let curr = snapshot(2, vec![curr_f]);
+    let prev = function_set(vec![prev_f]);
+    let curr = function_set(vec![curr_f]);
 
-    let entries = diff(&prev, &curr, &thresholds());
+    let entries = diff(&prev, &curr);
 
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].kind, DiffKind::CrossedThreshold);
@@ -100,10 +80,10 @@ fn worsened() {
     let prev_f = make_function(0xDDDD, "fn_b", metrics(0, 0, 20, 0));
     let curr_f = make_function(0xDDDD, "fn_b", metrics(0, 0, 25, 0));
 
-    let prev = snapshot(1, vec![prev_f]);
-    let curr = snapshot(2, vec![curr_f]);
+    let prev = function_set(vec![prev_f]);
+    let curr = function_set(vec![curr_f]);
 
-    let entries = diff(&prev, &curr, &thresholds());
+    let entries = diff(&prev, &curr);
 
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].kind, DiffKind::Worsened);
@@ -117,10 +97,10 @@ fn below_threshold_change_filtered() {
     let prev_f = make_function(0xEEEE, "fn_c", metrics(0, 0, 5, 0));
     let curr_f = make_function(0xEEEE, "fn_c", metrics(0, 0, 8, 0));
 
-    let prev = snapshot(1, vec![prev_f]);
-    let curr = snapshot(2, vec![curr_f]);
+    let prev = function_set(vec![prev_f]);
+    let curr = function_set(vec![curr_f]);
 
-    let entries = diff(&prev, &curr, &thresholds());
+    let entries = diff(&prev, &curr);
 
     assert!(entries.is_empty());
 }
@@ -131,10 +111,10 @@ fn dropped_not_reported() {
     let prev_f = make_function(0xFFFF, "fn_d", metrics(0, 0, 20, 0));
     let curr_f = make_function(0xFFFF, "fn_d", metrics(0, 0, 10, 0));
 
-    let prev = snapshot(1, vec![prev_f]);
-    let curr = snapshot(2, vec![curr_f]);
+    let prev = function_set(vec![prev_f]);
+    let curr = function_set(vec![curr_f]);
 
-    let entries = diff(&prev, &curr, &thresholds());
+    let entries = diff(&prev, &curr);
 
     assert!(entries.is_empty());
 }
@@ -146,15 +126,15 @@ fn sort_by_max_excess() {
     //   - fn_high: cognitive=30  → excess = 30 - 15 = 15
     //   - fn_mid:  cognitive=22  → excess = 22 - 15 = 7
     // Expected order: fn_high, fn_mid, fn_low.
-    let prev = snapshot(1, Vec::new());
+    let prev = function_set(Vec::new());
 
     let f_low = make_function(0x1111, "fn_low", metrics(0, 0, 16, 0));
     let f_high = make_function(0x2222, "fn_high", metrics(0, 0, 30, 0));
     let f_mid = make_function(0x3333, "fn_mid", metrics(0, 0, 22, 0));
 
-    let curr = snapshot(2, vec![f_low, f_high, f_mid]);
+    let curr = function_set(vec![f_low, f_high, f_mid]);
 
-    let entries = diff(&prev, &curr, &thresholds());
+    let entries = diff(&prev, &curr);
 
     assert_eq!(entries.len(), 3);
     assert_eq!(entries[0].function.name, "fn_high");

@@ -1,63 +1,148 @@
-# Rust 项目函数级复杂度反馈
+# PRD：Rust 函数级复杂度退化裁决
 
-<!-- 核心问题: 这个需求到了什么程度, 验收标准是什么?
-     定位: 需求级定义 + 进度跟踪
-     路径: docs/requirements/function-complexity-detection/prd.md
-     不属于本文档: 产品级规划（→ roadmap）, 技术方案（→ tech）, 系统架构（→ arch）
-     字段规格: 见 templates/prd-checklist.md
-     变更规则: 见 templates/prd-update.md
-     数据置信: 实测标来源, 估算标依据, 目标标"待验证", 无法估算标"无数据(原因)". 禁止编造.
-     结构锁定: 不得增删章节, 不得改表格列. 只填值. -->
+## 要解决的问题
 
-## 1. 问题
+作者使用 AI 或手动修改 Rust 代码后，需要在 commit 前判断：
 
-### 痛点
+> 这次改动是否让某些函数变得明显更复杂？
 
-作者用 Claude Code 改完一波 Rust 代码后, 想知道这次改动是否让某些函数复杂度上升, 但只能凭感觉判断或人肉读 git diff 估算; 让 AI 自评有 sycophancy bias, 同一份 diff 跑两次给两个不同结论, 既不可重现也无法作为 CI gate。
+人工读 diff 不稳定，AI 自评容易迎合，传统复杂度工具主要报告当前复杂函数，不回答“这次改动是否变糟”。`decay` 的产品切口是把 baseline 和当前工作区放在一起比较，只报告可解释的函数级退化。
 
-### 影响范围
+## 目标用户和场景
 
-作者 dogfood, 每次 AI 协作 session 后均需审查（估算: 日均数次, 基于作者体感）; 涵盖 decay 项目自身全部 Rust 代码改动。
+目标用户只有作者本人。
 
-### 为何现在做
+典型流程：
 
-decay 已锁定产品定位为"AI 编程的复杂度退化早期警告器", 决策记录确认 A 类（函数级局部膨胀）为 v0.1 唯一 P0（见 docs/decision/detection-priority.md）; 不在 v0.1 验证则 v0.2/v0.3/v0.4 全部建立在未验证的产品定位之上, 风险积累。
+1. 修改前或阶段开始时保存 baseline。
+2. AI 或人完成一波修改。
+3. commit 前运行 `decay diff <baseline>`。
+4. 如果出现退化，作者决定返工、忽略或判定为噪音。
 
-## 2. 目标用户
+v0.1.0 不承诺外部稳定接口。
 
-| 角色 | 场景 | Before | After |
-|------|------|--------|-------|
-| 作者本人（用 Claude Code 维护 decay 自身代码的开发者） | AI 协作改完一波代码后, commit 前想确认有没有引入复杂度退化 | 凭感觉判断（经常漏判） / 人肉读 git diff 脑算复杂度（估算: 5-15 分钟单次, 基于作者体感） / 让 AI 自评（有 bias 不可重现） | 一条命令 <1 秒（目标值, 待验证）得到客观裁决: 哪些函数刚刚变复杂、metric 上升了多少 |
+## 命令语义
 
-## 3. 核心假设
+当前命令模型：
 
-- **假设**: 给作者提供函数级 metric（嵌套/圈复杂度/认知复杂度/参数数）+ 跨快照 diff → 作者在 AI 改完代码后能在 commit 前立即识别哪些函数刚刚变复杂, 并触发当下重构（而不是积累成结构性债务）
-- **验证方式**: dogfood 期间作者至少 1 次经历"工具发现自己/AI 没察觉的退化"的瞬间, 并据此触发重构; 0 次则核心假设不成立, v0.1 定位需重审
+```bash
+decay doctor
+decay baseline <version>
+decay diff <version>
+decay diff <from> <to>
+```
 
-## 4. 计划
+| 命令 | 作用 | 产品定位 |
+|---|---|---|
+| `decay` | 展示简洁命令列表，退出码 0，不扫描、不写 DB | 命令入口，不是体检，也不是 gate |
+| `decay --help` | 展示完整用法、参数和子命令说明 | 详细帮助 |
+| `decay doctor` | 显式查看当前代码风险 | 辅助体检，不是 gate |
+| `decay baseline <version>` | 保存当前代码为命名 baseline | 为 diff 提供对比点 |
+| `decay diff <version>` | 比较当前工作区相对 baseline 是否退化 | 核心价值路径 |
+| `decay diff <from> <to>` | 比较两个命名 baseline 是否退化 | 核心价值路径 |
 
-- **Before**: 改完代码后凭感觉判断或人肉读 diff 估算复杂度, 经常漏判细微退化, 等积累到清理时单函数清理 30-60 分钟（估算, 基于作者体感） → **After**: 改完代码跑 `decay diff` 立即看到哪些函数 metric 上升及上升幅度, 当下重构
+`doctor` 只能说明“当前哪里复杂”，不能说明“这次改动是否让它变复杂”。因此产品验证必须看 `diff`，不能只看 `doctor`。
 
-### 任务跟踪
+## Active metrics
 
-| 任务 | 技术方案 | 状态 | 备注 |
-|------|---------|------|------|
-| 函数级 metric + diff 实现（含 tree-sitter 集成 / 4 个 metric / 函数指纹 / 快照存储 / diff 引擎 / CLI） | — | 未开始 | 待 v0.1 实施时拆分技术方案 |
+v0.1.0 只有 6 个 active metric：
 
-## 5. 验收标准
+| Metric | 阈值 | 含义 |
+|---|---:|---|
+| `nesting` | 4 | 最大控制流嵌套深度 |
+| `cyclomatic` | 10 | 分支路径复杂度 |
+| `cognitive` | 15 | 更贴近阅读负担的分支复杂度 |
+| `params` | 5 | 函数参数数量 |
+| `statement_count` | 25 | 函数体可执行语句数量 |
+| `max_condition_ops` | 4 | 单个条件表达式中的布尔操作符最大数量 |
 
-- 作者在含 .rs 文件的项目根目录运行 `decay` → 应看到所有超阈值（嵌套 ≥4 / 圈复杂度 ≥10 / 认知 ≥15 / 参数 ≥5）的函数列表, 含 file:line + 函数名 + 4 个 metric 数值
-- 作者在已建过快照的项目运行 `decay diff` → 应看到自上次快照以来 metric 上升的函数列表, 按 delta 降序
-- 作者首次在新项目运行 `decay diff` → 应看到"已建首次快照, 下次再跑可对比"的提示, 不报错且不输出空 diff
-- 作者在已稳定函数中故意加入 5 层嵌套 if → `decay diff` 应识别该函数 nesting +5 并标记超阈值
-- 作者在 decay 自身代码（含 macro / async / trait method / impl 块, 估算 ~30 文件 ~6000 行）运行 `decay` → 应不出 panic, 100% .rs 文件被解析（解析失败的文件 warning 跳过, 不中断整体）
-- dogfood 期间至少 1 次"作者/AI 没察觉的退化被工具发现"的瞬间被记录（这是核心假设的最终验收）
+阈值语义统一为：
 
-## 6. 排除项
+```text
+value > threshold => breach
+```
 
-- 不支持 Rust 之外语言（v0.2 扩展, 跨语言适配工程量大）
-- 不支持函数重命名 / 跨文件移动追踪（重命名场景识别为"删除 + 新增", 跨文件移动追踪需调用图分析, 复杂度高与 v0.1 验证目标不匹配）
-- 不支持 closure 独立计入（v0.1 简化: 闭包内部代码计入外层函数 metric, 避免函数边界识别复杂化）
-- 不支持 JSON 输出 / 退出码语义化 / 阈值配置（v0.3 做 agent 集成时再做, v0.1 dogfood 仅作者本人使用, terminal text 够用）
-- 不支持快照清理 / 数据库迁移机制（v0.1 dogfood 周期短, db 体积可控, 不投入此处）
-- 不支持 `.gitignore` 解析（v0.1 硬编码排除 `target/` 和 `.git/`）
+`mutable_bindings` 不是 v0.1.0 active metric。它曾出现在旧文档里，但没有实现和验证，已经从产品承诺中移除。
+
+## 扫描范围
+
+默认 scope 是 `prod`。
+
+`prod` 排除：
+
+- `tests/`
+- `examples/`
+- `benches/`
+- `fixtures/`
+- `target/`
+- `.git/`
+- `testutil.rs`
+- `#[test]`
+- `#[cfg(test)]`
+- `mod tests` 内函数
+
+可以用 `--scope all` 查看完整 Rust 文件视图。项目根目录 `.gitignore` 会生效，也支持 `--exclude <pattern>` 做局部排除。
+
+## Diff 报告规则
+
+`decay diff` 只报告退化：
+
+| 类型 | 条件 |
+|---|---|
+| Added | 新增函数，且至少一个 active metric 超阈值 |
+| CrossedThreshold | 同一函数从未超阈值变为超阈值 |
+| Worsened | 同一函数原本已超阈值，且继续变大 |
+
+不报告：
+
+- 删除函数。
+- 指标下降。
+- 指标不变。
+- 仍在阈值内的小幅上升。
+
+这个策略故意不做“当前复杂函数排行榜”，因为 v0.1.0 的目标是判断本次改动是否退化。
+
+## 数据持久化
+
+v0.1.0 使用 SQLite 保存 baseline。
+
+默认路径：
+
+```text
+dirs::data_dir()/decay/snapshots.db
+```
+
+测试可通过 `DECAY_DB_PATH` 覆盖。
+
+Baseline 保存的信息：
+
+- project id。
+- scope。
+- version。
+- created / updated 时间。
+- partial scan 状态。
+- scan diagnostic 数量。
+- 函数元数据。
+- active metric 值。
+
+v0.1.0 不做 DB migration 兼容，因为当前没有外部用户和稳定 schema 承诺。
+
+## 验收标准
+
+功能验收：
+
+- `cargo test` 通过。
+- `cargo clippy -- -D warnings` 通过。
+- `decay` 无子命令展示简洁命令列表，退出码 0，不扫描、不写 DB。
+- `decay --help` 展示完整用法、参数和子命令说明。
+- `decay doctor` 能输出当前代码风险。
+- `decay baseline <version>` 能保存命名 baseline。
+- `decay diff <version>` 能识别受控退化，并在发现退化时返回非 0。
+- parse 失败不会中断整体扫描，但结果必须标记 partial。
+
+产品验收：
+
+- dogfood 中至少 1 次 `decay diff` 捕捉到作者原本没注意、且作者认同应该返工的退化。
+- 每个 dogfood 命中都必须归类为 `fixed`、`ignored` 或 `noise`。
+
+如果没有真实返工案例，v0.1.0 只能算功能 PoC，不能算产品假设成立。

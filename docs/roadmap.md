@@ -1,88 +1,94 @@
-# decay 产品路线图
+# decay Product Roadmap
 
-<!-- 核心问题: 产品到哪了, 下一步往哪走?
-     定位: 产品级战略文档 + 进度跟踪
-     不属于本文档: 单个需求细节（→ PRD）, 技术方案（→ tech）, 系统架构（→ arch）
-     结构锁定: 不得增删列, 不得改列名, 不得改格式. 只填值.
-     字段规格: 见 templates/roadmap-checklist.md
-     数据置信: 实测标来源, 估算标依据, 目标标"待验证", 无法估算标"无数据(原因)". 禁止编造精确数字. -->
+## 1. Product Vision
 
-## 1. 产品愿景
+### Product Essence
 
-### 产品核心
+- **Positioning**: `decay` 是面向 AI 协作编程的 Rust 函数级复杂度退化裁决 CLI。
+- **Motivation**: AI 或人完成一波代码修改后，作者需要在 commit 前判断“这次改动是否让函数变得更难维护”；人工读 diff 不稳定，AI 自评不可靠，传统复杂度工具不回答“相对 baseline 是否变糟”。
+- **Long-term vision**: 作者在 AI 协作开发中拥有一个轻量、客观、可重复的 commit 前退化裁决工具，能把“感觉代码变复杂了”变成可追踪的函数级证据。
 
-- **定位**: 跨语言 CLI 工具, 专门为 AI 编程的开发者和 agent 提供函数级复杂度退化的早期警告
-- **动机**: AI 编程倾向"修 bug = 加 if"的局部退化, 但 AI 自审自己写的代码有结构性偏见（sycophancy bias）, 需要一个不参与代码生产的客观裁判; 现有 lint/复杂度工具只看绝对值不看 delta, git diff 只看文本不看复杂度
-- **长远愿景**: AI agent 在每次代码改动后自动获得客观的复杂度退化裁决, 让退化在引入的瞬间被拦截, 而不是积累成结构性债务
+### Value System
 
-### 价值体系
+| Tier | Value | Metric |
+|------|-------|--------|
+| **Immediate value** | 每次修改后，作者能看到相对 baseline 的函数级退化证据，而不是只看当前复杂函数列表。 | `decay diff` fixed case 数：目标 ≥1（target value, pending validation） |
+| **Cumulative value** | 连续 dogfood 后，阈值、scope 和输出语义能基于真实命中收敛。 | dogfood case 分类完整率：目标 100%（target value, pending validation）；当前真实数据：no data（dogfood 记录尚未形成） |
+| **Strategic value** | AI 协作从“事后人工感觉 review”转为“commit 前有 baseline 裁决”。 | commit 决策改变次数：目标 ≥1（target value, pending validation）；当前真实数据：no data（尚未记录 fixed case） |
 
-| 层级 | 价值 | 衡量指标 |
-|------|------|---------|
-| **即时价值** | 改完代码立即得到客观裁决, 知道这次改动让哪些函数变复杂、变了多少 | 单次扫描耗时（目标值, 待验证: <1s 中型项目） |
-| **累积价值** | 跨 session 持续跟踪每个函数的 metric 历史, 发现单次自审看不到的慢性退化 | 跨快照退化命中率（目标值, 待验证: ≥80% 真实退化被识别） |
-| **战略价值** | 在"AI 写 + AI 自审"的反馈环里插入独立客观裁判, 让退化不再依赖 AI 自我评估 | AI 自评偏见漏报率（目标值, 待验证: 工具捕捉到 ≥3 个 AI 自评遗漏的退化案例） |
+### Core Problem
 
-### 核心问题
+| Problem | Occurrence Frequency | Per-Occurrence Cost | Reach | Existing Workaround |
+|---------|----------------------|---------------------|-------|---------------------|
+| AI 或人修改 Rust 函数后，作者难以稳定判断本次改动是否引入局部复杂度退化。 | 每次 AI coding / refactor session 都可能发生（estimated，基于本项目使用场景） | no data（尚未量化每次人工 review 成本） | 当前只覆盖作者本人维护 Rust 项目的场景 | 人工读 diff；问题是耗时、主观，且容易漏掉局部复杂化 |
+| 当前风险体检和本次退化裁决容易混淆。 | 每次运行 `doctor` 或裸命令理解 CLI 语义时可能发生（estimated，来自本轮命令语义讨论） | no data（尚未量化误用成本） | 当前只覆盖本地 CLI 使用者 | 读 README / `--help`；问题是旧文档曾把命令语义写得不一致 |
 
-| 问题 | 发生频率 | 单次成本 | 影响面 | 现有应对 |
-|------|---------|---------|--------|---------|
-| AI 编程改动悄悄让函数复杂度上升, 事后难以察觉 | 估算: 每次 AI 协作 session, 日均数次 | 估算: 累积到 cleanup 时单函数清理 30-60 分钟（基于作者体感） | 所有用 Claude Code/Cursor 等 agent 写代码的开发者 | 凭感觉判断 / 让 AI 自评（有 sycophancy bias） |
-| AI 审查自己写的代码存在结构性偏见 | 每次"让 AI 看看复杂度有没有上升"（估算: AI 协作 session 频次） | 估算: 偏见导致漏判, 退化继续累积 | 同上 | 无替代方案 |
-| git diff 只显示文本变更, 不告诉用户复杂度变化 | 每次 review AI 生成的代码 | 估算: 5-15 分钟人肉脑测算复杂度（基于作者体感） | 同上 | 人肉脑算 |
+### Target Users
 
-### 目标用户
+| Role | Typical Scenario | Before | After | Estimated Efficiency Gain |
+|------|------------------|--------|-------|--------------------------|
+| 作者本人 | 在 Rust 项目中让 AI 完成一波修改，commit 前检查是否产生函数级退化 | 只能人工读 diff 或运行当前风险体检；无法稳定区分旧债和本次退化 | 保存 baseline 后运行 `decay diff`，只看新增或变糟的函数级风险 | no data（尚无连续 dogfood 数据）；目标是至少产生 1 个 fixed case |
 
-| 角色 | 典型场景 | Before | After | 预估提效 |
-|------|---------|--------|-------|---------|
-| 作者本人（dogfood） | 用 Claude Code 维护 decay 自身代码 | 改完一波后凭感觉判断"代码好像有点变复杂", 经常漏 | 跑一下立即看到具体哪个函数 cognitive +N, 趁记忆热的时候顺手重构 | 待验证（预期: 每次审查节省 5-10 分钟人肉脑算 + 减少漏判） |
-| 使用 AI agent 写代码的开发者（v0.3+） | AI 帮改一波代码后想确认有没有引入退化 | 凭感觉 / 让 AI 自评（有偏见） | 客观工具裁决, 不依赖 AI 自我评估 | 待验证 |
+### Competitive Comparison
 
-### 竞品对比
+| Solution | Positioning | Target Users | Core Features | Strengths | Limitations |
+|----------|-------------|--------------|---------------|-----------|-------------|
+| **decay** | Rust 函数级复杂度退化裁决 CLI | 使用 AI 协作维护 Rust 项目的作者 | baseline、diff、doctor、prod scope、partial scan diagnostics | 聚焦“这次是否变糟”；输出可解释的函数级证据 | 仅 Rust；产品价值未验证；baseline 需要手动命名 |
+| 人工读 diff | 人基于经验 review 本次改动 | 所有代码作者 | 读 patch、判断风险、决定返工 | 上下文完整；能理解业务语义 | 主观、不稳定、容易漏掉局部复杂度变化 |
+| 传统 linter / complexity 工具 | 当前代码质量或复杂度检查 | 需要静态检查的开发者 | 规则检查、复杂度阈值、报告当前问题 | 成熟、客观、易接入 CI | 通常不回答“相对某个 baseline 本次是否变糟” |
+| AI 自评 | 让 AI 解释或审查自己生成的 diff | 使用 AI 编程的作者 | 总结风险、给出建议、解释代码 | 快、上下文对话成本低 | 结论可能漂移；存在迎合倾向；缺少稳定可重复裁决 |
 
-| 方案 | 定位 | 目标用户 | 核心功能 | 优势 | 局限 |
-|------|------|---------|---------|------|------|
-| **decay** | 函数级复杂度退化早期警告器 | AI 编程的开发者和 agent | 函数级 metric, 跨快照 diff, AI 友好输出 | 聚焦 AI 编程反馈环, 看 delta 不看绝对值, 独立于 AI 自审 | 单语言起步（Rust 先行）, 重复检测延后 |
-| lizard | 跨语言代码 metric 命令行 | 任何开发者 | 圈复杂度, 函数长度, 参数数 | 多语言成熟覆盖 | 只看当前快照不看 delta, 无 AI 场景集成 |
-| Clippy / ESLint complexity rules | 语言级 lint | 各语言开发者 | 单文件粒度复杂度告警 | 编译时集成成熟 | 单文件粒度无趋势, 不针对 AI 场景 |
-| SonarQube / CodeScene | 企业级代码质量平台 | 团队和组织 | 综合 metric + 趋势 + churn | 综合性强, 团队级仪表盘 | 重量级部署, 无 AI 场景集成, CLI 不友好 |
+## 2. Version Plan
 
-## 2. 版本规划
+### Version Summary Table
 
-### 汇总
+| Version | Core Direction | Core-Metric Delta | Status | Period | Milestones |
+|---------|----------------|-------------------|--------|--------|------------|
+| v0.1.0 | 跑通 Rust 函数扫描、baseline、diff、doctor 的本地闭环 | ↑ active metrics 0→6（measured: `src/metric/mod.rs`）；↑ integration tests 0→15（measured: `cargo test` 2026-05-05）；↓ product certainty no data→unproven（no data: 尚无 fixed case） | released | TBD - 2026.05.05 | M1-M1 |
+| v0.1.x | 用 dogfood 验证 `diff` 是否改变 commit 决策 | ↑ dogfood classified cases 0→TBD（target value, pending validation）；↑ fixed cases 0→≥1（target value, pending validation） | in development | 2026.05.05 - TBD | M2-M2 |
+| v0.2 | 如果 `diff` 被证明有价值，降低 baseline 使用摩擦 | ↑ baseline workflow convenience no data→TBD（pending v0.1.x）；↓ manual naming friction no data→TBD（pending v0.1.x） | planned | TBD - TBD | TBD |
 
-| 版本 | 核心方向 | 核心指标变化 | 状态 | 周期 | 里程碑 |
-|------|---------|------------|------|------|--------|
-| v0.1 | Rust 单语言验证 + 函数级 metric + diff | ↑ 函数级 metric 数 0→4; ↑ 支持语言 0→1 | 规划中 | TBD | M1-M2 |
+### Version Details
 
-### 版本详情
+#### v0.1.0 — functional PoC
 
-#### v0.1 — Rust 单语言基本盘
+- **Strategic intent**: 证明本地 Rust 函数级复杂度证据链能跑通；不证明产品价值已经成立。
+- **Input/output**: input no data（未记录实际工时）；output 是可运行 CLI、SQLite baseline、diff 裁决和 doctor 体检。
+- **Priority rationale**: 没有基础扫描、baseline 和 diff，就无法验证 commit 前退化裁决这个产品假设。
+- **Risks and dependencies**: 风险是把测试通过误认为产品成功；依赖 Rust parser、SQLite baseline、metric registry 与文档一致。
+- **Success metric**: 功能成功以 `cargo test` 和 `cargo clippy -- -D warnings` 通过为准；产品成功不在 v0.1.0 内宣称。
+- **Core value**: 作者可以在本地保存 baseline，并比较当前工作区或两个 baseline 的函数级退化。
+- **User coverage**: 作者本人 dogfood；无外部用户。
+- **Core metric** (N/A → v0.1.0):
 
-- **战略意图**: 验证核心假设——"函数级 metric + diff" 是否能让用户在 AI 改完代码后立即识别局部退化, 在最小语言范围内跑通完整反馈环
-- **投入产出**: 投入估算 ~8 天（基于工作分解: 解析 2 + metric 2 + 存储 1 + diff 1 + 测试 2）→ 预期作者本人在 dogfood 中至少有 1 次"AI 没意识到这么改会让函数变这么复杂"的瞬间被工具捕捉
-- **优先级依据**: 任何后续语言扩展、agent 集成、重复检测都建立在"反馈环本身有用"这个前提上, 不验证则无意义; tree-sitter-rust 成熟可用, 作者最熟悉 Rust, dogfood 路径最短
-- **风险与依赖**: 风险: 函数指纹方案在函数重命名/移动时会误报为"删除+新增"; 风险: 认知复杂度公式在 Rust 特殊模式（match arm 多分支、`?` 操作符）上的阈值需校准; 依赖: tree-sitter-rust crate
-- **成功指标**: dogfood 期间作者至少经历 1 次"被工具发现自己制造的退化"的瞬间; tree-sitter-rust 能解析 decay 自身代码不出错; 4 个 metric 在已知样例上结果正确
-- **核心价值**:
-  1. 首次可以在改完代码后立即看到哪些函数 metric 上升及上升幅度
-  2. 首次有跨快照的函数 metric 历史记录
-  3. 验证"独立于 AI 自审的客观裁判"这个产品定位是否真有用
-- **用户覆盖**: 作者 dogfood
-- **核心指标**（N/A → v0.1）:
+| Metric | N/A | v0.1.0 | Delta |
+|--------|-----|--------|-------|
+| Active metrics | 0 | 6（measured: `src/metric/mod.rs`） | ↑ 6 |
+| Integration tests | 0 | 15（measured: `cargo test` 2026-05-05） | ↑ 15 |
+| Current doctor findings in this repo | N/A | 8（measured: `decay doctor` 2026-05-05） | N/A |
+| Real fixed cases from `decay diff` | 0 | no data（尚未形成 dogfood 记录） | no data |
 
-| 指标 | N/A | v0.1 | 变化 |
-|------|-----|------|------|
-| 支持语言 | 0 | 1（Rust） | ↑ 1 |
-| 函数级 metric 数 | 0 | 4（嵌套深度、圈复杂度、认知复杂度、参数数） | ↑ 4 |
-| 输出形式 | 0 | 1（terminal text） | ↑ 1 |
-| 跨快照 diff | 无 | 有（基于函数指纹） | 新增 |
+#### v0.1.x — dogfood validation
 
-> Open question: 4 个 metric 的初始默认阈值（嵌套 4 / 圈复杂度 10 / 认知复杂度 15 / 参数 5）需要在 dogfood 中校准, 当前为基于业界经验的目标值
+- **Strategic intent**: 验证 `decay diff` 是否真的能改变作者的 commit 决策。
+- **Input/output**: input 是作者持续在真实 AI 编程任务中运行 baseline/diff；output 是 classified dogfood cases。
+- **Priority rationale**: 在没有 fixed case 前，新增 metric、CI、JSON 或更多语言都会放大未验证假设。
+- **Risks and dependencies**: 风险是命中主要来自旧债或噪音；依赖作者按 `docs/ops.md` 记录 fixed / ignored / noise。
+- **Success metric**: 至少 1 个 `fixed` case（target value, pending validation），且噪音没有导致作者停止运行 `decay diff`。
+- **Core value**: 把 `diff` 从“功能可用”推进到“对 commit 决策有证据价值”。
+- **User coverage**: 作者本人 dogfood。
+- **Core metric** (v0.1.0 → v0.1.x):
 
-## 3. 里程碑
+| Metric | v0.1.0 | v0.1.x | Delta |
+|--------|--------|--------|-------|
+| Real fixed cases from `decay diff` | no data | ≥1（target value, pending validation） | ↑ ≥1 |
+| Classified dogfood cases | 0 | TBD（pending dogfood） | no data |
+| Noise share | no data | no target yet（先分类再判断） | no data |
+| Manual baseline friction | identified qualitatively | TBD（pending dogfood evidence） | no data |
 
-| # | 核心方向 | 目标达成情况 | 状态 | 完成日期 |
-|---|---------|------------|------|---------|
-| [M1](milestones/m1.md) | v0.1 PoC 跑通 | — | 未开始 | — |
-| [M2](milestones/m2.md) | v0.1 dogfood 验证 | — | 未开始 | — |
+## 3. Milestones
+
+| # | Core Direction | Goal Achievement | Status | Completion Date |
+|---|----------------|------------------|--------|-----------------|
+| [M1](milestones/m1.md) | 交付 v0.1.0 本地功能闭环 | 功能闭环完成，`cargo test` 和 clippy 通过；产品 fixed case 仍无数据，因此不声明产品成功 | done | 2026-05-05 |
+| [M2](milestones/m2.md) | 验证 `diff` 是否改变 commit 决策 | 尚未开始；需要按 `docs/ops.md` 记录 fixed / ignored / noise | not started | — |

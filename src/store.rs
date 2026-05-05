@@ -1,11 +1,19 @@
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::config::{APP_NAME, DB_FILENAME};
 use crate::error::{DecayError, Result};
-use crate::types::{Function, Metrics, Snapshot};
+use crate::types::{Baseline, Function, Metrics};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SaveBaselineOutcome {
+    Created { id: i64 },
+    Unchanged { id: i64 },
+    Replaced { id: i64 },
+    ExistsDifferent { id: i64 },
+}
 
 /// Resolve the SQLite database path.
 ///
@@ -26,9 +34,7 @@ fn map_db_err(message: impl Into<String>) -> impl FnOnce(rusqlite::Error) -> Dec
     move |source| DecayError::Db { message, source }
 }
 
-/// Open (or create) the snapshots database, ensuring schema exists.
-///
-/// Side effects: creates parent directory and database file on first call.
+/// Open (or create) the baselines database, ensuring schema exists.
 pub fn open_db() -> Result<Connection> {
     let path = resolve_db_path()?;
     if let Some(parent) = path.parent() {
@@ -46,267 +52,224 @@ pub fn open_db() -> Result<Connection> {
 }
 
 fn init_schema(conn: &Connection) -> Result<()> {
-    // v0.1 alpha: when a pre-impl_context / pre-cfg_context schema is
-    // detected, drop both tables so the new schema can be created cleanly.
-    // Snapshot history is reset; this is acceptable while metric algorithms
-    // and thresholds are still settling.
-    if has_outdated_functions_schema(conn)? {
-        log::warn!("decay db schema is from an earlier v0.1 build; resetting (snapshots cleared)");
-        conn.execute_batch("DROP TABLE IF EXISTS functions; DROP TABLE IF EXISTS snapshots;")
-            .map_err(map_db_err("failed to drop outdated tables"))?;
-    }
     conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS snapshots (
+        "CREATE TABLE IF NOT EXISTS baselines (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id   TEXT NOT NULL,
-            scope        TEXT NOT NULL DEFAULT 'prod',
-            created_at   INTEGER NOT NULL
+            scope        TEXT NOT NULL,
+            version      TEXT NOT NULL,
+            created_at   INTEGER NOT NULL,
+            updated_at   INTEGER NOT NULL,
+            is_partial   INTEGER NOT NULL,
+            diagnostics  INTEGER NOT NULL,
+            UNIQUE(project_id, scope, version)
         );
-        CREATE INDEX IF NOT EXISTS idx_snap_project ON snapshots(project_id, scope, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_baseline_project
+            ON baselines(project_id, scope, version);
 
         CREATE TABLE IF NOT EXISTS functions (
-            snapshot_id      INTEGER NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
-            signature_hash   INTEGER NOT NULL,
-            file             TEXT NOT NULL,
-            impl_context     TEXT NOT NULL,
-            cfg_context      TEXT NOT NULL,
-            name             TEXT NOT NULL,
-            start_line       INTEGER NOT NULL,
-            end_line         INTEGER NOT NULL,
-            nesting          INTEGER NOT NULL,
-            cyclomatic       INTEGER NOT NULL,
-            cognitive        INTEGER NOT NULL,
-            params           INTEGER NOT NULL,
-            statement_count  INTEGER NOT NULL DEFAULT 0,
-            max_condition_ops INTEGER NOT NULL DEFAULT 0,
-            mutable_bindings INTEGER NOT NULL DEFAULT 0,
-            PRIMARY KEY (snapshot_id, signature_hash)
+            baseline_id       INTEGER NOT NULL REFERENCES baselines(id) ON DELETE CASCADE,
+            signature_hash    INTEGER NOT NULL,
+            file              TEXT NOT NULL,
+            impl_context      TEXT NOT NULL,
+            cfg_context       TEXT NOT NULL,
+            name              TEXT NOT NULL,
+            start_line        INTEGER NOT NULL,
+            end_line          INTEGER NOT NULL,
+            nesting           INTEGER NOT NULL,
+            cyclomatic        INTEGER NOT NULL,
+            cognitive         INTEGER NOT NULL,
+            params            INTEGER NOT NULL,
+            statement_count   INTEGER NOT NULL,
+            max_condition_ops INTEGER NOT NULL,
+            PRIMARY KEY (baseline_id, signature_hash)
         );
-        CREATE INDEX IF NOT EXISTS idx_func_snap ON functions(snapshot_id);",
+        CREATE INDEX IF NOT EXISTS idx_func_baseline ON functions(baseline_id);",
     )
     .map_err(map_db_err("failed to init schema"))?;
-    ensure_snapshots_column(conn, "scope", "TEXT NOT NULL DEFAULT 'prod'")?;
-    ensure_functions_column(conn, "statement_count", "INTEGER NOT NULL DEFAULT 0")?;
-    ensure_functions_column(conn, "max_condition_ops", "INTEGER NOT NULL DEFAULT 0")?;
-    ensure_functions_column(conn, "mutable_bindings", "INTEGER NOT NULL DEFAULT 0")?;
     Ok(())
 }
 
-fn ensure_snapshots_column(conn: &Connection, name: &str, ddl: &str) -> Result<()> {
-    if has_table_column(conn, "snapshots", name)? {
-        return Ok(());
-    }
-    let sql = format!("ALTER TABLE snapshots ADD COLUMN {name} {ddl}");
-    conn.execute(&sql, [])
-        .map_err(map_db_err(format!("failed to add snapshots.{name} column")))?;
-    Ok(())
-}
-
-fn ensure_functions_column(conn: &Connection, name: &str, ddl: &str) -> Result<()> {
-    if has_table_column(conn, "functions", name)? {
-        return Ok(());
-    }
-    let sql = format!("ALTER TABLE functions ADD COLUMN {name} {ddl}");
-    conn.execute(&sql, [])
-        .map_err(map_db_err(format!("failed to add functions.{name} column")))?;
-    Ok(())
-}
-
-/// Detect a pre-context schema: `functions` table exists but lacks one of the
-/// context columns used by the fingerprint.
-fn has_outdated_functions_schema(conn: &Connection) -> Result<bool> {
-    let table_exists: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='functions'",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(map_db_err("failed to inspect schema"))?;
-    if table_exists == 0 {
-        return Ok(false);
-    }
-    let mut stmt = conn
-        .prepare("SELECT name FROM pragma_table_info('functions')")
-        .map_err(map_db_err("failed to read functions columns"))?;
-    let rows = stmt
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(map_db_err("failed to read functions columns"))?;
-    let mut has_impl_context = false;
-    let mut has_cfg_context = false;
-    for row in rows {
-        let name = row.map_err(map_db_err("failed to read column row"))?;
-        if name == "impl_context" {
-            has_impl_context = true;
-        }
-        if name == "cfg_context" {
-            has_cfg_context = true;
-        }
-    }
-    Ok(!(has_impl_context && has_cfg_context))
-}
-
-fn has_table_column(conn: &Connection, table: &str, target: &str) -> Result<bool> {
-    let mut stmt = conn
-        .prepare(&format!("SELECT name FROM pragma_table_info('{table}')"))
-        .map_err(map_db_err(format!("failed to read {table} columns")))?;
-    let rows = stmt
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(map_db_err(format!("failed to read {table} columns")))?;
-
-    for row in rows {
-        let name = row.map_err(map_db_err("failed to read column row"))?;
-        if name == target {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-/// Persist a snapshot of `funcs` for `project_id`. Returns the new snapshot id.
-///
-/// Wrapped in a single transaction: snapshots row + all functions rows succeed
-/// or roll back together.
-pub fn save_snapshot(
+pub fn save_baseline(
     conn: &Connection,
     project_id: &str,
     scope: &str,
+    version: &str,
     funcs: Vec<Function>,
-) -> Result<i64> {
-    let created_at: i64 = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+    diagnostic_count: usize,
+    replace: bool,
+) -> Result<SaveBaselineOutcome> {
+    if let Some(existing) = load_baseline(conn, project_id, scope, version)? {
+        if functions_equivalent(&existing.functions, &funcs)
+            && existing.diagnostic_count == diagnostic_count as u32
+        {
+            return Ok(SaveBaselineOutcome::Unchanged { id: existing.id });
+        }
+        if !replace {
+            return Ok(SaveBaselineOutcome::ExistsDifferent { id: existing.id });
+        }
+        replace_baseline(conn, existing.id, funcs, diagnostic_count)?;
+        return Ok(SaveBaselineOutcome::Replaced { id: existing.id });
+    }
 
+    let id = insert_baseline(conn, project_id, scope, version, funcs, diagnostic_count)?;
+    Ok(SaveBaselineOutcome::Created { id })
+}
+
+pub fn load_baseline(
+    conn: &Connection,
+    project_id: &str,
+    scope: &str,
+    version: &str,
+) -> Result<Option<Baseline>> {
+    let mut baseline = conn
+        .query_row(
+            "SELECT id, project_id, scope, version, created_at, updated_at, is_partial, diagnostics
+             FROM baselines
+             WHERE project_id = ?1 AND scope = ?2 AND version = ?3",
+            params![project_id, scope, version],
+            row_to_baseline,
+        )
+        .optional()
+        .map_err(map_db_err("failed to load baseline"))?;
+
+    if let Some(b) = &mut baseline {
+        b.functions = load_functions(conn, b.id)?;
+    }
+    Ok(baseline)
+}
+
+fn insert_baseline(
+    conn: &Connection,
+    project_id: &str,
+    scope: &str,
+    version: &str,
+    funcs: Vec<Function>,
+    diagnostic_count: usize,
+) -> Result<i64> {
+    let now = unix_now();
     let tx = conn
         .unchecked_transaction()
         .map_err(map_db_err("failed to begin tx"))?;
-
     tx.execute(
-        "INSERT INTO snapshots (project_id, scope, created_at) VALUES (?1, ?2, ?3)",
-        params![project_id, scope, created_at],
+        "INSERT INTO baselines (project_id, scope, version, created_at, updated_at, is_partial, diagnostics)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            project_id,
+            scope,
+            version,
+            now,
+            now,
+            diagnostic_count > 0,
+            diagnostic_count as i64
+        ],
     )
-    .map_err(map_db_err("failed to insert snapshot"))?;
-    let snapshot_id = tx.last_insert_rowid();
-
-    {
-        let mut stmt = tx
-            .prepare(
-                "INSERT INTO functions (
-                    snapshot_id, signature_hash, file, impl_context, cfg_context, name,
-                    start_line, end_line, nesting, cyclomatic, cognitive, params,
-                    statement_count, max_condition_ops, mutable_bindings
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
-            )
-            .map_err(map_db_err("failed to prepare functions insert"))?;
-        for f in &funcs {
-            // u64 -> i64 bit-cast preserves all 64 bits; read path mirrors this.
-            let hash_i64 = f.signature_hash as i64;
-            stmt.execute(params![
-                snapshot_id,
-                hash_i64,
-                f.file,
-                f.impl_context,
-                f.cfg_context,
-                f.name,
-                f.start_line,
-                f.end_line,
-                f.metrics.nesting,
-                f.metrics.cyclomatic,
-                f.metrics.cognitive,
-                f.metrics.params,
-                f.metrics.statement_count,
-                f.metrics.max_condition_ops,
-                f.metrics.mutable_bindings,
-            ])
-            .map_err(map_db_err("failed to insert function"))?;
-        }
-    }
-
+    .map_err(map_db_err("failed to insert baseline"))?;
+    let id = tx.last_insert_rowid();
+    insert_functions(&tx, id, &funcs)?;
     tx.commit().map_err(map_db_err("failed to commit tx"))?;
-    Ok(snapshot_id)
+    Ok(id)
 }
 
-/// Load up to `n` most recent snapshots for `project_id`, newest first (id DESC).
-pub fn load_latest_snapshots(
+fn replace_baseline(
     conn: &Connection,
-    project_id: &str,
-    scope: &str,
-    n: usize,
-) -> Result<Vec<Snapshot>> {
-    if n == 0 {
-        return Ok(Vec::new());
-    }
-    let mut snapshots = query_snapshots(conn, project_id, scope, n)?;
-    for snap in &mut snapshots {
-        snap.functions = load_functions(conn, snap.id)?;
-    }
-    Ok(snapshots)
+    baseline_id: i64,
+    funcs: Vec<Function>,
+    diagnostic_count: usize,
+) -> Result<()> {
+    let now = unix_now();
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(map_db_err("failed to begin tx"))?;
+    tx.execute(
+        "DELETE FROM functions WHERE baseline_id = ?1",
+        params![baseline_id],
+    )
+    .map_err(map_db_err("failed to delete baseline functions"))?;
+    tx.execute(
+        "UPDATE baselines SET updated_at = ?1, is_partial = ?2, diagnostics = ?3 WHERE id = ?4",
+        params![
+            now,
+            diagnostic_count > 0,
+            diagnostic_count as i64,
+            baseline_id
+        ],
+    )
+    .map_err(map_db_err("failed to update baseline"))?;
+    insert_functions(&tx, baseline_id, &funcs)?;
+    tx.commit().map_err(map_db_err("failed to commit tx"))?;
+    Ok(())
 }
 
-/// Read snapshot metadata rows (id / project_id / created_at) only; the
-/// `functions` field is left empty for `load_functions` to populate.
-fn query_snapshots(conn: &Connection, project_id: &str, scope: &str, n: usize) -> Result<Vec<Snapshot>> {
+fn insert_functions(conn: &Connection, baseline_id: i64, funcs: &[Function]) -> Result<()> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, project_id, scope, created_at
-             FROM snapshots
-             WHERE project_id = ?1 AND scope = ?2
-             ORDER BY id DESC
-             LIMIT ?3",
+            "INSERT INTO functions (
+                baseline_id, signature_hash, file, impl_context, cfg_context, name,
+                start_line, end_line, nesting, cyclomatic, cognitive, params,
+        statement_count, max_condition_ops
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
         )
-        .map_err(map_db_err("failed to prepare snapshot select"))?;
+        .map_err(map_db_err("failed to prepare functions insert"))?;
 
-    let rows = stmt
-        .query_map(params![project_id, scope, n as i64], row_to_snapshot)
-        .map_err(map_db_err("failed to query snapshots"))?;
-
-    let mut snapshots: Vec<Snapshot> = Vec::new();
-    for r in rows {
-        snapshots.push(r.map_err(map_db_err("failed to read snapshot row"))?);
+    for f in funcs {
+        stmt.execute(params![
+            baseline_id,
+            f.signature_hash as i64,
+            f.file,
+            f.impl_context,
+            f.cfg_context,
+            f.name,
+            f.start_line,
+            f.end_line,
+            f.metrics.nesting,
+            f.metrics.cyclomatic,
+            f.metrics.cognitive,
+            f.metrics.params,
+            f.metrics.statement_count,
+            f.metrics.max_condition_ops,
+        ])
+        .map_err(map_db_err("failed to insert function"))?;
     }
-    Ok(snapshots)
+    Ok(())
 }
 
-/// Load every Function row associated with `snapshot_id`. param_types is left
-/// empty per §2.4 (not persisted; signature_hash carries identity for diff).
-fn load_functions(conn: &Connection, snapshot_id: i64) -> Result<Vec<Function>> {
+fn load_functions(conn: &Connection, baseline_id: i64) -> Result<Vec<Function>> {
     let mut stmt = conn
         .prepare(
-            "SELECT signature_hash, file, impl_context, cfg_context, name, start_line, end_line,
-                    nesting, cyclomatic, cognitive, params,
-                    statement_count, max_condition_ops, mutable_bindings
+            "SELECT signature_hash, file, impl_context, cfg_context, name,
+                    start_line, end_line, nesting, cyclomatic, cognitive, params,
+                    statement_count, max_condition_ops
              FROM functions
-             WHERE snapshot_id = ?1",
+             WHERE baseline_id = ?1
+             ORDER BY file ASC, start_line ASC, name ASC",
         )
         .map_err(map_db_err("failed to prepare functions select"))?;
 
     let rows = stmt
-        .query_map(params![snapshot_id], row_to_function)
-        .map_err(map_db_err("failed to query functions"))?;
-
-    let mut funcs: Vec<Function> = Vec::new();
-    for r in rows {
-        funcs.push(r.map_err(map_db_err("failed to read function row"))?);
+        .query_map(params![baseline_id], row_to_function)
+        .map_err(map_db_err("failed to load functions"))?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(map_db_err("failed to read function row"))?);
     }
-    Ok(funcs)
+    Ok(out)
 }
 
-/// Map a snapshots-table row to a `Snapshot` (without functions populated).
-/// Extracted so the per-column `?` operators stay out of `query_snapshots`'s
-/// cyclomatic budget.
-fn row_to_snapshot(row: &rusqlite::Row<'_>) -> rusqlite::Result<Snapshot> {
-    Ok(Snapshot {
+fn row_to_baseline(row: &rusqlite::Row<'_>) -> rusqlite::Result<Baseline> {
+    Ok(Baseline {
         id: row.get(0)?,
         project_id: row.get(1)?,
         scope: row.get(2)?,
-        created_at: row.get(3)?,
+        version: row.get(3)?,
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
+        is_partial: row.get(6)?,
+        diagnostic_count: row.get::<_, i64>(7)? as u32,
         functions: Vec::new(),
     })
 }
 
-/// Map a functions-table row to a `Function`. Mirrors the i64 → u64 bit-cast
-/// performed on the save path. Extracted so the per-column `?` operators stay
-/// out of `load_functions`'s cyclomatic budget.
 fn row_to_function(row: &rusqlite::Row<'_>) -> rusqlite::Result<Function> {
     let hash_i64: i64 = row.get(0)?;
     Ok(Function {
@@ -315,19 +278,83 @@ fn row_to_function(row: &rusqlite::Row<'_>) -> rusqlite::Result<Function> {
         impl_context: row.get(2)?,
         cfg_context: row.get(3)?,
         name: row.get(4)?,
-        start_line: row.get(5)?,
-        end_line: row.get(6)?,
+        start_line: row.get::<_, i64>(5)? as u32,
+        end_line: row.get::<_, i64>(6)? as u32,
         param_types: Vec::new(),
         metrics: Metrics {
-            nesting: row.get(7)?,
-            cyclomatic: row.get(8)?,
-            cognitive: row.get(9)?,
-            params: row.get(10)?,
-            statement_count: row.get(11)?,
-            max_condition_ops: row.get(12)?,
-            mutable_bindings: row.get(13)?,
+            nesting: row.get::<_, i64>(7)? as u32,
+            cyclomatic: row.get::<_, i64>(8)? as u32,
+            cognitive: row.get::<_, i64>(9)? as u32,
+            params: row.get::<_, i64>(10)? as u32,
+            statement_count: row.get::<_, i64>(11)? as u32,
+            max_condition_ops: row.get::<_, i64>(12)? as u32,
         },
     })
 }
 
-pub fn _stub() {}
+fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn functions_equivalent(a: &[Function], b: &[Function]) -> bool {
+    canonical_functions(a) == canonical_functions(b)
+}
+
+fn canonical_functions(funcs: &[Function]) -> Vec<FunctionKey> {
+    let mut keys: Vec<FunctionKey> = funcs.iter().map(FunctionKey::from).collect();
+    keys.sort();
+    keys
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct FunctionKey {
+    signature_hash: u64,
+    file: String,
+    impl_context: String,
+    cfg_context: String,
+    name: String,
+    start_line: u32,
+    end_line: u32,
+    metrics: MetricKey,
+}
+
+impl From<&Function> for FunctionKey {
+    fn from(f: &Function) -> Self {
+        Self {
+            signature_hash: f.signature_hash,
+            file: f.file.clone(),
+            impl_context: f.impl_context.clone(),
+            cfg_context: f.cfg_context.clone(),
+            name: f.name.clone(),
+            start_line: f.start_line,
+            end_line: f.end_line,
+            metrics: MetricKey::from(f.metrics),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct MetricKey {
+    nesting: u32,
+    cyclomatic: u32,
+    cognitive: u32,
+    params: u32,
+    statement_count: u32,
+    max_condition_ops: u32,
+}
+
+impl From<Metrics> for MetricKey {
+    fn from(m: Metrics) -> Self {
+        Self {
+            nesting: m.nesting,
+            cyclomatic: m.cyclomatic,
+            cognitive: m.cognitive,
+            params: m.params,
+            statement_count: m.statement_count,
+            max_condition_ops: m.max_condition_ops,
+        }
+    }
+}

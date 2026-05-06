@@ -10,7 +10,6 @@ thiserror = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 tree-sitter = "0.22"
 tree-sitter-rust = "0.21"
-dirs = "5"
 serde = { version = "1", features = ["derive"] }
 log = "0.4"
 env_logger = "0.11"

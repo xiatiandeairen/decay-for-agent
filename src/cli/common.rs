@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
+use std::cmp::Reverse;
+
 use clap::Args;
 
 use crate::error::{DecayError, Result};
@@ -94,7 +96,7 @@ pub(crate) fn collect_exceeded(funcs: &[Function]) -> Vec<(&Function, Vec<Metric
         .collect();
 
     for (_, breaches) in &mut exceeded {
-        breaches.sort_by(|a, b| b.overage.cmp(&a.overage));
+        breaches.sort_by_key(|breach| Reverse(breach.overage));
     }
     exceeded.sort_by(|a, b| {
         let am = a.1.iter().map(|m| m.overage).max().unwrap_or(0);

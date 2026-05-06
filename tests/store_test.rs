@@ -28,6 +28,13 @@ fn make_func(file: &str, name: &str, hash: u64, nesting: u32) -> Function {
     }
 }
 
+fn restore_env(key: &str, value: Option<std::ffi::OsString>) {
+    match value {
+        Some(value) => std::env::set_var(key, value),
+        None => std::env::remove_var(key),
+    }
+}
+
 fn with_isolated_db<T>(f: impl FnOnce(&rusqlite::Connection) -> T) -> T {
     let _guard = ENV_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
@@ -37,6 +44,50 @@ fn with_isolated_db<T>(f: impl FnOnce(&rusqlite::Connection) -> T) -> T {
     let out = f(&conn);
     std::env::remove_var("DECAY_DB_PATH");
     out
+}
+
+#[test]
+fn open_db_uses_xdg_data_home_by_default() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let xdg = dir.path().join("xdg-data");
+    let old_db = std::env::var_os("DECAY_DB_PATH");
+    let old_xdg = std::env::var_os("XDG_DATA_HOME");
+    std::env::remove_var("DECAY_DB_PATH");
+    std::env::set_var("XDG_DATA_HOME", &xdg);
+
+    let conn = open_db().expect("open_db");
+    drop(conn);
+
+    assert!(xdg.join("decay").join("snapshots.db").exists());
+    restore_env("DECAY_DB_PATH", old_db);
+    restore_env("XDG_DATA_HOME", old_xdg);
+}
+
+#[test]
+fn open_db_falls_back_to_home_local_share() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let old_db = std::env::var_os("DECAY_DB_PATH");
+    let old_xdg = std::env::var_os("XDG_DATA_HOME");
+    let old_home = std::env::var_os("HOME");
+    std::env::remove_var("DECAY_DB_PATH");
+    std::env::remove_var("XDG_DATA_HOME");
+    std::env::set_var("HOME", dir.path());
+
+    let conn = open_db().expect("open_db");
+    drop(conn);
+
+    assert!(dir
+        .path()
+        .join(".local")
+        .join("share")
+        .join("decay")
+        .join("snapshots.db")
+        .exists());
+    restore_env("DECAY_DB_PATH", old_db);
+    restore_env("XDG_DATA_HOME", old_xdg);
+    restore_env("HOME", old_home);
 }
 
 #[test]

@@ -19,14 +19,27 @@ pub enum SaveBaselineOutcome {
 ///
 /// Priority:
 /// 1. `DECAY_DB_PATH` env var (testing override; not part of public CLI surface)
-/// 2. `dirs::data_dir()/<APP_NAME>/<DB_FILENAME>`
+/// 2. `$XDG_DATA_HOME/<APP_NAME>/<DB_FILENAME>`
+/// 3. `$HOME/.local/share/<APP_NAME>/<DB_FILENAME>`
 fn resolve_db_path() -> Result<PathBuf> {
     if let Ok(p) = std::env::var("DECAY_DB_PATH") {
         return Ok(PathBuf::from(p));
     }
-    let base = dirs::data_dir()
-        .ok_or_else(|| DecayError::InvalidProject("could not resolve user data dir".to_string()))?;
+    let base = xdg_data_home()?;
     Ok(base.join(APP_NAME).join(DB_FILENAME))
+}
+
+fn xdg_data_home() -> Result<PathBuf> {
+    if let Ok(path) = std::env::var("XDG_DATA_HOME") {
+        if !path.is_empty() {
+            return Ok(PathBuf::from(path));
+        }
+    }
+
+    let home = std::env::var("HOME").map_err(|_| {
+        DecayError::InvalidProject("could not resolve HOME for XDG data dir".to_string())
+    })?;
+    Ok(PathBuf::from(home).join(".local").join("share"))
 }
 
 fn map_db_err(message: impl Into<String>) -> impl FnOnce(rusqlite::Error) -> DecayError {

@@ -104,12 +104,18 @@ value > threshold => breach
 
 ## 数据持久化
 
-v0.1.0 使用 SQLite 保存 baseline。
+v0.1.0 使用 SQLite 保存 baseline。默认路径必须符合 XDG data 目录规范。
 
 默认路径：
 
 ```text
-dirs::data_dir()/decay/snapshots.db
+$XDG_DATA_HOME/decay/snapshots.db
+```
+
+当 `XDG_DATA_HOME` 未设置时，回退到：
+
+```text
+$HOME/.local/share/decay/snapshots.db
 ```
 
 测试可通过 `DECAY_DB_PATH` 覆盖。

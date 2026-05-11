@@ -65,10 +65,17 @@ pub fn scan_with_excludes(
                 &pf.function.name,
                 &pf.function.param_types,
             );
+            let stable_signature_hash = fingerprint::compute_stable(
+                &pf.function.impl_context,
+                &pf.function.cfg_context,
+                &pf.function.name,
+                &pf.function.param_types,
+            );
 
             out.push(Function {
                 metrics,
                 signature_hash,
+                stable_signature_hash,
                 ..pf.function
             });
         }

@@ -2,7 +2,10 @@
 
 use std::sync::Mutex;
 
-use decay::store::{load_baseline, open_db, save_baseline, SaveBaselineOutcome};
+use decay::store::{
+    load_baseline as store_load_baseline, open_db, save_baseline as store_save_baseline,
+    ProjectIdentity, SaveBaselineOutcome,
+};
 use decay::types::{Function, Metrics};
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -17,6 +20,7 @@ fn make_func(file: &str, name: &str, hash: u64, nesting: u32) -> Function {
         end_line: 10,
         param_types: vec!["i32".to_string(), "&str".to_string()],
         signature_hash: hash,
+        stable_signature_hash: hash.wrapping_add(1),
         metrics: Metrics {
             nesting,
             cyclomatic: 2,
@@ -26,6 +30,45 @@ fn make_func(file: &str, name: &str, hash: u64, nesting: u32) -> Function {
             max_condition_ops: 1,
         },
     }
+}
+
+fn save_baseline(
+    conn: &rusqlite::Connection,
+    project_id: &str,
+    scope: &str,
+    version: &str,
+    funcs: Vec<Function>,
+    diagnostic_count: usize,
+    replace: bool,
+) -> decay::error::Result<SaveBaselineOutcome> {
+    store_save_baseline(
+        conn,
+        ProjectIdentity {
+            project_id,
+            project_key: &format!("{project_id}-key"),
+            workspace_root: &format!("/tmp/{project_id}"),
+        },
+        scope,
+        version,
+        funcs,
+        diagnostic_count,
+        replace,
+    )
+}
+
+fn load_baseline(
+    conn: &rusqlite::Connection,
+    project_id: &str,
+    scope: &str,
+    version: &str,
+) -> decay::error::Result<Option<decay::types::Baseline>> {
+    store_load_baseline(
+        conn,
+        project_id,
+        &format!("{project_id}-key"),
+        scope,
+        version,
+    )
 }
 
 fn restore_env(key: &str, value: Option<std::ffi::OsString>) {
@@ -142,6 +185,7 @@ fn save_and_load_named_baseline_round_trip() {
         assert_eq!(loaded.diagnostic_count, 0);
         assert_eq!(loaded.functions.len(), 1);
         assert_eq!(loaded.functions[0].signature_hash, u64::MAX);
+        assert_eq!(loaded.functions[0].stable_signature_hash, 0);
         assert_eq!(loaded.functions[0].metrics, f.metrics);
     });
 }

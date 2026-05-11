@@ -12,14 +12,15 @@ pub enum MetricId {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Function {
-    pub file: String,             // 项目根相对路径, 正斜杠
-    pub impl_context: String,     // impl 块上下文 (eg "Foo" / "Display for Foo"); 自由 fn 为空
-    pub cfg_context: String,      // 连续 #[cfg(...)] attribute 规范化文本; 无 cfg 时为空
-    pub name: String,             // fn 名, 不含 impl receiver
-    pub start_line: u32,          // 1-indexed
-    pub end_line: u32,            // 1-indexed
-    pub param_types: Vec<String>, // 归一化后, 用于指纹
-    pub signature_hash: u64,      // fingerprint::compute() 结果
+    pub file: String,               // 项目根相对路径, 正斜杠
+    pub impl_context: String,       // impl 块上下文 (eg "Foo" / "Display for Foo"); 自由 fn 为空
+    pub cfg_context: String,        // 连续 #[cfg(...)] attribute 规范化文本; 无 cfg 时为空
+    pub name: String,               // fn 名, 不含 impl receiver
+    pub start_line: u32,            // 1-indexed
+    pub end_line: u32,              // 1-indexed
+    pub param_types: Vec<String>,   // 归一化后, 用于指纹
+    pub signature_hash: u64,        // fingerprint::compute() 结果
+    pub stable_signature_hash: u64, // 不含 file 的迁移匹配指纹
     pub metrics: Metrics,
 }
 
@@ -49,8 +50,10 @@ impl Metrics {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Baseline {
     pub id: i64,
-    pub project_id: String, // 项目根绝对路径
-    pub scope: String,      // scan scope, e.g. "prod" / "all"
+    pub project_id: String,     // 项目根绝对路径
+    pub project_key: String,    // 稳定项目身份；优先来自 git remote
+    pub workspace_root: String, // 保存 baseline 时的本地根路径
+    pub scope: String,          // scan scope, e.g. "prod" / "all"
     pub version: String,
     pub created_at: i64, // unix timestamp seconds
     pub updated_at: i64, // unix timestamp seconds
@@ -73,7 +76,8 @@ pub struct DiffEntry {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DiffKind {
-    Added,
+    AddedNew,
+    AddedMaybeMoved,
     Worsened,
     CrossedThreshold,
 }

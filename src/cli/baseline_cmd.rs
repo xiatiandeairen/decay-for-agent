@@ -1,6 +1,6 @@
 use crate::cli::common;
 use crate::error::Result;
-use crate::store::{self, SaveBaselineOutcome};
+use crate::store::{self, ProjectIdentity, SaveBaselineOutcome};
 
 /// Run `decay baseline <version>`: save current tree as a named baseline.
 pub fn run(args: &common::ScanArgs, version: &str, replace: bool) -> Result<i32> {
@@ -9,7 +9,11 @@ pub fn run(args: &common::ScanArgs, version: &str, replace: bool) -> Result<i32>
     let conn = store::open_db()?;
     let outcome = store::save_baseline(
         &conn,
-        &project.project_id,
+        ProjectIdentity {
+            project_id: &project.project_id,
+            project_key: &project.project_key,
+            workspace_root: &project.workspace_root,
+        },
         args.scope.as_str(),
         version,
         scan.funcs.clone(),

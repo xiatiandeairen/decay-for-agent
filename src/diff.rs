@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::metric;
 use crate::types::{DiffEntry, DiffKind, Function, FunctionSet, Metrics};
@@ -7,7 +7,8 @@ use crate::types::{DiffEntry, DiffKind, Function, FunctionSet, Metrics};
 /// Compare two snapshots and return the functions that warrant a degradation report.
 ///
 /// Reporting policy:
-/// - `Added`: function present in `curr` but not in `prev`, with at least one metric ≥ threshold.
+/// - `AddedNew`: function present in `curr` but not in `prev`, with at least one metric ≥ threshold.
+/// - `AddedMaybeMoved`: function was not matched, but has a path-insensitive identity collision.
 /// - `CrossedThreshold`: same `signature_hash`, some metric was below threshold and is now ≥ threshold.
 /// - `Worsened`: same `signature_hash`, some metric was already ≥ threshold and increased further.
 ///
@@ -22,17 +23,51 @@ pub fn diff(prev: &FunctionSet, curr: &FunctionSet) -> Vec<DiffEntry> {
         .iter()
         .map(|f| (f.signature_hash, f))
         .collect();
+    let stable_prev_index = unique_stable_index(&prev.functions);
+    let stable_prev_presence = stable_presence(&prev.functions);
+    let weak_prev_index = unique_weak_index(&prev.functions);
+    let weak_prev_presence = weak_presence(&prev.functions);
 
     let mut entries: Vec<DiffEntry> = Vec::new();
 
     for func in &curr.functions {
         match prev_index.get(&func.signature_hash) {
             None => {
+                if let Some(prev_func) = stable_prev_index.get(&func.stable_signature_hash) {
+                    if let Some(kind) = classify_change(prev_func.metrics, func.metrics) {
+                        entries.push(DiffEntry {
+                            function: func.clone(),
+                            previous: Some(prev_func.metrics),
+                            kind,
+                        });
+                    }
+                    continue;
+                }
+                let weak_key = WeakFunctionKey::from(func);
+                if let Some(prev_func) = weak_prev_index.get(&weak_key) {
+                    if let Some(kind) = classify_change(prev_func.metrics, func.metrics) {
+                        entries.push(DiffEntry {
+                            function: func.clone(),
+                            previous: Some(prev_func.metrics),
+                            kind,
+                        });
+                    }
+                    continue;
+                }
+
                 if exceeds_any_threshold(func.metrics) {
+                    let kind = if func.stable_signature_hash != 0
+                        && stable_prev_presence.contains(&func.stable_signature_hash)
+                        || weak_prev_presence.contains(&weak_key)
+                    {
+                        DiffKind::AddedMaybeMoved
+                    } else {
+                        DiffKind::AddedNew
+                    };
                     entries.push(DiffEntry {
                         function: func.clone(),
                         previous: None,
-                        kind: DiffKind::Added,
+                        kind,
                     });
                 }
             }
@@ -55,6 +90,66 @@ pub fn diff(prev: &FunctionSet, curr: &FunctionSet) -> Vec<DiffEntry> {
     });
 
     entries
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct WeakFunctionKey {
+    impl_context: String,
+    cfg_context: String,
+    name: String,
+    params: u32,
+}
+
+impl From<&Function> for WeakFunctionKey {
+    fn from(f: &Function) -> Self {
+        Self {
+            impl_context: f.impl_context.clone(),
+            cfg_context: f.cfg_context.clone(),
+            name: f.name.clone(),
+            params: f.metrics.params,
+        }
+    }
+}
+
+fn unique_stable_index(functions: &[Function]) -> HashMap<u64, &Function> {
+    let mut counts: HashMap<u64, usize> = HashMap::new();
+    for f in functions {
+        if f.stable_signature_hash != 0 {
+            *counts.entry(f.stable_signature_hash).or_insert(0) += 1;
+        }
+    }
+
+    functions
+        .iter()
+        .filter(|f| f.stable_signature_hash != 0)
+        .filter(|f| counts.get(&f.stable_signature_hash) == Some(&1))
+        .map(|f| (f.stable_signature_hash, f))
+        .collect()
+}
+
+fn stable_presence(functions: &[Function]) -> HashSet<u64> {
+    functions
+        .iter()
+        .filter(|f| f.stable_signature_hash != 0)
+        .map(|f| f.stable_signature_hash)
+        .collect()
+}
+
+fn unique_weak_index(functions: &[Function]) -> HashMap<WeakFunctionKey, &Function> {
+    let mut counts: HashMap<WeakFunctionKey, usize> = HashMap::new();
+    for f in functions {
+        *counts.entry(WeakFunctionKey::from(f)).or_insert(0) += 1;
+    }
+
+    functions
+        .iter()
+        .filter(|f| counts.get(&WeakFunctionKey::from(*f)) == Some(&1))
+        .map(|f| (WeakFunctionKey::from(f), f))
+        .collect()
+}
+
+fn weak_presence(functions: &[Function]) -> HashSet<WeakFunctionKey> {
+    functions.iter().map(WeakFunctionKey::from).collect()
 }
 
 /// Returns true when at least one metric is over its threshold.

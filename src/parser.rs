@@ -208,6 +208,7 @@ fn extract_function(
         end_line,
         param_types,
         signature_hash: 0,
+        stable_signature_hash: 0,
         metrics: Metrics {
             nesting: 0,
             cyclomatic: 0,

@@ -46,3 +46,27 @@ pub fn compute(
     }
     xxh3_64(&bytes)
 }
+
+/// Compute a path-insensitive fingerprint for high-confidence move detection.
+///
+/// This intentionally excludes `file`, so a function moved across modules can
+/// still be matched when the remaining signature is unique in both snapshots.
+pub fn compute_stable(
+    impl_context: &str,
+    cfg_context: &str,
+    name: &str,
+    param_types: &[String],
+) -> u64 {
+    let mut bytes = Vec::with_capacity(96);
+    bytes.extend_from_slice(impl_context.as_bytes());
+    bytes.push(0);
+    bytes.extend_from_slice(cfg_context.as_bytes());
+    bytes.push(0);
+    bytes.extend_from_slice(name.as_bytes());
+    bytes.push(0);
+    for t in param_types {
+        bytes.extend_from_slice(t.as_bytes());
+        bytes.push(0);
+    }
+    xxh3_64(&bytes)
+}

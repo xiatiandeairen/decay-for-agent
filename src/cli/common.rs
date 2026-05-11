@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::process::Command;
 use std::time::Instant;
 
 use std::cmp::Reverse;
@@ -29,6 +30,8 @@ pub struct ScanArgs {
 pub(crate) struct ProjectContext {
     pub root: PathBuf,
     pub project_id: String,
+    pub project_key: String,
+    pub workspace_root: String,
 }
 
 pub(crate) struct ScanResult {
@@ -47,18 +50,75 @@ pub(crate) struct MetricBreach {
 }
 
 pub(crate) fn resolve_project() -> Result<ProjectContext> {
-    let root = std::env::current_dir().map_err(|source| DecayError::Io {
+    let cwd = std::env::current_dir().map_err(|source| DecayError::Io {
         path: ".".to_string(),
         source,
     })?;
+    let root = git_root(&cwd).unwrap_or(cwd);
     let canonical = root.canonicalize().map_err(|source| DecayError::Io {
         path: root.display().to_string(),
         source,
     })?;
+    let workspace_root = canonical.to_string_lossy().to_string();
+    let project_key = git_remote_key(&canonical).unwrap_or_else(|| workspace_root.clone());
     Ok(ProjectContext {
         root,
-        project_id: canonical.to_string_lossy().to_string(),
+        project_id: workspace_root.clone(),
+        project_key,
+        workspace_root,
     })
+}
+
+fn git_root(cwd: &std::path::Path) -> Option<PathBuf> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .current_dir(cwd)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let root = String::from_utf8(output.stdout).ok()?;
+    let root = root.trim();
+    (!root.is_empty()).then(|| PathBuf::from(root))
+}
+
+fn git_remote_key(root: &std::path::Path) -> Option<String> {
+    let output = Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(root)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let remote = String::from_utf8(output.stdout).ok()?;
+    normalize_git_remote(remote.trim())
+}
+
+fn normalize_git_remote(remote: &str) -> Option<String> {
+    if remote.is_empty() {
+        return None;
+    }
+    let mut s = remote.trim().to_string();
+    if let Some(rest) = s.strip_prefix("git@") {
+        if let Some((host, path)) = rest.split_once(':') {
+            s = format!("{host}/{path}");
+        }
+    }
+    for prefix in ["ssh://git@", "https://", "http://", "ssh://"] {
+        if let Some(rest) = s.strip_prefix(prefix) {
+            s = rest.to_string();
+            break;
+        }
+    }
+    if let Some(rest) = s.strip_prefix("git@") {
+        s = rest.to_string();
+    }
+    if let Some(rest) = s.strip_suffix(".git") {
+        s = rest.to_string();
+    }
+    Some(s.trim_end_matches('/').to_ascii_lowercase())
 }
 
 pub(crate) fn scan_current(project_root: &std::path::Path, args: &ScanArgs) -> Result<ScanResult> {

@@ -12,14 +12,19 @@ use crate::types::{DiffEntry, DiffKind, FunctionSet, MetricId};
 pub fn run(args: &common::ScanArgs, from: &str, to: Option<&str>) -> Result<i32> {
     let project = common::resolve_project()?;
     let conn = store::open_db()?;
-    let from_baseline =
-        match store::load_baseline(&conn, &project.project_id, args.scope.as_str(), from)? {
-            Some(b) => b,
-            None => {
-                print_missing(args, from);
-                return Ok(2);
-            }
-        };
+    let from_baseline = match store::load_baseline(
+        &conn,
+        &project.project_id,
+        &project.project_key,
+        args.scope.as_str(),
+        from,
+    )? {
+        Some(b) => b,
+        None => {
+            print_missing(args, from);
+            return Ok(2);
+        }
+    };
 
     let from_partial = from_baseline.is_partial;
     let from_diagnostics = from_baseline.diagnostic_count;
@@ -29,6 +34,7 @@ pub fn run(args: &common::ScanArgs, from: &str, to: Option<&str>) -> Result<i32>
             let baseline = match store::load_baseline(
                 &conn,
                 &project.project_id,
+                &project.project_key,
                 args.scope.as_str(),
                 version,
             )? {
@@ -223,7 +229,7 @@ fn print_record(record: &DiffRecord, verbose: bool) {
             .collect::<Vec<_>>()
             .join("; ");
         match record.entry.kind {
-            DiffKind::Added => println!("  evidence={}", changes),
+            DiffKind::AddedNew | DiffKind::AddedMaybeMoved => println!("  evidence={}", changes),
             _ => println!("  change={}", changes),
         }
     }
@@ -267,16 +273,18 @@ fn build_report(entries: &[DiffEntry]) -> Vec<ChangeGroup> {
 
 fn changes_for_entry(entry: &DiffEntry) -> Vec<ChangeEvidence> {
     match (entry.kind, entry.previous) {
-        (DiffKind::Added, _) => current_metric_values(entry.function.metrics)
-            .into_iter()
-            .filter(|m| metric::breaches_threshold(m.value, m.threshold))
-            .map(|m| ChangeEvidence {
-                metric: m.metric,
-                previous: None,
-                value: m.value,
-                threshold: m.threshold,
-            })
-            .collect(),
+        (DiffKind::AddedNew | DiffKind::AddedMaybeMoved, _) => {
+            current_metric_values(entry.function.metrics)
+                .into_iter()
+                .filter(|m| metric::breaches_threshold(m.value, m.threshold))
+                .map(|m| ChangeEvidence {
+                    metric: m.metric,
+                    previous: None,
+                    value: m.value,
+                    threshold: m.threshold,
+                })
+                .collect()
+        }
         (_, Some(prev)) => {
             let curr = entry.function.metrics;
             metric_pairs(prev, curr)
@@ -411,10 +419,17 @@ struct ChangeGroup {
 fn change_groups() -> Vec<ChangeGroup> {
     vec![
         ChangeGroup {
-            kind: DiffKind::Added,
+            kind: DiffKind::AddedNew,
             name: "new high-risk functions",
             what_changed: "These functions did not exist in the baseline and are already above recommended complexity limits.",
             why: "New code entering the project above the risk boundary is likely to become expensive to modify quickly.",
+            problem_groups: problem_groups(),
+        },
+        ChangeGroup {
+            kind: DiffKind::AddedMaybeMoved,
+            name: "unmatched high-risk functions",
+            what_changed: "These functions were not matched to the baseline and are already above recommended complexity limits.",
+            why: "This is a weaker signal: the function may be new, moved, renamed, or otherwise changed identity during refactoring.",
             problem_groups: problem_groups(),
         },
         ChangeGroup {
@@ -460,8 +475,11 @@ fn problem_groups() -> Vec<ProblemGroup> {
 }
 
 fn problem_for(changes: &[ChangeEvidence], kind: DiffKind) -> &'static str {
-    if kind == DiffKind::Added {
+    if kind == DiffKind::AddedNew {
         return "New function is already hard to maintain safely.";
+    }
+    if kind == DiffKind::AddedMaybeMoved {
+        return "Unmatched function may be new or changed identity and is hard to maintain safely.";
     }
     if changes.iter().any(|c| c.metric == MetricId::StatementCount) {
         "Function body grew beyond a focused size."

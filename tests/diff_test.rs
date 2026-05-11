@@ -11,6 +11,7 @@ fn make_function(signature_hash: u64, name: &str, metrics: Metrics) -> Function 
         end_line: 10,
         param_types: Vec::new(),
         signature_hash,
+        stable_signature_hash: signature_hash,
         metrics,
     }
 }
@@ -40,9 +41,54 @@ fn added_above_threshold() {
     let entries = diff(&prev, &curr);
 
     assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].kind, DiffKind::Added);
+    assert_eq!(entries[0].kind, DiffKind::AddedNew);
     assert!(entries[0].previous.is_none());
     assert_eq!(entries[0].function.name, "complex_fn");
+}
+
+#[test]
+fn moved_unique_stable_signature_reports_metric_regression() {
+    let mut prev_f = make_function(0xAAAA, "moved_fn", metrics(0, 0, 10, 0));
+    prev_f.stable_signature_hash = 0x9999;
+    prev_f.file = "src/old.rs".to_string();
+    let mut curr_f = make_function(0xBBBB, "moved_fn", metrics(0, 0, 20, 0));
+    curr_f.stable_signature_hash = 0x9999;
+    curr_f.file = "src/new.rs".to_string();
+
+    let entries = diff(&function_set(vec![prev_f]), &function_set(vec![curr_f]));
+
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].kind, DiffKind::CrossedThreshold);
+    assert_eq!(entries[0].previous.unwrap().cognitive, 10);
+}
+
+#[test]
+fn moved_unique_stable_signature_without_regression_is_not_added_noise() {
+    let mut prev_f = make_function(0xAAAA, "moved_fn", metrics(0, 0, 20, 0));
+    prev_f.stable_signature_hash = 0x9999;
+    prev_f.file = "src/old.rs".to_string();
+    let mut curr_f = make_function(0xBBBB, "moved_fn", metrics(0, 0, 20, 0));
+    curr_f.stable_signature_hash = 0x9999;
+    curr_f.file = "src/new.rs".to_string();
+
+    let entries = diff(&function_set(vec![prev_f]), &function_set(vec![curr_f]));
+
+    assert!(entries.is_empty());
+}
+
+#[test]
+fn moved_legacy_baseline_uses_unique_weak_identity() {
+    let mut prev_f = make_function(0xAAAA, "legacy_moved", metrics(0, 0, 10, 2));
+    prev_f.stable_signature_hash = 0;
+    prev_f.file = "src/old.rs".to_string();
+    let mut curr_f = make_function(0xBBBB, "legacy_moved", metrics(0, 0, 20, 2));
+    curr_f.stable_signature_hash = 0x9999;
+    curr_f.file = "src/new.rs".to_string();
+
+    let entries = diff(&function_set(vec![prev_f]), &function_set(vec![curr_f]));
+
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].kind, DiffKind::CrossedThreshold);
 }
 
 #[test]

@@ -15,6 +15,13 @@ pub enum SaveBaselineOutcome {
     ExistsDifferent { id: i64 },
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct ProjectIdentity<'a> {
+    pub project_id: &'a str,
+    pub project_key: &'a str,
+    pub workspace_root: &'a str,
+}
+
 /// Resolve the SQLite database path.
 ///
 /// Priority:
@@ -69,6 +76,8 @@ fn init_schema(conn: &Connection) -> Result<()> {
         "CREATE TABLE IF NOT EXISTS baselines (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id   TEXT NOT NULL,
+            project_key  TEXT,
+            workspace_root TEXT,
             scope        TEXT NOT NULL,
             version      TEXT NOT NULL,
             created_at   INTEGER NOT NULL,
@@ -83,6 +92,7 @@ fn init_schema(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS functions (
             baseline_id       INTEGER NOT NULL REFERENCES baselines(id) ON DELETE CASCADE,
             signature_hash    INTEGER NOT NULL,
+            stable_signature_hash INTEGER,
             file              TEXT NOT NULL,
             impl_context      TEXT NOT NULL,
             cfg_context       TEXT NOT NULL,
@@ -100,19 +110,63 @@ fn init_schema(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_func_baseline ON functions(baseline_id);",
     )
     .map_err(map_db_err("failed to init schema"))?;
+    migrate_schema(conn)?;
+    Ok(())
+}
+
+fn migrate_schema(conn: &Connection) -> Result<()> {
+    add_column_if_missing(conn, "baselines", "project_key", "TEXT")?;
+    add_column_if_missing(conn, "baselines", "workspace_root", "TEXT")?;
+    add_column_if_missing(conn, "functions", "stable_signature_hash", "INTEGER")?;
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_baseline_project_key
+            ON baselines(project_key, scope, version);",
+    )
+    .map_err(map_db_err("failed to migrate schema indexes"))?;
+    Ok(())
+}
+
+fn add_column_if_missing(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    column_type: &str,
+) -> Result<()> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(map_db_err("failed to inspect schema"))?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(map_db_err("failed to read schema"))?;
+    for row in rows {
+        if row.map_err(map_db_err("failed to read schema row"))? == column {
+            return Ok(());
+        }
+    }
+    conn.execute(
+        &format!("ALTER TABLE {table} ADD COLUMN {column} {column_type}"),
+        [],
+    )
+    .map_err(map_db_err("failed to migrate schema column"))?;
     Ok(())
 }
 
 pub fn save_baseline(
     conn: &Connection,
-    project_id: &str,
+    project: ProjectIdentity<'_>,
     scope: &str,
     version: &str,
     funcs: Vec<Function>,
     diagnostic_count: usize,
     replace: bool,
 ) -> Result<SaveBaselineOutcome> {
-    if let Some(existing) = load_baseline(conn, project_id, scope, version)? {
+    if let Some(existing) = load_baseline(
+        conn,
+        project.project_id,
+        project.project_key,
+        scope,
+        version,
+    )? {
         if functions_equivalent(&existing.functions, &funcs)
             && existing.diagnostic_count == diagnostic_count as u32
         {
@@ -125,26 +179,50 @@ pub fn save_baseline(
         return Ok(SaveBaselineOutcome::Replaced { id: existing.id });
     }
 
-    let id = insert_baseline(conn, project_id, scope, version, funcs, diagnostic_count)?;
+    let id = insert_baseline(conn, project, scope, version, funcs, diagnostic_count)?;
     Ok(SaveBaselineOutcome::Created { id })
 }
 
 pub fn load_baseline(
     conn: &Connection,
     project_id: &str,
+    project_key: &str,
     scope: &str,
     version: &str,
 ) -> Result<Option<Baseline>> {
     let mut baseline = conn
         .query_row(
-            "SELECT id, project_id, scope, version, created_at, updated_at, is_partial, diagnostics
+            "SELECT id, project_id, COALESCE(project_key, ''), COALESCE(workspace_root, project_id),
+                    scope, version, created_at, updated_at, is_partial, diagnostics
              FROM baselines
-             WHERE project_id = ?1 AND scope = ?2 AND version = ?3",
-            params![project_id, scope, version],
+             WHERE project_key = ?1 AND scope = ?2 AND version = ?3
+             ORDER BY updated_at DESC
+             LIMIT 1",
+            params![project_key, scope, version],
             row_to_baseline,
         )
         .optional()
         .map_err(map_db_err("failed to load baseline"))?;
+
+    if baseline.is_none() {
+        baseline = conn
+            .query_row(
+                "SELECT id, project_id, COALESCE(project_key, ''), COALESCE(workspace_root, project_id),
+                        scope, version, created_at, updated_at, is_partial, diagnostics
+                 FROM baselines
+                 WHERE project_id = ?1 AND scope = ?2 AND version = ?3
+                 ORDER BY updated_at DESC
+                 LIMIT 1",
+                params![project_id, scope, version],
+                row_to_baseline,
+            )
+            .optional()
+            .map_err(map_db_err("failed to load baseline"))?;
+    }
+
+    if baseline.is_none() {
+        baseline = load_unique_legacy_baseline(conn, scope, version)?;
+    }
 
     if let Some(b) = &mut baseline {
         b.functions = load_functions(conn, b.id)?;
@@ -152,9 +230,40 @@ pub fn load_baseline(
     Ok(baseline)
 }
 
+fn load_unique_legacy_baseline(
+    conn: &Connection,
+    scope: &str,
+    version: &str,
+) -> Result<Option<Baseline>> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, project_id, COALESCE(project_key, ''), COALESCE(workspace_root, project_id),
+                    scope, version, created_at, updated_at, is_partial, diagnostics
+             FROM baselines
+             WHERE scope = ?1 AND version = ?2
+             ORDER BY updated_at DESC",
+        )
+        .map_err(map_db_err("failed to prepare legacy baseline lookup"))?;
+    let rows = stmt
+        .query_map(params![scope, version], row_to_baseline)
+        .map_err(map_db_err("failed to load legacy baseline"))?;
+    let mut baselines = Vec::new();
+    for row in rows {
+        baselines.push(row.map_err(map_db_err("failed to read legacy baseline row"))?);
+    }
+
+    if baselines.len() != 1 {
+        return Ok(None);
+    }
+
+    let mut baseline = baselines.remove(0);
+    baseline.functions = load_functions(conn, baseline.id)?;
+    Ok(Some(baseline))
+}
+
 fn insert_baseline(
     conn: &Connection,
-    project_id: &str,
+    project: ProjectIdentity<'_>,
     scope: &str,
     version: &str,
     funcs: Vec<Function>,
@@ -165,10 +274,15 @@ fn insert_baseline(
         .unchecked_transaction()
         .map_err(map_db_err("failed to begin tx"))?;
     tx.execute(
-        "INSERT INTO baselines (project_id, scope, version, created_at, updated_at, is_partial, diagnostics)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO baselines (
+            project_id, project_key, workspace_root, scope, version,
+            created_at, updated_at, is_partial, diagnostics
+         )
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
-            project_id,
+            project.project_id,
+            project.project_key,
+            project.workspace_root,
             scope,
             version,
             now,
@@ -218,10 +332,11 @@ fn insert_functions(conn: &Connection, baseline_id: i64, funcs: &[Function]) -> 
     let mut stmt = conn
         .prepare(
             "INSERT INTO functions (
-                baseline_id, signature_hash, file, impl_context, cfg_context, name,
+                baseline_id, signature_hash, stable_signature_hash,
+                file, impl_context, cfg_context, name,
                 start_line, end_line, nesting, cyclomatic, cognitive, params,
-        statement_count, max_condition_ops
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                statement_count, max_condition_ops
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         )
         .map_err(map_db_err("failed to prepare functions insert"))?;
 
@@ -229,6 +344,7 @@ fn insert_functions(conn: &Connection, baseline_id: i64, funcs: &[Function]) -> 
         stmt.execute(params![
             baseline_id,
             f.signature_hash as i64,
+            f.stable_signature_hash as i64,
             f.file,
             f.impl_context,
             f.cfg_context,
@@ -250,7 +366,8 @@ fn insert_functions(conn: &Connection, baseline_id: i64, funcs: &[Function]) -> 
 fn load_functions(conn: &Connection, baseline_id: i64) -> Result<Vec<Function>> {
     let mut stmt = conn
         .prepare(
-            "SELECT signature_hash, file, impl_context, cfg_context, name,
+            "SELECT signature_hash, COALESCE(stable_signature_hash, 0),
+                    file, impl_context, cfg_context, name,
                     start_line, end_line, nesting, cyclomatic, cognitive, params,
                     statement_count, max_condition_ops
              FROM functions
@@ -273,34 +390,38 @@ fn row_to_baseline(row: &rusqlite::Row<'_>) -> rusqlite::Result<Baseline> {
     Ok(Baseline {
         id: row.get(0)?,
         project_id: row.get(1)?,
-        scope: row.get(2)?,
-        version: row.get(3)?,
-        created_at: row.get(4)?,
-        updated_at: row.get(5)?,
-        is_partial: row.get(6)?,
-        diagnostic_count: row.get::<_, i64>(7)? as u32,
+        project_key: row.get(2)?,
+        workspace_root: row.get(3)?,
+        scope: row.get(4)?,
+        version: row.get(5)?,
+        created_at: row.get(6)?,
+        updated_at: row.get(7)?,
+        is_partial: row.get(8)?,
+        diagnostic_count: row.get::<_, i64>(9)? as u32,
         functions: Vec::new(),
     })
 }
 
 fn row_to_function(row: &rusqlite::Row<'_>) -> rusqlite::Result<Function> {
     let hash_i64: i64 = row.get(0)?;
+    let stable_hash_i64: i64 = row.get(1)?;
     Ok(Function {
         signature_hash: hash_i64 as u64,
-        file: row.get(1)?,
-        impl_context: row.get(2)?,
-        cfg_context: row.get(3)?,
-        name: row.get(4)?,
-        start_line: row.get::<_, i64>(5)? as u32,
-        end_line: row.get::<_, i64>(6)? as u32,
+        stable_signature_hash: stable_hash_i64 as u64,
+        file: row.get(2)?,
+        impl_context: row.get(3)?,
+        cfg_context: row.get(4)?,
+        name: row.get(5)?,
+        start_line: row.get::<_, i64>(6)? as u32,
+        end_line: row.get::<_, i64>(7)? as u32,
         param_types: Vec::new(),
         metrics: Metrics {
-            nesting: row.get::<_, i64>(7)? as u32,
-            cyclomatic: row.get::<_, i64>(8)? as u32,
-            cognitive: row.get::<_, i64>(9)? as u32,
-            params: row.get::<_, i64>(10)? as u32,
-            statement_count: row.get::<_, i64>(11)? as u32,
-            max_condition_ops: row.get::<_, i64>(12)? as u32,
+            nesting: row.get::<_, i64>(8)? as u32,
+            cyclomatic: row.get::<_, i64>(9)? as u32,
+            cognitive: row.get::<_, i64>(10)? as u32,
+            params: row.get::<_, i64>(11)? as u32,
+            statement_count: row.get::<_, i64>(12)? as u32,
+            max_condition_ops: row.get::<_, i64>(13)? as u32,
         },
     })
 }
@@ -325,6 +446,7 @@ fn canonical_functions(funcs: &[Function]) -> Vec<FunctionKey> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct FunctionKey {
     signature_hash: u64,
+    stable_signature_hash: u64,
     file: String,
     impl_context: String,
     cfg_context: String,
@@ -338,6 +460,7 @@ impl From<&Function> for FunctionKey {
     fn from(f: &Function) -> Self {
         Self {
             signature_hash: f.signature_hash,
+            stable_signature_hash: f.stable_signature_hash,
             file: f.file.clone(),
             impl_context: f.impl_context.clone(),
             cfg_context: f.cfg_context.clone(),

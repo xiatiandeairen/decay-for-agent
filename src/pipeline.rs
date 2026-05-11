@@ -86,3 +86,34 @@ pub fn scan_with_excludes(
         diagnostics,
     })
 }
+
+pub(crate) fn scan_source(rel_file: &str, source: &str) -> Result<Vec<Function>> {
+    let parsed = parser::parse_source_text(rel_file, source)?;
+    let mut out = Vec::new();
+
+    for pf in parsed.funcs {
+        let metrics = metric::compute(&parsed.tree, &parsed.source, pf.body_range);
+        let signature_hash = fingerprint::compute(
+            &pf.function.file,
+            &pf.function.impl_context,
+            &pf.function.cfg_context,
+            &pf.function.name,
+            &pf.function.param_types,
+        );
+        let stable_signature_hash = fingerprint::compute_stable(
+            &pf.function.impl_context,
+            &pf.function.cfg_context,
+            &pf.function.name,
+            &pf.function.param_types,
+        );
+
+        out.push(Function {
+            metrics,
+            signature_hash,
+            stable_signature_hash,
+            ..pf.function
+        });
+    }
+
+    Ok(out)
+}

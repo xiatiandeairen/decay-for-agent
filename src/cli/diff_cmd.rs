@@ -1,6 +1,7 @@
 use crate::cli::common;
 use crate::diff;
 use crate::error::Result;
+use crate::impact;
 use crate::metric::{self, ProblemGroupId};
 use crate::store;
 use crate::types::{DiffEntry, DiffKind, FunctionSet, MetricId};
@@ -11,6 +12,23 @@ use crate::types::{DiffEntry, DiffKind, FunctionSet, MetricId};
 /// Two versions compare baseline `<from>` to baseline `<to>`.
 pub fn run(args: &common::ScanArgs, from: &str, to: Option<&str>) -> Result<i32> {
     let project = common::resolve_project()?;
+    if to.is_none() && is_git_ref(&project.root, from) {
+        let report = impact::analyze_worktree_diff(&project.root, from)?;
+        print_impact_report(&report);
+        return Ok(
+            if report.evidences.iter().any(|e| {
+                matches!(
+                    e.kind,
+                    impact::EvidenceKind::Worsened | impact::EvidenceKind::NewHighRisk
+                )
+            }) {
+                1
+            } else {
+                0
+            },
+        );
+    }
+
     let conn = store::open_db()?;
     let from_baseline = match store::load_baseline(
         &conn,
@@ -85,6 +103,55 @@ pub fn run(args: &common::ScanArgs, from: &str, to: Option<&str>) -> Result<i32>
     }
 
     Ok(if entries.is_empty() { 0 } else { 1 })
+}
+
+fn is_git_ref(project_root: &std::path::Path, name: &str) -> bool {
+    std::process::Command::new("git")
+        .args(["rev-parse", "--verify", name])
+        .current_dir(project_root)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+fn print_impact_report(report: &impact::ImpactReport) {
+    println!("Complexity impact:");
+    println!(
+        "  changed_functions={} evidence={} partial={} diagnostics={}",
+        report.changed_functions,
+        report.evidences.len(),
+        !report.diagnostics.is_empty(),
+        report.diagnostics.len()
+    );
+    for (idx, evidence) in report.evidences.iter().enumerate() {
+        println!(
+            "- id={} category=complexity kind={} subject=function source={}",
+            idx + 1,
+            evidence.kind.as_str(),
+            evidence.source
+        );
+        println!("  function={}:{}", evidence.file, evidence.function);
+        if let (Some(previous), Some(current)) = (evidence.previous, evidence.current) {
+            println!(
+                "  metrics=cognitive:{}->{}, cyclomatic:{}->{}, statements:{}->{}",
+                previous.cognitive,
+                current.cognitive,
+                previous.cyclomatic,
+                current.cyclomatic,
+                previous.statement_count,
+                current.statement_count
+            );
+        }
+    }
+    println!();
+    println!("Stability impact:");
+    println!("  not_collected=true");
+    println!();
+    println!("Quality impact:");
+    println!("  not_collected=true");
+    for diagnostic in &report.diagnostics {
+        println!("diagnostic={diagnostic}");
+    }
 }
 
 fn print_missing(args: &common::ScanArgs, version: &str) {

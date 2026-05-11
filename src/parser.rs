@@ -60,13 +60,42 @@ pub fn parse_file(path: &Path, project_root: &Path) -> Result<ParsedFile> {
     }
 
     let rel_file = relative_path(path, project_root);
-    let funcs = collect_functions(&tree, &source, &rel_file);
+    parse_source(&rel_file, source, tree)
+}
 
+pub fn parse_source(rel_file: &str, source: String, tree: Tree) -> Result<ParsedFile> {
+    let funcs = collect_functions(&tree, &source, rel_file);
     Ok(ParsedFile {
         tree,
         source,
         funcs,
     })
+}
+
+pub fn parse_source_text(rel_file: &str, source: &str) -> Result<ParsedFile> {
+    let mut parser = Parser::new();
+    parser
+        .set_language(&tree_sitter_rust::language())
+        .map_err(|e| DecayError::Parse {
+            path: rel_file.to_string(),
+            message: format!("failed to load Rust grammar: {e}"),
+        })?;
+
+    let tree = parser
+        .parse(source, None)
+        .ok_or_else(|| DecayError::Parse {
+            path: rel_file.to_string(),
+            message: "tree-sitter returned no tree".to_string(),
+        })?;
+
+    if tree.root_node().has_error() {
+        return Err(DecayError::Parse {
+            path: rel_file.to_string(),
+            message: "source contains syntax errors".to_string(),
+        });
+    }
+
+    parse_source(rel_file, source.to_string(), tree)
 }
 
 /// Convert `path` to a project-relative string with forward slashes.

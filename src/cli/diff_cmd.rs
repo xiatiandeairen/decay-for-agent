@@ -1,6 +1,7 @@
 use crate::cli::common;
 use crate::diff;
 use crate::error::Result;
+use crate::evidence_store::{EvidenceStore, SavedDiffEvidence};
 use crate::impact;
 use crate::metric::{self, ProblemGroupId};
 use crate::store;
@@ -14,7 +15,8 @@ pub fn run(args: &common::ScanArgs, from: &str, to: Option<&str>) -> Result<i32>
     let project = common::resolve_project()?;
     if to.is_none() && is_git_ref(&project.root, from) {
         let report = impact::analyze_worktree_diff(&project.root, from)?;
-        print_impact_report(&report);
+        let recording = record_impact_report(&project, from, &report);
+        print_impact_report(&report, Some(&recording));
         return Ok(
             if report.evidences.iter().any(|e| {
                 matches!(
@@ -114,7 +116,50 @@ fn is_git_ref(project_root: &std::path::Path, name: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn print_impact_report(report: &impact::ImpactReport) {
+fn record_impact_report(
+    project: &common::ProjectContext,
+    base_ref: &str,
+    report: &impact::ImpactReport,
+) -> std::result::Result<SavedDiffEvidence, String> {
+    let conn = store::open_db().map_err(|err| err.to_string())?;
+    let evidence_store = EvidenceStore::from_connection(conn).map_err(|err| err.to_string())?;
+    let base_commit = git_rev_parse(&project.root, base_ref).map_err(|err| err.to_string())?;
+    let head_commit = git_rev_parse(&project.root, "HEAD").map_err(|err| err.to_string())?;
+    let evidence = impact::diff_evidence_records(report);
+    evidence_store
+        .save_diff_evidence(
+            &project.project_key,
+            base_ref,
+            &base_commit,
+            &head_commit,
+            &report.file_changes,
+            &evidence,
+        )
+        .map_err(|err| err.to_string())
+}
+
+fn git_rev_parse(project_root: &std::path::Path, name: &str) -> Result<String> {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--verify", name])
+        .current_dir(project_root)
+        .output()
+        .map_err(|source| crate::error::DecayError::Io {
+            path: "git".to_string(),
+            source,
+        })?;
+    if !output.status.success() {
+        return Err(crate::error::DecayError::InvalidProject(format!(
+            "git rev-parse {name} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn print_impact_report(
+    report: &impact::ImpactReport,
+    recording: Option<&std::result::Result<SavedDiffEvidence, String>>,
+) {
     println!("Complexity impact:");
     println!(
         "  changed_functions={} evidence={} partial={} diagnostics={}",
@@ -194,6 +239,17 @@ fn print_impact_report(report: &impact::ImpactReport) {
     }
     for diagnostic in &report.diagnostics {
         println!("diagnostic={diagnostic}");
+    }
+    match recording {
+        Some(Ok(saved)) => println!(
+            "recorded=true changeset={} evidence_saved={}",
+            saved.changeset_id, saved.evidence_saved
+        ),
+        Some(Err(diagnostic)) => {
+            println!("recorded=false evidence_saved=0");
+            println!("diagnostic={diagnostic}");
+        }
+        None => {}
     }
 }
 

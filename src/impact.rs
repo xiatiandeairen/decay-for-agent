@@ -7,7 +7,8 @@ use crate::evidence::history::{analyze_history, HistoryFileChange, HistoryReport
 use crate::evidence::quality::{detect_quality, QualityFileChange, QualityReport};
 use crate::evidence::stability::detect_stability;
 use crate::evidence::EvidenceRecord;
-use crate::git_diff::{parse_git_diff, GitDiff, HunkLineKind};
+use crate::evidence_store::{DiffEvidenceRecord, EvidenceFileChange};
+use crate::git_diff::{parse_git_diff, GitDiff, GitFileStatus, HunkLineKind};
 use crate::metric;
 use crate::pipeline;
 use crate::types::{Function, Metrics};
@@ -19,6 +20,7 @@ pub struct ImpactReport {
     pub stability_evidence: Vec<EvidenceRecord>,
     pub quality: QualityReport,
     pub history: HistoryReport,
+    pub file_changes: Vec<EvidenceFileChange>,
     pub diagnostics: Vec<String>,
 }
 
@@ -197,6 +199,7 @@ fn analyze_parsed_diff(
     stability_evidence.sort_by(|a, b| a.file.cmp(&b.file).then(a.kind.cmp(&b.kind)));
     let quality = detect_quality(&quality_file_changes(diff, &stability_evidence));
     let history = analyze_history(project_root, &history_file_changes(diff));
+    let file_changes = evidence_file_changes(diff);
     diagnostics.extend(history.diagnostics.iter().cloned());
 
     Ok(ImpactReport {
@@ -205,6 +208,7 @@ fn analyze_parsed_diff(
         stability_evidence,
         quality,
         history,
+        file_changes,
         diagnostics,
     })
 }
@@ -245,6 +249,58 @@ fn history_file_changes(diff: &GitDiff) -> Vec<HistoryFileChange> {
             new_path: file.new_path.clone(),
         })
         .collect()
+}
+
+fn evidence_file_changes(diff: &GitDiff) -> Vec<EvidenceFileChange> {
+    diff.files
+        .iter()
+        .map(|file| EvidenceFileChange {
+            status: match file.status {
+                GitFileStatus::Added => "added",
+                GitFileStatus::Modified => "modified",
+                GitFileStatus::Deleted => "deleted",
+                GitFileStatus::Renamed => "renamed",
+            }
+            .to_string(),
+            old_file: file.old_path.clone(),
+            new_file: file.new_path.clone(),
+            added_lines: file.added_lines.unwrap_or(0),
+            removed_lines: file.deleted_lines.unwrap_or(0),
+        })
+        .collect()
+}
+
+pub fn diff_evidence_records(report: &ImpactReport) -> Vec<DiffEvidenceRecord> {
+    let mut records = Vec::new();
+    for evidence in &report.evidences {
+        records.push(DiffEvidenceRecord {
+            category: "complexity".to_string(),
+            kind: evidence.kind.as_str().to_string(),
+            file: evidence.file.clone(),
+            subject: evidence.function.clone(),
+            source: evidence.source.to_string(),
+        });
+    }
+    for evidence in &report.stability_evidence {
+        records.push(record_from_evidence("stability", evidence));
+    }
+    for evidence in &report.quality.records {
+        records.push(record_from_evidence("quality", evidence));
+    }
+    for evidence in &report.history.records {
+        records.push(record_from_evidence("history", evidence));
+    }
+    records
+}
+
+fn record_from_evidence(category: &str, evidence: &EvidenceRecord) -> DiffEvidenceRecord {
+    DiffEvidenceRecord {
+        category: category.to_string(),
+        kind: evidence.kind.clone(),
+        file: evidence.file.clone(),
+        subject: evidence.subject.clone(),
+        source: evidence.source.to_string(),
+    }
 }
 
 fn is_sensitive_path(path: &str) -> bool {

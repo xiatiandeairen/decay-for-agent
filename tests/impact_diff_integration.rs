@@ -54,6 +54,12 @@ fn run(project: &Path, args: &[&str]) {
     );
 }
 
+fn db_count(db: &Path, sql: &str) -> i64 {
+    let conn = rusqlite::Connection::open(db).expect("open db");
+    conn.query_row(sql, [], |row| row.get(0))
+        .expect("count rows")
+}
+
 fn write_lib(project: &Path, body: &str) {
     fs::write(project.join("src/lib.rs"), body).expect("write lib.rs");
 }
@@ -330,6 +336,8 @@ pub extern "C" fn mx_send(value: i32) -> i32 {
 fn diff_does_not_treat_docs_only_changes_as_test_gap_or_stability_evidence() {
     let (_tmp, project, db) = base_project();
     fs::create_dir_all(project.join("docs")).expect("create docs");
+    fs::write(project.join("docs/note.md"), "# base note\n").expect("write base docs");
+    commit_all(&project, "docs: seed note");
     fs::write(
         project.join("docs/note.md"),
         "# unsafe unwrap panic\nThese are words in docs.\n",
@@ -346,7 +354,13 @@ fn diff_does_not_treat_docs_only_changes_as_test_gap_or_stability_evidence() {
         .stdout(predicate::str::contains("Quality impact:"))
         .stdout(predicate::str::contains("kind=test_gap").not())
         .stdout(predicate::str::contains("kind=panic_like_added").not())
-        .stdout(predicate::str::contains("kind=unsafe_added").not());
+        .stdout(predicate::str::contains("kind=unsafe_added").not())
+        .stdout(predicate::str::contains("recorded=true"))
+        .stdout(predicate::str::contains("evidence_saved=0"));
+
+    assert_eq!(db_count(&db, "SELECT COUNT(*) FROM changesets"), 1);
+    assert_eq!(db_count(&db, "SELECT COUNT(*) FROM file_changes"), 1);
+    assert_eq!(db_count(&db, "SELECT COUNT(*) FROM evidence_items"), 0);
 }
 
 #[test]
@@ -387,5 +401,18 @@ fn diff_reports_history_evidence_for_churned_bugfixed_code() {
         .stdout(predicate::str::contains("kind=churn_hotspot"))
         .stdout(predicate::str::contains("kind=recently_bugfixed_area"))
         .stdout(predicate::str::contains("source=git_history"))
-        .stdout(predicate::str::contains("risk=high").not());
+        .stdout(predicate::str::contains("risk=high").not())
+        .stdout(predicate::str::contains("recorded=true"))
+        .stdout(predicate::str::contains("evidence_saved=3"));
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("recorded=true"))
+        .stdout(predicate::str::contains("evidence_saved=3"));
+
+    assert_eq!(db_count(&db, "SELECT COUNT(*) FROM changesets"), 1);
+    assert_eq!(db_count(&db, "SELECT COUNT(*) FROM file_changes"), 1);
+    assert_eq!(db_count(&db, "SELECT COUNT(*) FROM evidence_items"), 3);
 }

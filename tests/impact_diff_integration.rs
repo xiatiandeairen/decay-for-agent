@@ -141,13 +141,21 @@ pub fn old_debt(x: i32) -> i32 {
 }
 
 pub fn target(x: i32) -> i32 {
-    if x > 0 {
-        if x > 1 {
-            if x > 2 {
-                return x;
-            }
-        }
-    }
+    if x > 0 { return 1; }
+    if x > 1 { return 2; }
+    if x > 2 { return 3; }
+    if x > 3 { return 4; }
+    if x > 4 { return 5; }
+    if x > 5 { return 6; }
+    if x > 6 { return 7; }
+    if x > 7 { return 8; }
+    if x > 8 { return 9; }
+    if x > 9 { return 10; }
+    if x > 10 { return 11; }
+    if x > 11 { return 12; }
+    if x > 12 { return 13; }
+    if x > 13 { return 14; }
+    if x > 14 { return 15; }
     0
 }
 
@@ -273,4 +281,70 @@ fn diff_ignores_non_rust_files_for_complexity_evidence() {
         .stdout(predicate::str::contains("changed_functions=0"))
         .stdout(predicate::str::contains("evidence=0"))
         .stdout(predicate::str::contains("diagnostics=0"));
+}
+
+#[test]
+fn diff_reports_stability_and_quality_evidence_without_claiming_bugs() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+#[no_mangle]
+pub extern "C" fn mx_send(value: i32) -> i32 {
+    value
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "test(base): seed ffi");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+#[no_mangle]
+pub extern "C" fn mx_send(value: i32) -> i32 {
+    let parsed = Some(value).unwrap();
+    parsed
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Stability impact:"))
+        .stdout(predicate::str::contains("kind=ffi_boundary_touched"))
+        .stdout(predicate::str::contains("kind=panic_like_added"))
+        .stdout(predicate::str::contains("Quality impact:"))
+        .stdout(predicate::str::contains("kind=sensitive_test_gap"))
+        .stdout(predicate::str::contains("bug").not())
+        .stdout(predicate::str::contains("risk=high").not());
+}
+
+#[test]
+fn diff_does_not_treat_docs_only_changes_as_test_gap_or_stability_evidence() {
+    let (_tmp, project, db) = base_project();
+    fs::create_dir_all(project.join("docs")).expect("create docs");
+    fs::write(
+        project.join("docs/note.md"),
+        "# unsafe unwrap panic\nThese are words in docs.\n",
+    )
+    .expect("write docs");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Complexity impact:"))
+        .stdout(predicate::str::contains("Stability impact:"))
+        .stdout(predicate::str::contains("evidence=0"))
+        .stdout(predicate::str::contains("Quality impact:"))
+        .stdout(predicate::str::contains("kind=test_gap").not())
+        .stdout(predicate::str::contains("kind=panic_like_added").not())
+        .stdout(predicate::str::contains("kind=unsafe_added").not());
 }

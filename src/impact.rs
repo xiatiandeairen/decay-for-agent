@@ -3,6 +3,9 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::error::{DecayError, Result};
+use crate::evidence::quality::{detect_quality, QualityFileChange, QualityReport};
+use crate::evidence::stability::detect_stability;
+use crate::evidence::EvidenceRecord;
 use crate::git_diff::{parse_git_diff, GitDiff, HunkLineKind};
 use crate::metric;
 use crate::pipeline;
@@ -12,6 +15,8 @@ use crate::types::{Function, Metrics};
 pub struct ImpactReport {
     pub changed_functions: usize,
     pub evidences: Vec<ImpactEvidence>,
+    pub stability_evidence: Vec<EvidenceRecord>,
+    pub quality: QualityReport,
     pub diagnostics: Vec<String>,
 }
 
@@ -58,6 +63,7 @@ fn analyze_parsed_diff(
     diff: &GitDiff,
 ) -> Result<ImpactReport> {
     let mut evidences = Vec::new();
+    let mut stability_evidence = Vec::new();
     let mut diagnostics = Vec::new();
     let mut changed_keys = BTreeSet::new();
 
@@ -67,37 +73,53 @@ fn analyze_parsed_diff(
         if !is_rust_change(before_path, after_path) {
             continue;
         }
-        let before_funcs = match before_path {
+        let before_source = match before_path {
             Some(path) => match git_show(project_root, base_ref, path) {
-                Ok(Some(source)) => scan_side(path, &source, &mut diagnostics),
-                Ok(None) => Vec::new(),
+                Ok(source) => source,
                 Err(err) => {
                     diagnostics.push(err.to_string());
-                    Vec::new()
+                    None
                 }
             },
-            None => Vec::new(),
+            None => None,
         };
-        let after_funcs = match after_path {
+        let after_source = match after_path {
             Some(path) => {
                 let path_abs = project_root.join(path);
                 match std::fs::read_to_string(&path_abs) {
-                    Ok(source) => scan_side(path, &source, &mut diagnostics),
+                    Ok(source) => Some(source),
                     Err(source) => {
                         diagnostics.push(format!(
                             "failed to read {}: {}",
                             path_abs.display(),
                             source
                         ));
-                        Vec::new()
+                        None
                     }
                 }
             }
-            None => Vec::new(),
+            None => None,
         };
+        let before_funcs = before_path
+            .zip(before_source.as_deref())
+            .map(|(path, source)| scan_side(path, source, &mut diagnostics))
+            .unwrap_or_default();
+        let after_funcs = after_path
+            .zip(after_source.as_deref())
+            .map(|(path, source)| scan_side(path, source, &mut diagnostics))
+            .unwrap_or_default();
 
         let changed_before = changed_lines(file, false);
         let changed_after = changed_lines(file, true);
+        if let Some(path) = after_path.or(before_path) {
+            stability_evidence.extend(detect_stability(
+                path,
+                before_source.as_deref(),
+                after_source.as_deref(),
+                &changed_after,
+                &changed_after,
+            ));
+        }
         let touched_before = touched_functions(&before_funcs, &changed_before);
         let touched_after = touched_functions(&after_funcs, &changed_after);
         for f in touched_before.iter().chain(touched_after.iter()) {
@@ -170,10 +192,14 @@ fn analyze_parsed_diff(
     }
 
     evidences.sort_by(|a, b| a.file.cmp(&b.file).then(a.function.cmp(&b.function)));
+    stability_evidence.sort_by(|a, b| a.file.cmp(&b.file).then(a.kind.cmp(&b.kind)));
+    let quality = detect_quality(&quality_file_changes(diff, &stability_evidence));
 
     Ok(ImpactReport {
         changed_functions: changed_keys.len(),
         evidences,
+        stability_evidence,
+        quality,
         diagnostics,
     })
 }
@@ -183,6 +209,45 @@ fn is_rust_change(before_path: Option<&str>, after_path: Option<&str>) -> bool {
         .or(after_path)
         .is_some_and(|path| path.ends_with(".rs"))
         || after_path.is_some_and(|path| path.ends_with(".rs"))
+}
+
+fn quality_file_changes(diff: &GitDiff, stability: &[EvidenceRecord]) -> Vec<QualityFileChange> {
+    diff.files
+        .iter()
+        .map(|file| {
+            let path = file.new_path.as_deref().or(file.old_path.as_deref());
+            let stability_sensitive = path.is_some_and(|path| {
+                stability
+                    .iter()
+                    .any(|evidence| evidence.file == path && !evidence.kind.is_empty())
+            });
+            QualityFileChange {
+                old_path: file.old_path.clone(),
+                new_path: file.new_path.clone(),
+                added_lines: file.added_lines.unwrap_or(0),
+                deleted_lines: file.deleted_lines.unwrap_or(0),
+                sensitive: stability_sensitive || path.is_some_and(is_sensitive_path),
+            }
+        })
+        .collect()
+}
+
+fn is_sensitive_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    [
+        "ffi",
+        "storage",
+        "migration",
+        "protocol",
+        "serde",
+        "config",
+        "network",
+        "transport",
+        "crypto",
+        "auth",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
 }
 
 fn worktree_diff(project_root: &Path, base_ref: &str) -> Result<String> {
@@ -302,9 +367,11 @@ fn classify_metrics(previous: Metrics, current: Metrics) -> Option<EvidenceKind>
     for def in metric::ACTIVE_METRICS {
         let p = previous.value(def.id);
         let c = current.value(def.id);
-        if c > p {
+        if metric::crossed_threshold(p, c, def.threshold)
+            || metric::worsened_over_threshold(p, c, def.threshold)
+        {
             worsened = true;
-        } else if c < p {
+        } else if p > def.threshold && c < p {
             improved = true;
         }
         if p > def.threshold || c > def.threshold {

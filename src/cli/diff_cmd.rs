@@ -145,10 +145,36 @@ fn print_impact_report(report: &impact::ImpactReport) {
     }
     println!();
     println!("Stability impact:");
-    println!("  not_collected=true");
+    println!("  evidence={}", report.stability_evidence.len());
+    for (idx, evidence) in report.stability_evidence.iter().enumerate() {
+        println!(
+            "- id={} category=stability kind={} subject={} source={}",
+            report.evidences.len() + idx + 1,
+            evidence.kind,
+            evidence.subject,
+            evidence.source
+        );
+        println!("  file={}", evidence.file);
+    }
     println!();
     println!("Quality impact:");
-    println!("  not_collected=true");
+    println!(
+        "  evidence={} prod_files_changed={} test_files_changed={} docs_files_changed={}",
+        report.quality.records.len(),
+        report.quality.prod_files_changed,
+        report.quality.test_files_changed,
+        report.quality.docs_files_changed
+    );
+    for (idx, evidence) in report.quality.records.iter().enumerate() {
+        println!(
+            "- id={} category=quality kind={} subject={} source={}",
+            report.evidences.len() + report.stability_evidence.len() + idx + 1,
+            evidence.kind,
+            evidence.subject,
+            evidence.source
+        );
+        println!("  file={}", evidence.file);
+    }
     for diagnostic in &report.diagnostics {
         println!("diagnostic={diagnostic}");
     }

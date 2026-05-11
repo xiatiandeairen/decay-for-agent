@@ -2,6 +2,7 @@ pub mod cli;
 pub(crate) mod config;
 pub mod diff;
 pub mod error;
+pub mod evidence;
 pub mod evidence_store;
 pub mod fingerprint;
 pub mod git_diff;

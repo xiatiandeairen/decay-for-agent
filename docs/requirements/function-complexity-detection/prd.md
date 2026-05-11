@@ -17,7 +17,7 @@
 1. 修改前或阶段开始时保存 baseline。
 2. AI 或人完成一波修改。
 3. commit 前运行 `decay diff <baseline>`。
-4. 如果出现退化，作者决定返工、忽略或判定为噪音。
+4. 如果出现退化，作者决定返工、追加 review、忽略或判定为噪音。
 
 v0.1.0 不承诺外部稳定接口。
 
@@ -42,6 +42,8 @@ decay diff <from> <to>
 | `decay diff <from> <to>` | 比较两个命名 baseline 是否退化 | 核心价值路径 |
 
 `doctor` 只能说明“当前哪里复杂”，不能说明“这次改动是否让它变复杂”。因此产品验证必须看 `diff`，不能只看 `doctor`。
+
+v0.2.0 开始，`decay diff <git-ref>` 进入 evidence-first 路径：直接输出 `Complexity impact`、`Stability impact`、`Quality impact`、`History impact`，并把 changeset、file changes 和 evidence 写入本地 SQLite。该行为不新增 `--evidence` flag。两个命名 baseline 之间的 `decay diff <from> <to>` 仍走 baseline snapshot 对比路径。
 
 ## Active metrics
 
@@ -85,7 +87,7 @@ value > threshold => breach
 
 ## Diff 报告规则
 
-`decay diff` 只报告退化：
+命名 baseline diff 只报告退化：
 
 | 类型 | 条件 |
 |---|---|
@@ -102,9 +104,18 @@ value > threshold => breach
 
 这个策略故意不做“当前复杂函数排行榜”，因为 v0.1.0 的目标是判断本次改动是否退化。
 
+git-ref diff 的 v0.2.0 evidence-first 输出额外报告：
+
+- `complexity`: 本次 touched function 的 worsened / improved / new high risk / touched existing risky evidence。
+- `stability`: FFI/public API、storage/migration、protocol/serialization、unsafe、panic/unwrap/expect 等边界证据。
+- `quality`: test gap、sensitive test gap、blast radius、mixed concerns、dependency/build/CI 变更证据。
+- `history`: touched production files 的 churn hotspot、recently bugfixed area、frequent rework 证据。
+
+这些 evidence 是证据层，不是合入风险评分；输出不得声明 `risk=high` 或“bug”，除非后续评估层另行验证。
+
 ## 数据持久化
 
-v0.1.0 使用 SQLite 保存 baseline。默认路径必须符合 XDG data 目录规范。
+decay 使用 SQLite 保存 baseline 和本地 diff evidence。默认路径必须符合 XDG data 目录规范。
 
 默认路径：
 
@@ -131,7 +142,13 @@ Baseline 保存的信息：
 - 函数元数据。
 - active metric 值。
 
-v0.1.0 不做 DB migration 兼容，因为当前没有外部用户和稳定 schema 承诺。
+v0.2.0 git-ref diff 额外保存：
+
+- changeset：project key、base ref、base commit、head commit。
+- file changes：status、old/new file、added/removed lines。
+- evidence items：category、kind、file、subject、source。
+
+同一 changeset 重复运行会保持幂等，不重复堆积 evidence。当前 schema 仍只承诺本地 dogfood 使用，不承诺外部稳定接口。
 
 ## 验收标准
 
@@ -149,6 +166,6 @@ v0.1.0 不做 DB migration 兼容，因为当前没有外部用户和稳定 sche
 产品验收：
 
 - dogfood 中至少 1 次 `decay diff` 捕捉到作者原本没注意、且作者认同应该返工的退化。
-- 每个 dogfood 命中都必须归类为 `fixed`、`ignored` 或 `noise`。
+- 每个 dogfood 命中都必须归类为 `fixed`、`reviewed`、`ignored` 或 `noise`。
 
 如果没有真实返工案例，v0.1.0 只能算功能 PoC，不能算产品假设成立。

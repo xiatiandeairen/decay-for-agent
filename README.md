@@ -2,23 +2,24 @@
 
 # decay
 
-`decay` is a Rust function-level complexity regression detector for AI-assisted coding.
+`decay` is a Rust complexity and change-impact evidence CLI for AI-assisted coding.
 
-It currently answers one narrow question:
+It currently focuses on two questions:
 
-> Compared with a baseline, did this change make any function locally harder to maintain?
+- Compared with a baseline or git ref, did this change make any function locally harder to maintain?
+- For a git-ref diff, what observable complexity, stability, quality, and history evidence does this change produce?
 
-It is not a general code-quality platform, and it is not another complex-function leaderboard. v0.1.0 is still being dogfooded.
+It is not a merge-risk scoring engine, and it is not another complex-function leaderboard. Product value is still being dogfooded.
 
 ## Status
 
-v0.1.0:
+Current status:
 
 - Rust only
 - dogfooding by the author
 - no external users
 - CLI output, SQLite schema, and thresholds may change without compatibility guarantees
-- feature loop is implemented, but product value is not proven yet
+- v0.2.0 diff evidence vertical slice is implemented, but product value is not proven yet
 
 ## Quick Start
 
@@ -46,17 +47,26 @@ Use `decay --help` for detailed options.
 | `decay diff <version>` | current workspace vs baseline | 0 clean; 1 degraded |
 | `decay diff <from> <to>` | baseline vs baseline | 0 clean; 1 degraded |
 
-`doctor` is a health check. `diff` is the commit-time regression judge.
+`doctor` is a health check. `diff` is the commit-time evidence path.
 
 ## What Diff Reports
 
-`decay diff` reports only regressions:
+For named baseline comparisons, `decay diff` reports regressions:
 
 - newly added high-risk functions
 - existing functions that crossed a risk boundary
 - existing high-risk functions that got worse
 
-It does not report deletions, improvements, unchanged functions, or below-threshold small increases.
+It does not report deletions, unchanged functions, or below-threshold small increases.
+
+For git-ref comparisons, `decay diff <ref>` uses the evidence-first path and reports:
+
+- `Complexity impact`
+- `Stability impact`
+- `Quality impact`
+- `History impact`
+
+It also records the changeset and emitted evidence in the local SQLite database. This is evidence, not a merge recommendation.
 
 Example:
 
@@ -111,12 +121,31 @@ decay diff v1.0.0 --scope all
 - Per-file parse failure does not abort the scan, but the result is marked partial.
 - No DB migration compatibility in v0.1.0.
 
+## Data Path
+
+Baseline snapshots and local diff evidence are stored in SQLite under the XDG data directory:
+
+```text
+$XDG_DATA_HOME/decay/snapshots.db
+```
+
+If `XDG_DATA_HOME` is unset, decay falls back to:
+
+```text
+$HOME/.local/share/decay/snapshots.db
+```
+
+`DECAY_DB_PATH` can override this path for tests or isolated runs. For git-ref diffs, `decay diff <ref>` also records the changeset, touched files, and emitted evidence in the same database.
+
 ## Docs
 
 - [docs/roadmap.md](docs/roadmap.md): product direction and current status
 - [docs/requirements/function-complexity-detection/prd.md](docs/requirements/function-complexity-detection/prd.md): v0.1.0 PRD
 - [docs/arch/decay.md](docs/arch/decay.md): current architecture
 - [docs/ops.md](docs/ops.md): dogfood / operations loop
+- [docs/milestones/m1.md](docs/milestones/m1.md): v0.1.0 functional-loop milestone
+- [docs/milestones/m2.md](docs/milestones/m2.md): dogfood validation milestone
+- [docs/milestones/m3.md](docs/milestones/m3.md): v0.2.0 trusted evidence-layer milestone
 - [docs/decision/v0.1.0-closeout.md](docs/decision/v0.1.0-closeout.md): v0.1.0 closeout decision
 
 ## License

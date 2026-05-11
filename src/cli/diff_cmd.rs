@@ -175,6 +175,23 @@ fn print_impact_report(report: &impact::ImpactReport) {
         );
         println!("  file={}", evidence.file);
     }
+    println!();
+    println!("History impact:");
+    println!("  evidence={}", report.history.records.len());
+    for (idx, evidence) in report.history.records.iter().enumerate() {
+        println!(
+            "- id={} category=history kind={} subject={} source={}",
+            report.evidences.len()
+                + report.stability_evidence.len()
+                + report.quality.records.len()
+                + idx
+                + 1,
+            evidence.kind,
+            evidence.subject,
+            evidence.source
+        );
+        println!("  file={}", evidence.file);
+    }
     for diagnostic in &report.diagnostics {
         println!("diagnostic={diagnostic}");
     }

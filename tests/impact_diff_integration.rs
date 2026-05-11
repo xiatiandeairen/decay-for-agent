@@ -348,3 +348,44 @@ fn diff_does_not_treat_docs_only_changes_as_test_gap_or_stability_evidence() {
         .stdout(predicate::str::contains("kind=panic_like_added").not())
         .stdout(predicate::str::contains("kind=unsafe_added").not());
 }
+
+#[test]
+fn diff_reports_history_evidence_for_churned_bugfixed_code() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+
+    for idx in 0..3 {
+        fs::write(
+            project.join("src/parser.rs"),
+            format!("pub fn parse() -> i32 {{ {idx} }}\n"),
+        )
+        .expect("write parser");
+        commit_all(
+            &project,
+            if idx == 1 {
+                "fix: prevent parser panic"
+            } else {
+                "refactor: parser iteration"
+            },
+        );
+    }
+
+    fs::write(
+        project.join("src/parser.rs"),
+        "pub fn parse() -> i32 { 4 }\n",
+    )
+    .expect("write parser change");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("History impact:"))
+        .stdout(predicate::str::contains("category=history"))
+        .stdout(predicate::str::contains("kind=churn_hotspot"))
+        .stdout(predicate::str::contains("kind=recently_bugfixed_area"))
+        .stdout(predicate::str::contains("source=git_history"))
+        .stdout(predicate::str::contains("risk=high").not());
+}

@@ -3,6 +3,7 @@ use std::path::Path;
 use std::process::Command;
 
 use crate::error::{DecayError, Result};
+use crate::evidence::history::{analyze_history, HistoryFileChange, HistoryReport};
 use crate::evidence::quality::{detect_quality, QualityFileChange, QualityReport};
 use crate::evidence::stability::detect_stability;
 use crate::evidence::EvidenceRecord;
@@ -17,6 +18,7 @@ pub struct ImpactReport {
     pub evidences: Vec<ImpactEvidence>,
     pub stability_evidence: Vec<EvidenceRecord>,
     pub quality: QualityReport,
+    pub history: HistoryReport,
     pub diagnostics: Vec<String>,
 }
 
@@ -194,12 +196,15 @@ fn analyze_parsed_diff(
     evidences.sort_by(|a, b| a.file.cmp(&b.file).then(a.function.cmp(&b.function)));
     stability_evidence.sort_by(|a, b| a.file.cmp(&b.file).then(a.kind.cmp(&b.kind)));
     let quality = detect_quality(&quality_file_changes(diff, &stability_evidence));
+    let history = analyze_history(project_root, &history_file_changes(diff));
+    diagnostics.extend(history.diagnostics.iter().cloned());
 
     Ok(ImpactReport {
         changed_functions: changed_keys.len(),
         evidences,
         stability_evidence,
         quality,
+        history,
         diagnostics,
     })
 }
@@ -228,6 +233,16 @@ fn quality_file_changes(diff: &GitDiff, stability: &[EvidenceRecord]) -> Vec<Qua
                 deleted_lines: file.deleted_lines.unwrap_or(0),
                 sensitive: stability_sensitive || path.is_some_and(is_sensitive_path),
             }
+        })
+        .collect()
+}
+
+fn history_file_changes(diff: &GitDiff) -> Vec<HistoryFileChange> {
+    diff.files
+        .iter()
+        .map(|file| HistoryFileChange {
+            old_path: file.old_path.clone(),
+            new_path: file.new_path.clone(),
         })
         .collect()
 }

@@ -1,24 +1,21 @@
 # Ground Truth
 
-Write this before reading `decay-evidence.md`.
-
 ## External Facts
 
-- issue / review / CI / follow-up fix:
-- relevant files:
-- behavior or compatibility context:
+- PR title: docs typo in Rust doc comments, `immediately quick` -> `immediately quit`.
+- Diff only changes comment text in `crates/searcher/src/searcher/mod.rs`.
 
 ## True Risks
 
-- severity: `high|medium|low|control`
-- expected reviewer concern:
-- risk mechanism:
+- severity: `control`
+- expected reviewer concern: typo correctness only.
+- risk mechanism: no executable behavior change.
 
 ## Non-Risks
 
-- changes that should stay quiet:
+- Complexity, stability, semantic and history evidence should stay quiet despite `.rs` file path.
 
 ## Expected Evidence
 
-- evidence decay should ideally surface:
-- evidence that would be misleading:
+- useful: no decay evidence.
+- misleading: any code-risk evidence from comment-only Rust change.

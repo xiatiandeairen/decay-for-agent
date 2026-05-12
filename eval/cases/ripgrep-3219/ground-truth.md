@@ -1,24 +1,21 @@
 # Ground Truth
 
-Write this before reading `decay-evidence.md`.
-
 ## External Facts
 
-- issue / review / CI / follow-up fix:
-- relevant files:
-- behavior or compatibility context:
+- PR title: documentation link replacement.
+- Diff only changes `GUIDE.md`.
 
 ## True Risks
 
-- severity: `high|medium|low|control`
-- expected reviewer concern:
-- risk mechanism:
+- severity: `control`
+- expected reviewer concern: link accuracy only.
+- risk mechanism: no code behavior risk.
 
 ## Non-Risks
 
-- changes that should stay quiet:
+- Complexity, stability, semantic, history risk should stay silent.
 
 ## Expected Evidence
 
-- evidence decay should ideally surface:
-- evidence that would be misleading:
+- useful: no decay evidence.
+- misleading: any code-risk evidence.

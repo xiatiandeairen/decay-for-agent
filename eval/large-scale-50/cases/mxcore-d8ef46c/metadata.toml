@@ -1,0 +1,12 @@
+case_id = "mxcore-d8ef46c"
+state = "frozen"
+repo = "/Users/taoxia/Workspace/work/rust/mxcore-proposal"
+source_type = "local_git_commit"
+commit = "d8ef46c"
+base_ref = "cabc489c0bca0755462a1fbf12379638b4c05f1c"
+head_ref = "d8ef46c19b39f508218a49d203fb70095b2e6a87"
+title = "feat(core-storage): R100 parity — flock + WAL hook + slow-query + corruption latch"
+accepted = true
+objective_value_signal = "critical_boundary: storage locking, WAL, slow-query diagnostics, corruption latch"
+risk_prompt_point = "storage pool/diag changes plus FFI headers and shared config"
+reviewer_action = "verify lock behavior, corruption latch semantics, WAL hook, and migration safety"

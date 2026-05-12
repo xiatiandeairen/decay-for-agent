@@ -1,0 +1,18 @@
+Complexity impact:
+  changed_functions=11 evidence=0 partial=false diagnostics=0
+
+Stability impact:
+  evidence=0
+
+Quality impact:
+  evidence=2 prod_files_changed=2 test_files_changed=2 docs_files_changed=0
+- id=1 category=quality kind=dependency_changed subject=dependency manifest source=quality
+  file=Cargo.lock
+- id=2 category=quality kind=dependency_changed subject=dependency manifest source=quality
+  file=crates/core-http/Cargo.toml
+
+History impact:
+  evidence=1
+- id=3 category=history kind=churn_hotspot subject=3 commits in 90d, 728 lines changed in 180d source=git_history
+  file=crates/core-http/src/client.rs
+recorded=true changeset=1 evidence_saved=3

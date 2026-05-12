@@ -1,0 +1,225 @@
+diff --git a/crates/platform/core-transport/src/io.rs b/crates/platform/core-transport/src/io.rs
+index 9c6e0d9..31927bb 100644
+--- a/crates/platform/core-transport/src/io.rs
++++ b/crates/platform/core-transport/src/io.rs
+@@ -70,8 +70,7 @@ pub(crate) enum Frame {
+     /// Data frame body (post-length-prefix, pre-decode). Length ≥ 6,
+     /// or length 6 that didn't match the pure-ACK shape.
+     Data(Vec<u8>),
+-    /// Frame length R100 logs `unknow package` for: 0, 2, 3, 4, 5.
+-    /// Bytes were consumed; surface for diagnostic.
++    /// Lengths < 6 except 1 are diagnostic-only; bytes were consumed.
+     Anomalous(usize),
+     /// Peer half-closed cleanly before any partial frame bytes.
+     Eof,
+@@ -82,14 +81,39 @@ pub(crate) enum Frame {
+ /// `DisconnectReason` codes.
+ #[derive(Debug)]
+ pub(crate) enum FrameErr {
+-    /// Decoded length-prefixed bytes but the header is malformed
+-    /// (length == 0 or > `MAX_FRAME_LEN`). Triggers supervisor
+-    /// `SessionExit::DecodeFailed` (added in followup task).
+-    Decode,
++    /// Framing-rule violation; specific cause encoded as `DecodeErr`.
++    /// The supervisor maps these to `SessionExit::DecodeFailed`
++    /// (added in followup task) and a single `MX_ERR_NET_*` code.
++    Decode(DecodeErr),
+     /// `tokio::io::Error` from socket read/write.
+     Io(io::Error),
+ }
+ 
++/// Specific framing-rule violation. Each variant identifies one
++/// distinct failure mode so call-site tests assert the exact cause
++/// instead of a single catch-all `Decode`.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub(crate) enum DecodeErr {
++    /// 4-byte length prefix decoded as 0.
++    LengthZero,
++    /// Length prefix exceeds `MAX_FRAME_LEN`.
++    LengthOversize { len: usize },
++    /// EOF after 1–3 of the 4 prefix bytes.
++    TruncatedPrefix,
++    /// EOF after a valid prefix but before the body completed.
++    TruncatedBody,
++    /// `write_frame` invoked with an empty body slice.
++    BodyEmpty,
++    /// `write_frame` invoked with a body slice over `MAX_FRAME_LEN`.
++    BodyOversize,
++}
++
++impl From<io::Error> for FrameErr {
++    fn from(e: io::Error) -> Self {
++        FrameErr::Io(e)
++    }
++}
++
+ impl<S: AsyncRead + AsyncWrite + Unpin> IoSession<S> {
+     pub(crate) fn new(stream: S, peer_addr: String) -> Self {
+         Self {
+@@ -109,50 +133,67 @@ impl<S: AsyncRead + AsyncWrite + Unpin> IoSession<S> {
+     /// returned variant is pre-classified per
+     /// `heartbeat::classify_frame` semantics.
+     ///
+-    /// Cancel-safety: this future uses `read_exact` against the inner
+-    /// stream which is NOT cancel-safe per tokio docs. Callers must
+-    /// not race `read_frame` with another task that drops the future
+-    /// mid-await; the supervisor owns the only invocation site, so
+-    /// the cancel-unsafety is contained.
++    /// Cancel-safety: pulled bytes accumulate in `self.read_buf` (a
++    /// `BytesMut`) via `AsyncReadExt::read_buf`, which is cancel-safe
++    /// per tokio docs — bytes already moved from the kernel survive
++    /// future drops and resume on the next call. Safe to use inside
++    /// `tokio::select!`.
+     pub(crate) async fn read_frame(&mut self) -> Result<Frame, FrameErr> {
+-        // 1. Read 4-byte BE length prefix.
+-        let mut len_buf = [0u8; 4];
+-        match self.stream.read_exact(&mut len_buf).await {
+-            Ok(_) => {}
+-            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(Frame::Eof),
+-            Err(e) => return Err(FrameErr::Io(e)),
++        // 1. Accumulate >= 4 prefix bytes.
++        while self.read_buf.len() < 4 {
++            let n = self.stream.read_buf(&mut self.read_buf).await?;
++            if n == 0 {
++                return if self.read_buf.is_empty() {
++                    Ok(Frame::Eof)
++                } else {
++                    Err(FrameErr::Decode(DecodeErr::TruncatedPrefix))
++                };
++            }
+         }
+-        let len = u32::from_be_bytes(len_buf) as usize;
+ 
+-        // 2. Validate length.
+-        if len == 0 || len > MAX_FRAME_LEN {
+-            return Err(FrameErr::Decode);
++        // 2. Peek length without consuming — body may need more reads.
++        let len = u32::from_be_bytes(self.read_buf[0..4].try_into().unwrap()) as usize;
++        if len == 0 {
++            return Err(FrameErr::Decode(DecodeErr::LengthZero));
+         }
++        if len > MAX_FRAME_LEN {
++            return Err(FrameErr::Decode(DecodeErr::LengthOversize { len }));
++        }
++
++        // 3. Accumulate >= 4 + len total bytes.
++        while self.read_buf.len() < 4 + len {
++            let n = self.stream.read_buf(&mut self.read_buf).await?;
++            if n == 0 {
++                return Err(FrameErr::Decode(DecodeErr::TruncatedBody));
++            }
++        }
++
++        // 4. Consume prefix + body.
++        let _ = self.read_buf.split_to(4);
++        let body = self.read_buf.split_to(len).freeze().to_vec();
+ 
+-        // 3. Read exactly `len` body bytes.
+-        self.read_buf.clear();
+-        self.read_buf.resize(len, 0u8);
+-        if let Err(e) = self.stream.read_exact(&mut self.read_buf[..]).await {
+-            return Err(FrameErr::Io(e));
++        // 5. Shrink buffer when fully drained after a large frame to
++        //    release pinned high-water capacity back to the allocator.
++        const HIGH_WATER: usize = 8 * 1024;
++        if self.read_buf.is_empty() && self.read_buf.capacity() > HIGH_WATER {
++            self.read_buf = BytesMut::with_capacity(4096);
+         }
+ 
+-        // 4. Classify.
+-        Ok(classify(&self.read_buf[..]))
++        Ok(classify(&body))
+     }
+ 
+     /// Write one length-prefixed frame. Body length is checked against
+     /// `MAX_FRAME_LEN` upfront.
+     pub(crate) async fn write_frame(&mut self, body: &[u8]) -> Result<(), FrameErr> {
+-        if body.is_empty() || body.len() > MAX_FRAME_LEN {
+-            return Err(FrameErr::Decode);
++        if body.is_empty() {
++            return Err(FrameErr::Decode(DecodeErr::BodyEmpty));
+         }
+-        let len = (body.len() as u32).to_be_bytes();
+-        if let Err(e) = self.stream.write_all(&len).await {
+-            return Err(FrameErr::Io(e));
+-        }
+-        if let Err(e) = self.stream.write_all(body).await {
+-            return Err(FrameErr::Io(e));
++        if body.len() > MAX_FRAME_LEN {
++            return Err(FrameErr::Decode(DecodeErr::BodyOversize));
+         }
++        let len = (body.len() as u32).to_be_bytes();
++        self.stream.write_all(&len).await?;
++        self.stream.write_all(body).await?;
+         Ok(())
+     }
+ 
+@@ -160,9 +201,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> IoSession<S> {
+     /// `heartbeat::encode_heartbeat` for the wire reference.
+     pub(crate) async fn write_heartbeat(&mut self) -> Result<(), FrameErr> {
+         let frame: [u8; 5] = [0, 0, 0, 1, 0];
+-        if let Err(e) = self.stream.write_all(&frame).await {
+-            return Err(FrameErr::Io(e));
+-        }
++        self.stream.write_all(&frame).await?;
+         Ok(())
+     }
+ 
+@@ -296,7 +335,7 @@ mod tests {
+         // Length=0 is illegal — codec must reject before allocating.
+         peer.write_all(&0u32.to_be_bytes()).await.unwrap();
+         let err = sess.read_frame().await.expect_err("must err");
+-        assert!(matches!(err, FrameErr::Decode));
++        assert!(matches!(err, FrameErr::Decode(DecodeErr::LengthZero)));
+     }
+ 
+     #[tokio::test]
+@@ -324,6 +363,47 @@ mod tests {
+         let bad = ((MAX_FRAME_LEN as u32) + 1).to_be_bytes();
+         peer.write_all(&bad).await.unwrap();
+         let err = sess.read_frame().await.expect_err("must err");
+-        assert!(matches!(err, FrameErr::Decode));
++        assert!(matches!(
++            err,
++            FrameErr::Decode(DecodeErr::LengthOversize { .. })
++        ));
++    }
++
++    #[tokio::test]
++    async fn read_frame_split_length_prefix_resumes() {
++        // Cancel-safety: half the prefix arrives, future is parked,
++        // remainder + body arrive later — read resumes correctly
++        // because pulled bytes live in `self.read_buf`.
++        let (a, mut peer) = duplex(64);
++        let mut sess = IoSession::new(a, "L".into());
++        peer.write_all(&[0, 0]).await.unwrap();
++        let read_fut = sess.read_frame();
++        tokio::pin!(read_fut);
++        // Drive the future; it must park awaiting more bytes.
++        let _ = tokio::time::timeout(std::time::Duration::from_millis(20), read_fut.as_mut())
++            .await
++            .expect_err("must time out — pending more bytes");
++        // Remaining 2 prefix bytes (length=1) + 1 body byte.
++        peer.write_all(&[0, 1, 0]).await.unwrap();
++        let frame = read_fut.await.expect("resumes");
++        assert!(matches!(frame, Frame::HeartbeatAck));
++    }
++
++    #[tokio::test]
++    async fn read_frame_split_body_resumes() {
++        // Prefix + first half of body arrive, then the second half.
++        let (a, mut peer) = duplex(64);
++        let mut sess = IoSession::new(a, "L".into());
++        // length = 6, send 4 of 6 body bytes first.
++        peer.write_all(&[0, 0, 0, 6, 0, 0, 0, 1]).await.unwrap();
++        let read_fut = sess.read_frame();
++        tokio::pin!(read_fut);
++        let _ = tokio::time::timeout(std::time::Duration::from_millis(20), read_fut.as_mut())
++            .await
++            .expect_err("must time out — pending body bytes");
++        // Remaining 2 body bytes.
++        peer.write_all(&[0, 2]).await.unwrap();
++        let frame = read_fut.await.expect("resumes");
++        assert!(matches!(frame, Frame::Data(_)));
+     }
+ }

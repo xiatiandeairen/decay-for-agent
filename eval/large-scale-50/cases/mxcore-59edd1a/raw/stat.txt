@@ -1,0 +1,9 @@
+59edd1a feat(core-transfer): harden transfer execution
+ crates/core-transfer/src/adapter.rs         | 145 ++++++++---
+ crates/core-transfer/src/config.rs          |  10 +
+ crates/core-transfer/src/core.rs            | 385 +++++++++++++++++++++-------
+ crates/core-transfer/src/error.rs           |  22 +-
+ crates/core-transfer/src/lib.rs             |   7 +-
+ crates/core-transfer/src/types.rs           |  46 +++-
+ crates/core-transfer/tests/download_core.rs | 263 +++++++++++++++++--
+ 7 files changed, 718 insertions(+), 160 deletions(-)

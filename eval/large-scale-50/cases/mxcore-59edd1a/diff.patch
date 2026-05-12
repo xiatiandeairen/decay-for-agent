@@ -1,0 +1,1357 @@
+diff --git a/crates/core-transfer/src/adapter.rs b/crates/core-transfer/src/adapter.rs
+index a0fadf3..b20b732 100644
+--- a/crates/core-transfer/src/adapter.rs
++++ b/crates/core-transfer/src/adapter.rs
+@@ -2,8 +2,8 @@ use async_trait::async_trait;
+ use tokio_util::sync::CancellationToken;
+ 
+ use crate::{
+-    DownloadPart, DownloadPlan, Result, TransferError, TransferErrorCode, UploadPart, UploadPlan,
+-    UploadRequest,
++    DownloadPart, DownloadPlan, HttpMethod, PartInput, PartResult, Result, TransferError,
++    TransferErrorCode, UploadPart, UploadPlan, UploadRequest,
+ };
+ 
+ pub struct FileIdRequest<'a> {
+@@ -19,10 +19,10 @@ pub trait TransferAdapter: Send + Sync + 'static {
+         &self,
+         _request: &UploadRequest,
+         _input_size: u64,
+-        _part_count: usize,
++        _preferred_part_size: u64,
+     ) -> Result<UploadPlan> {
+         Err(TransferError::non_retryable(
+-            TransferErrorCode::Unknown,
++            TransferErrorCode::UploadInitFailed,
+             "upload is not implemented by this adapter",
+         ))
+     }
+@@ -33,24 +33,29 @@ pub trait TransferAdapter: Send + Sync + 'static {
+         _plan: &UploadPlan,
+     ) -> Result<std::collections::BTreeMap<String, String>> {
+         Err(TransferError::non_retryable(
+-            TransferErrorCode::Unknown,
++            TransferErrorCode::UploadCompleteFailed,
+             "upload complete is not implemented by this adapter",
+         ))
+     }
+ }
+ 
+ #[async_trait]
+-pub trait DownloadTransport: Send + Sync + 'static {
+-    async fn fetch(&self, part: &DownloadPart, cancel: &CancellationToken) -> Result<Vec<u8>>;
++pub trait TransferTransport: Send + Sync + 'static {
++    async fn download_part(
++        &self,
++        part: &DownloadPart,
++        output_path: &std::path::Path,
++        cancel: &CancellationToken,
++    ) -> Result<PartResult>;
+ 
+     async fn upload(
+         &self,
+         _part: &UploadPart,
+-        _bytes: &[u8],
++        _input: PartInput,
+         _cancel: &CancellationToken,
+-    ) -> Result<()> {
++    ) -> Result<PartResult> {
+         Err(TransferError::non_retryable(
+-            TransferErrorCode::Unknown,
++            TransferErrorCode::UploadInitFailed,
+             "upload is not implemented by this transport",
+         ))
+     }
+@@ -70,9 +75,19 @@ impl ReqwestTransport {
+ }
+ 
+ #[async_trait]
+-impl DownloadTransport for ReqwestTransport {
+-    async fn fetch(&self, part: &DownloadPart, cancel: &CancellationToken) -> Result<Vec<u8>> {
+-        let mut request = self.client.get(&part.url);
++impl TransferTransport for ReqwestTransport {
++    async fn download_part(
++        &self,
++        part: &DownloadPart,
++        output_path: &std::path::Path,
++        cancel: &CancellationToken,
++    ) -> Result<PartResult> {
++        let method = match part.method {
++            HttpMethod::Get => reqwest::Method::GET,
++            HttpMethod::Put => reqwest::Method::PUT,
++            HttpMethod::Post => reqwest::Method::POST,
++        };
++        let mut request = self.client.request(method, &part.url);
+         for (key, value) in &part.headers {
+             request = request.header(key, value);
+         }
+@@ -82,34 +97,76 @@ impl DownloadTransport for ReqwestTransport {
+             }
+             result = request.send() => result.map_err(|err| TransferError::new(TransferErrorCode::Network, err.to_string()))?,
+         };
+-        if response.status().as_u16() == 403 || response.status().as_u16() == 610 {
++        let status = response.status().as_u16();
++        if status == 401 {
++            return Err(TransferError::non_retryable(
++                TransferErrorCode::Unauthorized,
++                "download unauthorized",
++            )
++            .with_http_status(status));
++        }
++        if status == 403 || status == 610 {
+             return Err(TransferError::new(
+                 TransferErrorCode::UrlExpired,
+-                format!("download url expired status={}", response.status().as_u16()),
+-            ));
++                format!("download url expired status={status}"),
++            )
++            .with_http_status(status));
+         }
+         if !response.status().is_success() {
+             return Err(TransferError::new(
+-                TransferErrorCode::Network,
+-                format!("download failed status={}", response.status().as_u16()),
+-            ));
++                TransferErrorCode::HttpStatus,
++                format!("download failed status={status}"),
++            )
++            .with_http_status(status));
+         }
+-        let bytes = tokio::select! {
+-            _ = cancel.cancelled() => {
+-                return Err(TransferError::non_retryable(TransferErrorCode::Canceled, "download canceled"));
+-            }
+-            result = response.bytes() => result.map_err(|err| TransferError::new(TransferErrorCode::Network, err.to_string()))?,
+-        };
+-        Ok(bytes.to_vec())
++        let mut output = std::fs::File::create(output_path)?;
++        let mut size = 0_u64;
++        let mut response = response;
++        loop {
++            let chunk = tokio::select! {
++                _ = cancel.cancelled() => {
++                    return Err(TransferError::non_retryable(TransferErrorCode::Canceled, "download canceled"));
++                }
++                result = response.chunk() => result.map_err(|err| TransferError::new(TransferErrorCode::Network, err.to_string()))?,
++            };
++            let Some(chunk) = chunk else {
++                break;
++            };
++            std::io::Write::write_all(&mut output, &chunk)?;
++            size += chunk.len() as u64;
++        }
++        Ok(PartResult {
++            index: part.index,
++            path: Some(output_path.to_path_buf()),
++            size,
++            checksum: None,
++            etag: None,
++        })
+     }
+ 
+     async fn upload(
+         &self,
+         part: &UploadPart,
+-        bytes: &[u8],
++        input: PartInput,
+         cancel: &CancellationToken,
+-    ) -> Result<()> {
+-        let mut request = self.client.put(&part.url);
++    ) -> Result<PartResult> {
++        let method = match part.method {
++            HttpMethod::Get => reqwest::Method::GET,
++            HttpMethod::Put => reqwest::Method::PUT,
++            HttpMethod::Post => reqwest::Method::POST,
++        };
++        let body = match input {
++            PartInput::PathRange { path, offset, size } => {
++                let mut file = std::fs::File::open(path)?;
++                std::io::Seek::seek(&mut file, std::io::SeekFrom::Start(offset))?;
++                let mut buffer = vec![0; size as usize];
++                std::io::Read::read_exact(&mut file, &mut buffer)?;
++                buffer
++            }
++            PartInput::Bytes(bytes) => bytes,
++        };
++        let size = body.len() as u64;
++        let mut request = self.client.request(method, &part.url);
+         for (key, value) in &part.headers {
+             request = request.header(key, value);
+         }
+@@ -117,14 +174,34 @@ impl DownloadTransport for ReqwestTransport {
+             _ = cancel.cancelled() => {
+                 return Err(TransferError::non_retryable(TransferErrorCode::Canceled, "upload canceled"));
+             }
+-            result = request.body(bytes.to_vec()).send() => result.map_err(|err| TransferError::new(TransferErrorCode::Network, err.to_string()))?,
++            result = request.body(body).send() => result.map_err(|err| TransferError::new(TransferErrorCode::Network, err.to_string()))?,
+         };
++        let status = response.status().as_u16();
++        if status == 401 {
++            return Err(TransferError::non_retryable(
++                TransferErrorCode::Unauthorized,
++                "upload unauthorized",
++            )
++            .with_http_status(status));
++        }
+         if !response.status().is_success() {
+             return Err(TransferError::new(
+-                TransferErrorCode::Network,
+-                format!("upload failed status={}", response.status().as_u16()),
+-            ));
++                TransferErrorCode::HttpStatus,
++                format!("upload failed status={status}"),
++            )
++            .with_http_status(status));
+         }
+-        Ok(())
++        let etag = response
++            .headers()
++            .get(reqwest::header::ETAG)
++            .and_then(|value| value.to_str().ok())
++            .map(str::to_string);
++        Ok(PartResult {
++            index: part.index,
++            path: None,
++            size,
++            checksum: None,
++            etag,
++        })
+     }
+ }
+diff --git a/crates/core-transfer/src/config.rs b/crates/core-transfer/src/config.rs
+index 2f71d93..3bdb197 100644
+--- a/crates/core-transfer/src/config.rs
++++ b/crates/core-transfer/src/config.rs
+@@ -1,8 +1,14 @@
++use std::time::Duration;
++
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub struct TransferConfig {
+     pub max_concurrent_tasks: usize,
+     pub max_part_concurrency: usize,
+     pub upload_part_size: usize,
++    pub request_timeout: Duration,
++    pub max_retries: u32,
++    pub retry_initial_delay: Duration,
++    pub retry_max_delay: Duration,
+     pub verify_checksum: bool,
+ }
+ 
+@@ -12,6 +18,10 @@ impl Default for TransferConfig {
+             max_concurrent_tasks: 3,
+             max_part_concurrency: 2,
+             upload_part_size: 4 * 1024 * 1024,
++            request_timeout: Duration::from_secs(60),
++            max_retries: 3,
++            retry_initial_delay: Duration::from_millis(500),
++            retry_max_delay: Duration::from_secs(8),
+             verify_checksum: true,
+         }
+     }
+diff --git a/crates/core-transfer/src/core.rs b/crates/core-transfer/src/core.rs
+index 33d3edb..d0c482c 100644
+--- a/crates/core-transfer/src/core.rs
++++ b/crates/core-transfer/src/core.rs
+@@ -1,28 +1,29 @@
+ use std::cmp::Ordering;
+ use std::collections::{BTreeMap, BinaryHeap};
+ use std::fs::{self, File};
+-use std::io::Write;
++use std::io::Read;
+ use std::path::PathBuf;
+ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
+ use std::sync::{Arc, Mutex};
+ 
+ use sha2::{Digest, Sha256};
+-use tokio::sync::Notify;
++use tokio::sync::{Notify, Semaphore};
++use tokio::task::JoinSet;
+ use tokio_util::sync::CancellationToken;
+ 
+-use crate::adapter::{DownloadTransport, FileIdRequest, TransferAdapter};
++use crate::adapter::{FileIdRequest, TransferAdapter, TransferTransport};
+ use crate::config::TransferConfig;
+ use crate::event::{EventHub, EventStream, TransferEvent};
+ use crate::types::{
+-    DownloadPart, DownloadPlan, DownloadRequest, DownloadTarget, TaskId, TaskPriority, UploadInput,
+-    UploadRequest,
++    Checksum, DownloadPart, DownloadPlan, DownloadRequest, DownloadTarget, HttpMethod, PartInput,
++    PartResult, TaskId, TaskPriority, UploadInput, UploadRequest,
+ };
+ use crate::{Result, TransferError, TransferErrorCode};
+ 
+ pub struct TransferCore<A, T>
+ where
+     A: TransferAdapter,
+-    T: DownloadTransport,
++    T: TransferTransport,
+ {
+     adapter: Arc<A>,
+     transport: Arc<T>,
+@@ -33,7 +34,7 @@ where
+ impl<A, T> TransferCore<A, T>
+ where
+     A: TransferAdapter,
+-    T: DownloadTransport,
++    T: TransferTransport,
+ {
+     pub fn new(adapter: Arc<A>, transport: Arc<T>, default_config: TransferConfig) -> Self {
+         let scheduler = Arc::new(Scheduler::new(default_config.max_concurrent_tasks));
+@@ -227,7 +228,7 @@ async fn run_download<A, T>(
+     task: QueuedTask,
+ ) where
+     A: TransferAdapter,
+-    T: DownloadTransport,
++    T: TransferTransport,
+ {
+     if task.cancel.is_cancelled() {
+         task.events.emit(TransferEvent::Canceled);
+@@ -271,56 +272,83 @@ async fn execute_download<A, T>(
+ ) -> Result<()>
+ where
+     A: TransferAdapter,
+-    T: DownloadTransport,
++    T: TransferTransport,
+ {
+     let request = match &task.kind {
+         TaskKind::Download(request) => request,
+         TaskKind::Upload(_) => {
+             return Err(TransferError::non_retryable(
+-                TransferErrorCode::Unknown,
++                TransferErrorCode::Internal,
+                 "queued upload reached download executor",
+             ));
+         }
+     };
+     let plan = resolve_plan(adapter, &request.target).await?;
+     validate_plan(&plan)?;
+-    let mut downloaded = Vec::new();
+-    let mut transferred = 0_u64;
+     let total = plan.total_size.or_else(|| sum_part_sizes(&plan.parts));
+-
+-    for part in sorted_parts(plan.parts.clone()) {
+-        if task.cancel.is_cancelled() {
+-            return Err(TransferError::non_retryable(
+-                TransferErrorCode::Canceled,
+-                "download canceled",
+-            ));
+-        }
+-        let bytes = transport.fetch(&part, &task.cancel).await?;
+-        if let Some(expected) = part.size {
+-            if bytes.len() as u64 != expected {
++    let transferred = Arc::new(AtomicU64::new(0));
++    let mut join_set = JoinSet::new();
++    let semaphore = Arc::new(Semaphore::new(config.max_part_concurrency.max(1)));
++    for part in plan.parts.clone() {
++        let permit = semaphore.clone().acquire_owned().await.map_err(|_| {
++            TransferError::non_retryable(TransferErrorCode::Internal, "part semaphore closed")
++        })?;
++        let transport = transport.clone();
++        let cancel = task.cancel.clone();
++        let events = task.events.clone();
++        let output_path = temp_part_path(&request.output_path, part.index);
++        let config = config.clone();
++        let transferred = transferred.clone();
++        join_set.spawn(async move {
++            let _permit = permit;
++            let result = retry_part(&config, || {
++                let transport = transport.clone();
++                let part = part.clone();
++                let output_path = output_path.clone();
++                let cancel = cancel.clone();
++                async move { transport.download_part(&part, &output_path, &cancel).await }
++            })
++            .await?;
++            validate_part_result(&part, &result)?;
++            if config.verify_checksum {
++                if let Some(checksum) = &part.checksum {
++                    verify_file_checksum(result.path.as_ref(), checksum)?;
++                }
++            }
++            let transferred_now =
++                transferred.fetch_add(result.size, AtomicOrdering::SeqCst) + result.size;
++            events.emit(TransferEvent::Progress {
++                transferred: transferred_now,
++                total,
++            });
++            Ok::<PartResult, TransferError>(result)
++        });
++    }
++    let mut results = Vec::new();
++    while let Some(result) = join_set.join_next().await {
++        match result {
++            Ok(Ok(part)) => results.push(part),
++            Ok(Err(err)) => {
++                task.cancel.cancel();
++                cleanup_download_parts(&request.output_path, &plan.parts);
++                return Err(err);
++            }
++            Err(err) => {
++                task.cancel.cancel();
++                cleanup_download_parts(&request.output_path, &plan.parts);
+                 return Err(TransferError::non_retryable(
+-                    TransferErrorCode::InvalidMeta,
+-                    "downloaded part size does not match metadata",
++                    TransferErrorCode::Internal,
++                    err.to_string(),
+                 ));
+             }
+         }
+-        if config.verify_checksum {
+-            if let Some(checksum) = &part.checksum {
+-                verify_checksum(&bytes, checksum)?;
+-            }
+-        }
+-        transferred += bytes.len() as u64;
+-        downloaded.extend_from_slice(&bytes);
+-        task.events
+-            .emit(TransferEvent::Progress { transferred, total });
+     }
+-
++    finalize_download(&request.output_path, &results)?;
+     if config.verify_checksum {
+         if let Some(checksum) = &plan.checksum {
+-            verify_checksum(&downloaded, checksum)?;
++            verify_file_checksum(Some(&request.output_path), checksum)?;
+         }
+     }
+-    write_output(&request.output_path, &downloaded)?;
+     task.events.emit(TransferEvent::Succeeded {
+         output_path: request.output_path.to_string_lossy().to_string(),
+         result: BTreeMap::new(),
+@@ -336,52 +364,90 @@ async fn execute_upload<A, T>(
+ ) -> Result<()>
+ where
+     A: TransferAdapter,
+-    T: DownloadTransport,
++    T: TransferTransport,
+ {
+     let request = match &task.kind {
+         TaskKind::Upload(request) => request,
+         TaskKind::Download(_) => {
+             return Err(TransferError::non_retryable(
+-                TransferErrorCode::Unknown,
++                TransferErrorCode::Internal,
+                 "queued download reached upload executor",
+             ));
+         }
+     };
+-    let input = read_upload_input(&request.input).await?;
++    let input_size = upload_input_size(&request.input).await?;
+     if task.cancel.is_cancelled() {
+         return Err(TransferError::non_retryable(
+             TransferErrorCode::Canceled,
+             "upload canceled",
+         ));
+     }
+-    let chunks = split_upload_chunks(&input, config.upload_part_size)?;
+     let plan = adapter
+-        .create_upload(request, input.len() as u64, chunks.len())
++        .create_upload(request, input_size, config.upload_part_size as u64)
+         .await?;
+-    if plan.parts.len() != chunks.len() {
++    if plan.parts.is_empty() {
+         return Err(TransferError::non_retryable(
+             TransferErrorCode::InvalidMeta,
+-            "upload plan part count does not match input chunks",
++            "upload plan has no parts",
+         ));
+     }
+-    let mut uploaded = 0_u64;
+-    for (part, bytes) in sorted_upload_parts(plan.parts.clone())
+-        .into_iter()
+-        .zip(chunks)
+-    {
+-        if task.cancel.is_cancelled() {
+-            return Err(TransferError::non_retryable(
+-                TransferErrorCode::Canceled,
+-                "upload canceled",
+-            ));
+-        }
+-        transport.upload(&part, bytes, &task.cancel).await?;
+-        uploaded += bytes.len() as u64;
+-        task.events.emit(TransferEvent::Progress {
+-            transferred: uploaded,
+-            total: Some(input.len() as u64),
++    validate_upload_plan(&plan, input_size)?;
++    let uploaded = Arc::new(AtomicU64::new(0));
++    let mut join_set = JoinSet::new();
++    let semaphore = Arc::new(Semaphore::new(config.max_part_concurrency.max(1)));
++    for part in sorted_upload_parts(plan.parts.clone()) {
++        let permit = semaphore.clone().acquire_owned().await.map_err(|_| {
++            TransferError::non_retryable(TransferErrorCode::Internal, "part semaphore closed")
++        })?;
++        let transport = transport.clone();
++        let cancel = task.cancel.clone();
++        let events = task.events.clone();
++        let config = config.clone();
++        let uploaded = uploaded.clone();
++        let input = upload_part_input(&request.input, &part).await?;
++        join_set.spawn(async move {
++            let _permit = permit;
++            let result = retry_part(&config, || {
++                let transport = transport.clone();
++                let part = part.clone();
++                let input = input.clone();
++                let cancel = cancel.clone();
++                async move { transport.upload(&part, input, &cancel).await }
++            })
++            .await?;
++            if result.size != part.size {
++                return Err(TransferError::non_retryable(
++                    TransferErrorCode::SizeMismatch,
++                    "uploaded part size does not match plan",
++                ));
++            }
++            let uploaded_now =
++                uploaded.fetch_add(result.size, AtomicOrdering::SeqCst) + result.size;
++            events.emit(TransferEvent::Progress {
++                transferred: uploaded_now,
++                total: Some(input_size),
++            });
++            Ok::<PartResult, TransferError>(result)
+         });
+     }
++    let mut part_results = Vec::new();
++    while let Some(result) = join_set.join_next().await {
++        match result {
++            Ok(Ok(part)) => part_results.push(part),
++            Ok(Err(err)) => {
++                task.cancel.cancel();
++                return Err(err);
++            }
++            Err(err) => {
++                task.cancel.cancel();
++                return Err(TransferError::non_retryable(
++                    TransferErrorCode::Internal,
++                    err.to_string(),
++                ));
++            }
++        }
++    }
++    part_results.sort_by_key(|part| part.index);
+     let result = adapter.complete_upload(request, &plan).await?;
+     task.events.emit(TransferEvent::Succeeded {
+         output_path: String::new(),
+@@ -415,6 +481,7 @@ where
+             parts: vec![DownloadPart {
+                 index: 0,
+                 url: url.clone(),
++                method: HttpMethod::Get,
+                 headers: headers.clone(),
+                 size: *expected_size,
+                 checksum: None,
+@@ -439,34 +506,30 @@ fn validate_plan(plan: &DownloadPlan) -> Result<()> {
+     Ok(())
+ }
+ 
+-fn sorted_parts(mut parts: Vec<DownloadPart>) -> Vec<DownloadPart> {
+-    parts.sort_by_key(|part| part.index);
+-    parts
+-}
+-
+ fn sorted_upload_parts(mut parts: Vec<crate::UploadPart>) -> Vec<crate::UploadPart> {
+     parts.sort_by_key(|part| part.index);
+     parts
+ }
+ 
+-async fn read_upload_input(input: &UploadInput) -> Result<Vec<u8>> {
++async fn upload_input_size(input: &UploadInput) -> Result<u64> {
+     match input {
+-        UploadInput::Path(path) => std::fs::read(path).map_err(Into::into),
+-        UploadInput::Reader(reader) => reader.read_all().await,
++        UploadInput::Path(path) => Ok(std::fs::metadata(path)?.len()),
++        UploadInput::Reader(reader) => reader.len().await,
+     }
+ }
+ 
+-fn split_upload_chunks(bytes: &[u8], part_size: usize) -> Result<Vec<&[u8]>> {
++#[allow(dead_code)]
++fn upload_part_count(size: u64, part_size: usize) -> Result<usize> {
+     if part_size == 0 {
+         return Err(TransferError::non_retryable(
+             TransferErrorCode::InvalidMeta,
+             "upload part size must be greater than zero",
+         ));
+     }
+-    if bytes.is_empty() {
+-        return Ok(vec![bytes]);
++    if size == 0 {
++        return Ok(1);
+     }
+-    Ok(bytes.chunks(part_size).collect())
++    Ok(size.div_ceil(part_size as u64) as usize)
+ }
+ 
+ fn sum_part_sizes(parts: &[DownloadPart]) -> Option<u64> {
+@@ -475,35 +538,171 @@ fn sum_part_sizes(parts: &[DownloadPart]) -> Option<u64> {
+         .try_fold(0_u64, |sum, part| part.size.map(|size| sum + size))
+ }
+ 
+-fn verify_checksum(bytes: &[u8], expected: &str) -> Result<()> {
+-    let actual = hex::encode(Sha256::digest(bytes));
+-    if actual.eq_ignore_ascii_case(expected) {
+-        Ok(())
+-    } else {
+-        Err(TransferError::non_retryable(
+-            TransferErrorCode::ChecksumMismatch,
+-            "sha256 checksum mismatch",
+-        ))
++fn verify_file_checksum(path: Option<&PathBuf>, expected: &Checksum) -> Result<()> {
++    let Some(path) = path else {
++        return Err(TransferError::non_retryable(
++            TransferErrorCode::Internal,
++            "part result has no file path for checksum",
++        ));
++    };
++    match expected {
++        Checksum::Sha256(expected) => {
++            let mut file = File::open(path)?;
++            let mut hasher = Sha256::new();
++            let mut buffer = [0_u8; 8192];
++            loop {
++                let read = file.read(&mut buffer)?;
++                if read == 0 {
++                    break;
++                }
++                hasher.update(&buffer[..read]);
++            }
++            let actual = hex::encode(hasher.finalize());
++            if actual.eq_ignore_ascii_case(expected) {
++                Ok(())
++            } else {
++                Err(TransferError::non_retryable(
++                    TransferErrorCode::ChecksumMismatch,
++                    "sha256 checksum mismatch",
++                ))
++            }
++        }
++        Checksum::Md5(_) => Err(TransferError::non_retryable(
++            TransferErrorCode::Internal,
++            "md5 verification is not implemented",
++        )),
+     }
+ }
+ 
+-fn write_output(output_path: &PathBuf, bytes: &[u8]) -> Result<()> {
++fn finalize_download(output_path: &PathBuf, results: &[PartResult]) -> Result<()> {
+     if let Some(parent) = output_path.parent() {
+         fs::create_dir_all(parent)?;
+     }
+-    let tmp_path = output_path.with_extension(format!(
+-        "{}tmp",
+-        output_path
+-            .extension()
+-            .and_then(|value| value.to_str())
+-            .map(|value| format!("{value}."))
+-            .unwrap_or_default()
+-    ));
++    let tmp_path = final_tmp_path(output_path);
++    let mut sorted = results.to_vec();
++    sorted.sort_by_key(|part| part.index);
+     {
+-        let mut file = File::create(&tmp_path)?;
+-        file.write_all(bytes)?;
+-        file.sync_all()?;
++        let mut output = File::create(&tmp_path)?;
++        for part in sorted {
++            let Some(path) = part.path else {
++                return Err(TransferError::non_retryable(
++                    TransferErrorCode::Internal,
++                    "download part result has no path",
++                ));
++            };
++            let mut input = File::open(&path)?;
++            std::io::copy(&mut input, &mut output)?;
++        }
++        output.sync_all()?;
+     }
+     fs::rename(tmp_path, output_path)?;
++    for part in results {
++        if let Some(path) = &part.path {
++            let _ = fs::remove_file(path);
++        }
++    }
++    Ok(())
++}
++
++fn validate_part_result(part: &DownloadPart, result: &PartResult) -> Result<()> {
++    if result.index != part.index {
++        return Err(TransferError::non_retryable(
++            TransferErrorCode::InvalidMeta,
++            "download part result index does not match plan",
++        ));
++    }
++    if let Some(expected) = part.size {
++        if result.size != expected {
++            return Err(TransferError::non_retryable(
++                TransferErrorCode::SizeMismatch,
++                "downloaded part size does not match metadata",
++            ));
++        }
++    }
++    Ok(())
++}
++
++fn validate_upload_plan(plan: &crate::UploadPlan, input_size: u64) -> Result<()> {
++    let mut total = 0_u64;
++    for part in &plan.parts {
++        if part.size == 0 && input_size > 0 {
++            return Err(TransferError::non_retryable(
++                TransferErrorCode::InvalidMeta,
++                "upload part size must be greater than zero",
++            ));
++        }
++        if part.offset.saturating_add(part.size) > input_size {
++            return Err(TransferError::non_retryable(
++                TransferErrorCode::InvalidMeta,
++                "upload part range is outside input",
++            ));
++        }
++        total = total.saturating_add(part.size);
++    }
++    if total != input_size {
++        return Err(TransferError::non_retryable(
++            TransferErrorCode::InvalidMeta,
++            "upload plan ranges do not cover input size",
++        ));
++    }
+     Ok(())
+ }
++
++async fn upload_part_input(input: &UploadInput, part: &crate::UploadPart) -> Result<PartInput> {
++    match input {
++        UploadInput::Path(path) => Ok(PartInput::PathRange {
++            path: path.clone(),
++            offset: part.offset,
++            size: part.size,
++        }),
++        UploadInput::Reader(reader) => Ok(PartInput::Bytes(
++            reader.read_range(part.offset, part.size).await?,
++        )),
++    }
++}
++
++async fn retry_part<F, Fut, T>(config: &TransferConfig, mut op: F) -> Result<T>
++where
++    F: FnMut() -> Fut,
++    Fut: std::future::Future<Output = Result<T>>,
++{
++    let mut attempt = 0_u32;
++    let mut delay = config.retry_initial_delay;
++    loop {
++        match tokio::time::timeout(config.request_timeout, op()).await {
++            Ok(Ok(value)) => return Ok(value),
++            Ok(Err(err)) if err.retryable && attempt < config.max_retries => {
++                tokio::time::sleep(delay).await;
++                delay = (delay * 2).min(config.retry_max_delay);
++                attempt += 1;
++            }
++            Ok(Err(err)) => return Err(err),
++            Err(_) if attempt < config.max_retries => {
++                tokio::time::sleep(delay).await;
++                delay = (delay * 2).min(config.retry_max_delay);
++                attempt += 1;
++            }
++            Err(_) => {
++                return Err(TransferError::new(
++                    TransferErrorCode::Timeout,
++                    "transfer part timed out",
++                ));
++            }
++        }
++    }
++}
++
++fn temp_part_path(output_path: &PathBuf, index: usize) -> PathBuf {
++    PathBuf::from(format!("{}.part-{index}.tmp", output_path.display()))
++}
++
++fn final_tmp_path(output_path: &PathBuf) -> PathBuf {
++    PathBuf::from(format!("{}.tmp", output_path.display()))
++}
++
++fn cleanup_download_parts(output_path: &PathBuf, parts: &[DownloadPart]) {
++    for part in parts {
++        let _ = fs::remove_file(temp_part_path(output_path, part.index));
++    }
++    let _ = fs::remove_file(final_tmp_path(output_path));
++}
+diff --git a/crates/core-transfer/src/error.rs b/crates/core-transfer/src/error.rs
+index 64679ec..fe35ca2 100644
+--- a/crates/core-transfer/src/error.rs
++++ b/crates/core-transfer/src/error.rs
+@@ -5,13 +5,20 @@ pub type Result<T> = std::result::Result<T, TransferError>;
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ pub enum TransferErrorCode {
+     Network,
++    Timeout,
++    HttpStatus,
++    Unauthorized,
+     ResolveMetaFailed,
+     InvalidMeta,
++    UploadInitFailed,
++    UploadCompleteFailed,
+     UrlExpired,
+     Io,
++    DiskFull,
+     ChecksumMismatch,
++    SizeMismatch,
+     Canceled,
+-    Unknown,
++    Internal,
+ }
+ 
+ #[derive(Debug, Clone, PartialEq, Eq)]
+@@ -19,6 +26,7 @@ pub struct TransferError {
+     pub code: TransferErrorCode,
+     pub message: String,
+     pub retryable: bool,
++    pub http_status: Option<u16>,
+ }
+ 
+ impl TransferError {
+@@ -26,14 +34,16 @@ impl TransferError {
+         let retryable = matches!(
+             code,
+             TransferErrorCode::Network
++                | TransferErrorCode::Timeout
++                | TransferErrorCode::HttpStatus
+                 | TransferErrorCode::ResolveMetaFailed
+-                | TransferErrorCode::UrlExpired
+-                | TransferErrorCode::Unknown
++                | TransferErrorCode::Internal
+         );
+         Self {
+             code,
+             message: message.into(),
+             retryable,
++            http_status: None,
+         }
+     }
+ 
+@@ -42,8 +52,14 @@ impl TransferError {
+             code,
+             message: message.into(),
+             retryable: false,
++            http_status: None,
+         }
+     }
++
++    pub fn with_http_status(mut self, status: u16) -> Self {
++        self.http_status = Some(status);
++        self
++    }
+ }
+ 
+ impl fmt::Display for TransferError {
+diff --git a/crates/core-transfer/src/lib.rs b/crates/core-transfer/src/lib.rs
+index 60bc00f..8b52095 100644
+--- a/crates/core-transfer/src/lib.rs
++++ b/crates/core-transfer/src/lib.rs
+@@ -11,12 +11,13 @@ mod error;
+ mod event;
+ mod types;
+ 
+-pub use adapter::{DownloadTransport, FileIdRequest, ReqwestTransport, TransferAdapter};
++pub use adapter::{FileIdRequest, ReqwestTransport, TransferAdapter, TransferTransport};
+ pub use config::TransferConfig;
+ pub use core::{TaskHandle, TransferCore};
+ pub use error::{Result, TransferError, TransferErrorCode};
+ pub use event::{EventStream, TransferEvent};
+ pub use types::{
+-    DownloadPart, DownloadPlan, DownloadRequest, DownloadTarget, TaskId, TaskPriority, UploadInput,
+-    UploadPart, UploadPlan, UploadReader, UploadRequest,
++    Checksum, DownloadPart, DownloadPlan, DownloadRequest, DownloadTarget, HttpMethod, PartInput,
++    PartResult, TaskId, TaskPriority, UploadInput, UploadPart, UploadPlan, UploadReader,
++    UploadRequest,
+ };
+diff --git a/crates/core-transfer/src/types.rs b/crates/core-transfer/src/types.rs
+index e6f31af..488b1be 100644
+--- a/crates/core-transfer/src/types.rs
++++ b/crates/core-transfer/src/types.rs
+@@ -28,6 +28,19 @@ pub enum TaskPriority {
+     High,
+ }
+ 
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub enum HttpMethod {
++    Get,
++    Put,
++    Post,
++}
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub enum Checksum {
++    Sha256(String),
++    Md5(String),
++}
++
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub enum DownloadTarget {
+     FileId {
+@@ -38,7 +51,7 @@ pub enum DownloadTarget {
+         url: String,
+         headers: BTreeMap<String, String>,
+         expected_size: Option<u64>,
+-        checksum: Option<String>,
++        checksum: Option<Checksum>,
+     },
+ }
+ 
+@@ -55,22 +68,24 @@ pub struct DownloadRequest {
+ pub struct DownloadPart {
+     pub index: usize,
+     pub url: String,
++    pub method: HttpMethod,
+     pub headers: BTreeMap<String, String>,
+     pub size: Option<u64>,
+-    pub checksum: Option<String>,
++    pub checksum: Option<Checksum>,
+ }
+ 
+ #[derive(Debug, Clone, PartialEq, Eq)]
+ pub struct DownloadPlan {
+     pub file_name: Option<String>,
+     pub total_size: Option<u64>,
+-    pub checksum: Option<String>,
++    pub checksum: Option<Checksum>,
+     pub parts: Vec<DownloadPart>,
+ }
+ 
+ #[async_trait]
+ pub trait UploadReader: Send + Sync + 'static {
+-    async fn read_all(&self) -> crate::Result<Vec<u8>>;
++    async fn len(&self) -> crate::Result<u64>;
++    async fn read_range(&self, offset: u64, size: u64) -> crate::Result<Vec<u8>>;
+ }
+ 
+ #[derive(Clone)]
+@@ -93,7 +108,11 @@ pub struct UploadRequest {
+ pub struct UploadPart {
+     pub index: usize,
+     pub url: String,
++    pub method: HttpMethod,
+     pub headers: BTreeMap<String, String>,
++    pub offset: u64,
++    pub size: u64,
++    pub checksum: Option<Checksum>,
+ }
+ 
+ #[derive(Debug, Clone, PartialEq, Eq)]
+@@ -101,3 +120,22 @@ pub struct UploadPlan {
+     pub upload_id: Option<String>,
+     pub parts: Vec<UploadPart>,
+ }
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub enum PartInput {
++    PathRange {
++        path: PathBuf,
++        offset: u64,
++        size: u64,
++    },
++    Bytes(Vec<u8>),
++}
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct PartResult {
++    pub index: usize,
++    pub path: Option<PathBuf>,
++    pub size: u64,
++    pub checksum: Option<Checksum>,
++    pub etag: Option<String>,
++}
+diff --git a/crates/core-transfer/tests/download_core.rs b/crates/core-transfer/tests/download_core.rs
+index 11b6803..a768124 100644
+--- a/crates/core-transfer/tests/download_core.rs
++++ b/crates/core-transfer/tests/download_core.rs
+@@ -5,9 +5,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
+ 
+ use async_trait::async_trait;
+ use core_transfer::{
+-    DownloadPart, DownloadPlan, DownloadRequest, DownloadTarget, DownloadTransport, FileIdRequest,
+-    TaskPriority, TransferAdapter, TransferConfig, TransferCore, TransferError, TransferErrorCode,
+-    TransferEvent, UploadInput, UploadPart, UploadPlan, UploadReader, UploadRequest,
++    Checksum, DownloadPart, DownloadPlan, DownloadRequest, DownloadTarget, FileIdRequest,
++    HttpMethod, PartInput, PartResult, TaskPriority, TransferAdapter, TransferConfig, TransferCore,
++    TransferError, TransferErrorCode, TransferEvent, TransferTransport, UploadInput, UploadPart,
++    UploadPlan, UploadReader, UploadRequest,
+ };
+ use tokio_util::sync::CancellationToken;
+ 
+@@ -51,6 +52,7 @@ async fn file_id_download_resolves_meta_before_fetching_file_url() {
+             parts: vec![DownloadPart {
+                 index: 0,
+                 url: "https://media/report-part".to_string(),
++                method: HttpMethod::Get,
+                 headers: BTreeMap::new(),
+                 size: Some(7),
+                 checksum: None,
+@@ -187,7 +189,7 @@ async fn per_request_config_overrides_default_checksum_policy() {
+             url: "https://cdn/bad.bin".to_string(),
+             headers: BTreeMap::new(),
+             expected_size: Some(3),
+-            checksum: Some("0000".to_string()),
++            checksum: Some(Checksum::Sha256("0000".to_string())),
+         },
+         output_path: temp_path("bad.bin"),
+         priority: TaskPriority::Normal,
+@@ -209,7 +211,7 @@ async fn checksum_mismatch_fails_when_verification_is_enabled() {
+             url: "https://cdn/bad-checksum.bin".to_string(),
+             headers: BTreeMap::new(),
+             expected_size: Some(3),
+-            checksum: Some("0000".to_string()),
++            checksum: Some(Checksum::Sha256("0000".to_string())),
+         },
+         output_path: temp_path("bad-checksum.bin"),
+         priority: TaskPriority::Normal,
+@@ -228,6 +230,151 @@ async fn checksum_mismatch_fails_when_verification_is_enabled() {
+     ));
+ }
+ 
++#[tokio::test]
++async fn file_id_multi_part_download_merges_by_index() {
++    let adapter = Arc::new(MockAdapter::with_plan(
++        "file-2",
++        DownloadPlan {
++            file_name: Some("multi.txt".to_string()),
++            total_size: Some(9),
++            checksum: None,
++            parts: vec![
++                DownloadPart {
++                    index: 2,
++                    url: "https://media/part-2".to_string(),
++                    method: HttpMethod::Get,
++                    headers: BTreeMap::new(),
++                    size: Some(3),
++                    checksum: None,
++                },
++                DownloadPart {
++                    index: 0,
++                    url: "https://media/part-0".to_string(),
++                    method: HttpMethod::Get,
++                    headers: BTreeMap::new(),
++                    size: Some(3),
++                    checksum: None,
++                },
++                DownloadPart {
++                    index: 1,
++                    url: "https://media/part-1".to_string(),
++                    method: HttpMethod::Get,
++                    headers: BTreeMap::new(),
++                    size: Some(3),
++                    checksum: None,
++                },
++            ],
++        },
++    ));
++    let transport = Arc::new(MockTransport::new([
++        ("https://media/part-0", b"aaa".as_slice()),
++        ("https://media/part-1", b"bbb".as_slice()),
++        ("https://media/part-2", b"ccc".as_slice()),
++    ]));
++    let core = TransferCore::new(adapter, transport, TransferConfig::default());
++    let output = temp_path("multi.txt");
++
++    let handle = core.start_download(DownloadRequest {
++        target: DownloadTarget::FileId {
++            file_id: "file-2".to_string(),
++            source: None,
++        },
++        output_path: output.clone(),
++        priority: TaskPriority::Normal,
++        config: None,
++        metadata: BTreeMap::new(),
++    });
++
++    assert_succeeded(&mut handle.subscribe()).await;
++    assert_eq!(std::fs::read(output).unwrap(), b"aaabbbccc");
++}
++
++#[tokio::test]
++async fn part_concurrency_never_exceeds_configured_limit() {
++    let adapter = Arc::new(MockAdapter::with_plan(
++        "file-3",
++        DownloadPlan {
++            file_name: None,
++            total_size: Some(12),
++            checksum: None,
++            parts: (0..4)
++                .map(|index| DownloadPart {
++                    index,
++                    url: format!("https://media/concurrent-{index}"),
++                    method: HttpMethod::Get,
++                    headers: BTreeMap::new(),
++                    size: Some(3),
++                    checksum: None,
++                })
++                .collect(),
++        },
++    ));
++    let transport = Arc::new(MockTransport::new([
++        ("https://media/concurrent-0", b"000".as_slice()),
++        ("https://media/concurrent-1", b"111".as_slice()),
++        ("https://media/concurrent-2", b"222".as_slice()),
++        ("https://media/concurrent-3", b"333".as_slice()),
++    ]));
++    transport.set_delay_ms(20);
++    let core = TransferCore::new(
++        adapter,
++        transport.clone(),
++        TransferConfig {
++            max_part_concurrency: 2,
++            ..TransferConfig::default()
++        },
++    );
++
++    let handle = core.start_download(DownloadRequest {
++        target: DownloadTarget::FileId {
++            file_id: "file-3".to_string(),
++            source: None,
++        },
++        output_path: temp_path("concurrent.txt"),
++        priority: TaskPriority::Normal,
++        config: None,
++        metadata: BTreeMap::new(),
++    });
++
++    assert_succeeded(&mut handle.subscribe()).await;
++    assert!(transport.max_active() <= 2);
++}
++
++#[tokio::test]
++async fn retryable_part_error_is_retried() {
++    let transport = Arc::new(MockTransport::new([(
++        "https://cdn/flaky.bin",
++        b"ok".as_slice(),
++    )]));
++    transport.fail_next("https://cdn/flaky.bin", 1);
++    let core = TransferCore::new(
++        Arc::new(MockAdapter::default()),
++        transport.clone(),
++        TransferConfig::default(),
++    );
++    let handle = core.start_download(DownloadRequest {
++        target: DownloadTarget::DirectUrl {
++            url: "https://cdn/flaky.bin".to_string(),
++            headers: BTreeMap::new(),
++            expected_size: Some(2),
++            checksum: None,
++        },
++        output_path: temp_path("flaky.bin"),
++        priority: TaskPriority::Normal,
++        config: Some(TransferConfig {
++            max_retries: 1,
++            ..TransferConfig::default()
++        }),
++        metadata: BTreeMap::new(),
++    });
++
++    assert_succeeded(&mut handle.subscribe()).await;
++    assert_eq!(
++        transport.fetches(),
++        vec!["https://cdn/flaky.bin", "https://cdn/flaky.bin"]
++    );
++}
++
+ #[tokio::test]
+ async fn upload_path_splits_parts_uploads_and_completes() {
+     let input_path = temp_path("upload-input.txt");
+@@ -265,7 +412,7 @@ async fn upload_path_splits_parts_uploads_and_completes() {
+     );
+     assert_eq!(
+         adapter.upload_creates(),
+-        vec![("upload-input.txt".to_string(), 6, 2)]
++        vec![("upload-input.txt".to_string(), 6, 3)]
+     );
+     assert_eq!(adapter.upload_completes(), 1);
+ }
+@@ -364,7 +511,7 @@ struct MockAdapter {
+     plans: Mutex<BTreeMap<String, DownloadPlan>>,
+     calls: Mutex<Vec<String>>,
+     upload_urls: Mutex<Vec<String>>,
+-    upload_creates: Mutex<Vec<(String, u64, usize)>>,
++    upload_creates: Mutex<Vec<(String, u64, u64)>>,
+     upload_completes: Mutex<usize>,
+ }
+ 
+@@ -392,7 +539,7 @@ impl MockAdapter {
+         self.calls.lock().unwrap().clone()
+     }
+ 
+-    fn upload_creates(&self) -> Vec<(String, u64, usize)> {
++    fn upload_creates(&self) -> Vec<(String, u64, u64)> {
+         self.upload_creates.lock().unwrap().clone()
+     }
+ 
+@@ -426,14 +573,15 @@ impl TransferAdapter for MockAdapter {
+         &self,
+         request: &UploadRequest,
+         input_size: u64,
+-        part_count: usize,
++        preferred_part_size: u64,
+     ) -> Result<UploadPlan, TransferError> {
+         self.upload_creates.lock().unwrap().push((
+             request.file_name.clone(),
+             input_size,
+-            part_count,
++            preferred_part_size,
+         ));
+         let urls = self.upload_urls.lock().unwrap().clone();
++        let part_count = urls.len();
+         Ok(UploadPlan {
+             upload_id: Some("upload-id".to_string()),
+             parts: urls
+@@ -443,7 +591,11 @@ impl TransferAdapter for MockAdapter {
+                 .map(|(index, url)| UploadPart {
+                     index,
+                     url,
++                    method: HttpMethod::Put,
+                     headers: BTreeMap::new(),
++                    offset: index as u64 * 3,
++                    size: if part_count == 1 { input_size } else { 3 },
++                    checksum: None,
+                 })
+                 .collect(),
+         })
+@@ -466,6 +618,10 @@ struct MockTransport {
+     payloads: BTreeMap<String, Vec<u8>>,
+     fetches: Mutex<Vec<String>>,
+     uploads: Mutex<Vec<(String, Vec<u8>)>>,
++    fail_next: Mutex<BTreeMap<String, usize>>,
++    active: Mutex<usize>,
++    max_active: Mutex<usize>,
++    delay_ms: Mutex<u64>,
+ }
+ 
+ impl MockTransport {
+@@ -477,6 +633,10 @@ impl MockTransport {
+                 .collect(),
+             fetches: Mutex::new(Vec::new()),
+             uploads: Mutex::new(Vec::new()),
++            fail_next: Mutex::new(BTreeMap::new()),
++            active: Mutex::new(0),
++            max_active: Mutex::new(0),
++            delay_ms: Mutex::new(0),
+         }
+     }
+ 
+@@ -487,39 +647,92 @@ impl MockTransport {
+     fn uploads(&self) -> Vec<(String, Vec<u8>)> {
+         self.uploads.lock().unwrap().clone()
+     }
++
++    fn fail_next(&self, url: &str, count: usize) {
++        self.fail_next
++            .lock()
++            .unwrap()
++            .insert(url.to_string(), count);
++    }
++
++    fn set_delay_ms(&self, delay_ms: u64) {
++        *self.delay_ms.lock().unwrap() = delay_ms;
++    }
++
++    fn max_active(&self) -> usize {
++        *self.max_active.lock().unwrap()
++    }
+ }
+ 
+ #[async_trait]
+-impl DownloadTransport for MockTransport {
+-    async fn fetch(
++impl TransferTransport for MockTransport {
++    async fn download_part(
+         &self,
+         part: &DownloadPart,
++        output_path: &std::path::Path,
+         cancel: &CancellationToken,
+-    ) -> Result<Vec<u8>, TransferError> {
++    ) -> Result<PartResult, TransferError> {
+         if cancel.is_cancelled() {
+             return Err(TransferError::new(TransferErrorCode::Canceled, "canceled"));
+         }
+         self.fetches.lock().unwrap().push(part.url.clone());
+-        self.payloads
+-            .get(&part.url)
+-            .cloned()
+-            .ok_or_else(|| TransferError::new(TransferErrorCode::Network, "missing test payload"))
++        if let Some(left) = self.fail_next.lock().unwrap().get_mut(&part.url) {
++            if *left > 0 {
++                *left -= 1;
++                return Err(TransferError::new(TransferErrorCode::Network, "flaky"));
++            }
++        }
++        {
++            let mut active = self.active.lock().unwrap();
++            *active += 1;
++            let mut max_active = self.max_active.lock().unwrap();
++            *max_active = (*max_active).max(*active);
++        }
++        let delay_ms = *self.delay_ms.lock().unwrap();
++        if delay_ms > 0 {
++            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
++        }
++        let bytes = self.payloads.get(&part.url).cloned().ok_or_else(|| {
++            TransferError::new(TransferErrorCode::Network, "missing test payload")
++        })?;
++        std::fs::write(output_path, &bytes).unwrap();
++        *self.active.lock().unwrap() -= 1;
++        Ok(PartResult {
++            index: part.index,
++            path: Some(output_path.to_path_buf()),
++            size: bytes.len() as u64,
++            checksum: None,
++            etag: None,
++        })
+     }
+ 
+     async fn upload(
+         &self,
+         part: &UploadPart,
+-        bytes: &[u8],
++        input: PartInput,
+         cancel: &CancellationToken,
+-    ) -> Result<(), TransferError> {
++    ) -> Result<PartResult, TransferError> {
+         if cancel.is_cancelled() {
+             return Err(TransferError::new(TransferErrorCode::Canceled, "canceled"));
+         }
++        let bytes = match input {
++            PartInput::PathRange { path, offset, size } => {
++                let data = std::fs::read(path).unwrap();
++                data[offset as usize..(offset + size) as usize].to_vec()
++            }
++            PartInput::Bytes(bytes) => bytes,
++        };
+         self.uploads
+             .lock()
+             .unwrap()
+-            .push((part.url.clone(), bytes.to_vec()));
+-        Ok(())
++            .push((part.url.clone(), bytes.clone()));
++        Ok(PartResult {
++            index: part.index,
++            path: None,
++            size: bytes.len() as u64,
++            checksum: None,
++            etag: None,
++        })
+     }
+ }
+ 
+@@ -527,7 +740,11 @@ struct MemoryReader(Vec<u8>);
+ 
+ #[async_trait]
+ impl UploadReader for MemoryReader {
+-    async fn read_all(&self) -> Result<Vec<u8>, TransferError> {
+-        Ok(self.0.clone())
++    async fn len(&self) -> Result<u64, TransferError> {
++        Ok(self.0.len() as u64)
++    }
++
++    async fn read_range(&self, offset: u64, size: u64) -> Result<Vec<u8>, TransferError> {
++        Ok(self.0[offset as usize..(offset + size) as usize].to_vec())
+     }
+ }

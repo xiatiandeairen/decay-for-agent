@@ -1,0 +1,512 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index d25b8aa..b301571 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -233,17 +233,16 @@ dependencies = [
+  "arc-swap",
+  "core-context",
+  "core-crypto",
++ "core-net",
+  "core-types",
+  "getrandom",
+  "hex",
+  "percent-encoding",
+  "reqwest",
+- "rustls",
+  "serde",
+  "serde_json",
+  "tokio",
+  "url",
+- "webpki-roots",
+ ]
+ 
+ [[package]]
+diff --git a/crates/core-http/Cargo.toml b/crates/core-http/Cargo.toml
+index cb20083..ecf832b 100644
+--- a/crates/core-http/Cargo.toml
++++ b/crates/core-http/Cargo.toml
+@@ -10,10 +10,16 @@ publish                = false
+ arc-swap.workspace = true
+ core-context = { path = "../shared/core-context" }
+ core-crypto = { path = "../shared/core-crypto" }
++core-net = { path = "../shared/core-net" }
++core-types = { path = "../core-types" }
+ hex.workspace = true
+ getrandom.workspace = true
+ percent-encoding.workspace = true
+ reqwest.workspace = true
+ serde.workspace = true
+ serde_json.workspace = true
++tokio.workspace = true
+ url.workspace = true
++
++[dev-dependencies]
++tokio = { workspace = true, features = ["test-util"] }
+diff --git a/crates/core-http/src/client.rs b/crates/core-http/src/client.rs
+index 2d821cd..e7abdd7 100644
+--- a/crates/core-http/src/client.rs
++++ b/crates/core-http/src/client.rs
+@@ -1,8 +1,10 @@
+ use std::collections::BTreeMap;
+ use std::sync::Arc;
++use std::time::Duration;
+ 
+ use core_context::{AppContext, ClientType};
+ use core_crypto::IKey;
++use core_net::backoff::ExpBackoff;
+ use percent_encoding::percent_decode_str;
+ use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+ use serde::Serialize;
+@@ -58,21 +60,68 @@ impl HttpClient {
+         E: Endpoint,
+     {
+         let prepared = self.prepare::<E>(&endpoint)?;
++        self.send_prepared::<E>(prepared, RetryPolicy::default())
++            .await
++    }
++
++    async fn send_prepared<E>(
++        &self,
++        prepared: PreparedRequest,
++        retry_policy: RetryPolicy,
++    ) -> Result<Response<E::Output>>
++    where
++        E: Endpoint,
++    {
++        let mut backoff = retry_policy.backoff();
++        let mut rng = || 0_u32;
++        let mut attempt = 0_u32;
++
++        loop {
++            let request = self.build_request::<E>(&prepared)?;
++            match request.send().await {
++                Ok(raw) => {
++                    let status_code = raw.status().as_u16();
++                    let body_text = match raw.text().await {
++                        Ok(body_text) => body_text,
++                        Err(_) if retry_policy.can_retry(attempt) => {
++                            sleep_next_retry(&mut backoff, &mut rng).await;
++                            attempt = attempt.saturating_add(1);
++                            continue;
++                        }
++                        Err(err) => return Err(err.into()),
++                    };
++                    if is_retryable_status(status_code) && retry_policy.can_retry(attempt) {
++                        sleep_next_retry(&mut backoff, &mut rng).await;
++                        attempt = attempt.saturating_add(1);
++                        continue;
++                    }
++                    let metadata = ResponseMetadata {
++                        status_code,
++                        trace: prepared.trace,
++                    };
++                    return parse_response::<E::Output>(status_code, body_text, metadata);
++                }
++                Err(_) if retry_policy.can_retry(attempt) => {
++                    sleep_next_retry(&mut backoff, &mut rng).await;
++                    attempt = attempt.saturating_add(1);
++                }
++                Err(err) => return Err(err.into()),
++            }
++        }
++    }
++
++    fn build_request<E>(&self, prepared: &PreparedRequest) -> Result<reqwest::RequestBuilder>
++    where
++        E: Endpoint,
++    {
+         let mut request = self
+             .inner
+             .request(E::METHOD.as_reqwest(), prepared.url.clone())
+             .headers(to_header_map(&prepared.headers)?);
+         if !prepared.body_text.is_empty() {
+-            request = request.body(prepared.body_text);
++            request = request.body(prepared.body_text.clone());
+         }
+-        let raw = request.send().await?;
+-        let status_code = raw.status().as_u16();
+-        let body_text = raw.text().await?;
+-        let metadata = ResponseMetadata {
+-            status_code,
+-            trace: prepared.trace,
+-        };
+-        parse_response::<E::Output>(status_code, body_text, metadata)
++        Ok(request)
+     }
+ 
+     fn prepare<E>(&self, endpoint: &E) -> Result<PreparedRequest>
+@@ -134,6 +183,43 @@ struct PreparedRequest {
+     trace: HttpTrace,
+ }
+ 
++#[derive(Debug, Clone, Copy)]
++struct RetryPolicy {
++    max_retries: u32,
++    initial_delay: Duration,
++    max_delay: Duration,
++    jitter_pct: u8,
++}
++
++impl RetryPolicy {
++    fn can_retry(self, attempt: u32) -> bool {
++        attempt < self.max_retries
++    }
++
++    fn backoff(self) -> ExpBackoff {
++        ExpBackoff::new(self.initial_delay, self.max_delay, self.jitter_pct)
++    }
++}
++
++impl Default for RetryPolicy {
++    fn default() -> Self {
++        Self {
++            max_retries: 3,
++            initial_delay: Duration::from_millis(500),
++            max_delay: Duration::from_secs(8),
++            jitter_pct: 0,
++        }
++    }
++}
++
++async fn sleep_next_retry(backoff: &mut ExpBackoff, rng: &mut impl FnMut() -> u32) {
++    tokio::time::sleep(backoff.next_delay(rng)).await;
++}
++
++fn is_retryable_status(status_code: u16) -> bool {
++    (500..600).contains(&status_code)
++}
++
+ #[derive(Debug, Clone)]
+ struct RequestNonce {
+     bytes: [u8; 16],
+diff --git a/crates/core-http/src/error.rs b/crates/core-http/src/error.rs
+index c71f033..38c4b50 100644
+--- a/crates/core-http/src/error.rs
++++ b/crates/core-http/src/error.rs
+@@ -1,5 +1,6 @@
+ use std::fmt;
+ 
++use core_types::{MxErrorCode, ToErrorCode};
+ use serde_json::Value;
+ 
+ use crate::ResponseMetadata;
+@@ -47,8 +48,78 @@ impl std::error::Error for Error {
+     }
+ }
+ 
++impl ToErrorCode for Error {
++    fn error_code(&self) -> MxErrorCode {
++        match self {
++            Self::InvalidConfig(_) => MxErrorCode::HttpInvalidConfig,
++            Self::InvalidRequest(_) => MxErrorCode::HttpInvalidRequest,
++            Self::Signing(_) => MxErrorCode::HttpSigningFailed,
++            Self::Network(err) => network_error_code(err),
++            Self::InvalidResponse(_) => MxErrorCode::HttpInvalidResponse,
++            Self::Server { .. } => MxErrorCode::HttpServerError,
++        }
++    }
++}
++
++fn network_error_code(err: &reqwest::Error) -> MxErrorCode {
++    if err.is_timeout() {
++        MxErrorCode::NetTimeout
++    } else if err.is_connect() {
++        MxErrorCode::NetConnectFailed
++    } else if err.is_body() {
++        MxErrorCode::NetBodyReadFailed
++    } else {
++        MxErrorCode::NetRequestFailed
++    }
++}
++
+ impl From<reqwest::Error> for Error {
+     fn from(value: reqwest::Error) -> Self {
+         Self::Network(value)
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn http_error_codes_are_leaf_mapped() {
++        assert_eq!(
++            Error::InvalidConfig("x".to_string()).error_code(),
++            MxErrorCode::HttpInvalidConfig
++        );
++        assert_eq!(
++            Error::InvalidRequest("x".to_string()).error_code(),
++            MxErrorCode::HttpInvalidRequest
++        );
++        assert_eq!(
++            Error::Signing("x".to_string()).error_code(),
++            MxErrorCode::HttpSigningFailed
++        );
++        assert_eq!(
++            Error::InvalidResponse("x".to_string()).error_code(),
++            MxErrorCode::HttpInvalidResponse
++        );
++        assert_eq!(
++            Error::Server {
++                status: 500,
++                message: "server failed".to_string(),
++                body: Box::new(Value::Null),
++                metadata: Box::new(ResponseMetadata {
++                    status_code: 500,
++                    trace: crate::HttpTrace {
++                        endpoint: "test",
++                        method: crate::Method::Get,
++                        path: "/test".to_string(),
++                        signing_input_hash: String::new(),
++                        signing_input_len: 0,
++                        token_hash: String::new(),
++                    },
++                }),
++            }
++            .error_code(),
++            MxErrorCode::HttpServerError
++        );
++    }
++}
+diff --git a/crates/core-http/tests/error_codes.rs b/crates/core-http/tests/error_codes.rs
+new file mode 100644
+index 0000000..18c638b
+--- /dev/null
++++ b/crates/core-http/tests/error_codes.rs
+@@ -0,0 +1,235 @@
++use std::net::SocketAddr;
++use std::sync::atomic::{AtomicUsize, Ordering};
++use std::sync::Arc;
++use std::time::Duration;
++
++use core_context::{AppContext, AppInfo, ClientType, DeviceInfo, LocaleSettings};
++use core_http::{
++    AuthPolicy, Body, CommonParams, ContentType, Endpoint, EndpointConfig, Error, HttpClient,
++    HttpConfig, Method, PinConfig, QueryParams, SigningPolicy,
++};
++use core_types::{MxErrorCode, ToErrorCode};
++use tokio::io::{AsyncReadExt, AsyncWriteExt};
++use tokio::net::TcpListener;
++
++type TestOutput = std::collections::BTreeMap<String, bool>;
++
++struct MissingMappingEndpoint;
++
++impl Endpoint for MissingMappingEndpoint {
++    type Output = TestOutput;
++
++    const NAME: &'static str = "missing_mapping";
++    const METHOD: Method = Method::Get;
++    const PATH: &'static str = "/unknown/path";
++    const AUTH_POLICY: AuthPolicy = AuthPolicy::None;
++}
++
++struct BadPathEndpoint;
++
++impl Endpoint for BadPathEndpoint {
++    type Output = TestOutput;
++
++    const NAME: &'static str = "bad_path";
++    const METHOD: Method = Method::Get;
++    const PATH: &'static str = "bad/path";
++    const AUTH_POLICY: AuthPolicy = AuthPolicy::None;
++}
++
++struct SigningEndpoint;
++
++impl Endpoint for SigningEndpoint {
++    type Output = TestOutput;
++
++    const NAME: &'static str = "signing";
++    const METHOD: Method = Method::Get;
++    const PATH: &'static str = "/api/signing";
++}
++
++struct NoAuthEndpoint;
++
++impl Endpoint for NoAuthEndpoint {
++    type Output = TestOutput;
++
++    const NAME: &'static str = "no_auth";
++    const METHOD: Method = Method::Get;
++    const PATH: &'static str = "/api/test";
++    const AUTH_POLICY: AuthPolicy = AuthPolicy::None;
++    const CONTENT_TYPE: ContentType = ContentType::Json;
++    const COMMON_PARAMS: CommonParams = CommonParams::Disabled;
++    const SIGNING_POLICY: SigningPolicy = SigningPolicy::Disabled;
++
++    fn query(&self) -> QueryParams {
++        QueryParams::default()
++    }
++
++    fn body(&self) -> Body {
++        Body::Empty
++    }
++}
++
++fn app_context() -> Arc<AppContext> {
++    Arc::new(
++        AppContext::builder()
++            .app_info(AppInfo::new(ClientType::Mac, "1.0.0", "com.matrx.test", "0.0.0").unwrap())
++            .device_info(DeviceInfo::new("did-1", "14.0", "Apple", "MacBookPro", "Mac").unwrap())
++            .environment_label("test")
++            .initial_locale(LocaleSettings::new("en-US", "en-US,en", "US"))
++            .build()
++            .unwrap(),
++    )
++}
++
++fn http_client(endpoint: EndpointConfig) -> HttpClient {
++    HttpClient::new(
++        app_context(),
++        Arc::new(HttpConfig::new(endpoint, PinConfig::empty())),
++    )
++}
++
++fn endpoint_config(base_url: String) -> EndpointConfig {
++    EndpointConfig::new([("/api", base_url)], None).unwrap()
++}
++
++async fn mock_response(status: u16, body: &'static str) -> String {
++    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
++    let addr = listener.local_addr().unwrap();
++    tokio::spawn(async move {
++        let (mut stream, _) = listener.accept().await.unwrap();
++        let mut request_buf = [0_u8; 1024];
++        let _ = stream.read(&mut request_buf).await;
++        let response = format!(
++            "HTTP/1.1 {status} test\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
++            body.len()
++        );
++        stream.write_all(response.as_bytes()).await.unwrap();
++    });
++    format!("http://{addr}")
++}
++
++async fn mock_responses(responses: Vec<(u16, &'static str)>) -> (String, Arc<AtomicUsize>) {
++    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
++    let addr = listener.local_addr().unwrap();
++    let requests = Arc::new(AtomicUsize::new(0));
++    let seen = requests.clone();
++    tokio::spawn(async move {
++        for (status, body) in responses {
++            let (mut stream, _) = listener.accept().await.unwrap();
++            seen.fetch_add(1, Ordering::SeqCst);
++            let mut request_buf = [0_u8; 1024];
++            let _ = stream.read(&mut request_buf).await;
++            let response = format!(
++                "HTTP/1.1 {status} test\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
++                body.len()
++            );
++            stream.write_all(response.as_bytes()).await.unwrap();
++        }
++    });
++    (format!("http://{addr}"), requests)
++}
++
++async fn advance_default_retry_delays() {
++    for delay in [
++        Duration::from_millis(500),
++        Duration::from_secs(1),
++        Duration::from_secs(2),
++    ] {
++        tokio::task::yield_now().await;
++        tokio::time::advance(delay).await;
++    }
++}
++
++fn unused_local_url() -> String {
++    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
++    let addr: SocketAddr = listener.local_addr().unwrap();
++    drop(listener);
++    format!("http://{addr}")
++}
++
++#[tokio::test]
++async fn missing_endpoint_mapping_maps_to_http_invalid_config() {
++    let client = http_client(EndpointConfig::empty());
++    let err = client.send(MissingMappingEndpoint).await.unwrap_err();
++    assert_eq!(err.error_code(), MxErrorCode::HttpInvalidConfig);
++}
++
++#[tokio::test]
++async fn invalid_endpoint_path_maps_to_http_invalid_request() {
++    let client = http_client(endpoint_config("http://127.0.0.1:1".to_string()));
++    let err = client.send(BadPathEndpoint).await.unwrap_err();
++    assert_eq!(err.error_code(), MxErrorCode::HttpInvalidRequest);
++}
++
++#[tokio::test]
++async fn missing_ikey_maps_to_http_signing_failed() {
++    let client = http_client(endpoint_config("http://127.0.0.1:1".to_string()));
++    let err = client.send(SigningEndpoint).await.unwrap_err();
++    assert_eq!(err.error_code(), MxErrorCode::HttpSigningFailed);
++}
++
++#[tokio::test]
++async fn non_json_response_maps_to_http_invalid_response() {
++    let base_url = mock_response(200, "not-json").await;
++    let client = http_client(endpoint_config(base_url));
++    let err = client.send(NoAuthEndpoint).await.unwrap_err();
++    assert_eq!(err.error_code(), MxErrorCode::HttpInvalidResponse);
++}
++
++#[tokio::test(start_paused = true)]
++async fn non_success_status_maps_to_http_server_error() {
++    let (base_url, requests) = mock_responses(vec![
++        (500, r#"{"responseHeader":{"status":500,"msg":"boom"}}"#),
++        (500, r#"{"responseHeader":{"status":500,"msg":"boom"}}"#),
++        (500, r#"{"responseHeader":{"status":500,"msg":"boom"}}"#),
++        (500, r#"{"responseHeader":{"status":500,"msg":"boom"}}"#),
++    ])
++    .await;
++    let client = http_client(endpoint_config(base_url));
++    let send = tokio::spawn(async move { client.send(NoAuthEndpoint).await });
++    advance_default_retry_delays().await;
++    let err = send.await.unwrap().unwrap_err();
++    assert_eq!(err.error_code(), MxErrorCode::HttpServerError);
++    assert_eq!(requests.load(Ordering::SeqCst), 4);
++}
++
++#[tokio::test(start_paused = true)]
++async fn refused_connection_maps_to_net_connect_failed() {
++    let client = http_client(endpoint_config(unused_local_url()));
++    let send = tokio::spawn(async move { client.send(NoAuthEndpoint).await });
++    advance_default_retry_delays().await;
++    let err = send.await.unwrap().unwrap_err();
++    assert!(matches!(err, Error::Network(_)));
++    assert_eq!(err.error_code(), MxErrorCode::NetConnectFailed);
++}
++
++#[tokio::test(start_paused = true)]
++async fn five_xx_retries_then_success() {
++    let (base_url, requests) = mock_responses(vec![
++        (500, r#"{"responseHeader":{"status":500,"msg":"boom"}}"#),
++        (
++            502,
++            r#"{"responseHeader":{"status":502,"msg":"bad gateway"}}"#,
++        ),
++        (200, r#"{"response":{"ok":true}}"#),
++    ])
++    .await;
++    let client = http_client(endpoint_config(base_url));
++    let send = tokio::spawn(async move { client.send(NoAuthEndpoint).await });
++    advance_default_retry_delays().await;
++    let response = send.await.unwrap().unwrap();
++    assert_eq!(response.into_inner().get("ok"), Some(&true));
++    assert_eq!(requests.load(Ordering::SeqCst), 3);
++}
++
++#[tokio::test]
++async fn four_xx_does_not_retry() {
++    let (base_url, requests) = mock_responses(vec![(
++        400,
++        r#"{"responseHeader":{"status":400,"msg":"bad"}}"#,
++    )])
++    .await;
++    let client = http_client(endpoint_config(base_url));
++    let err = client.send(NoAuthEndpoint).await.unwrap_err();
++    assert_eq!(err.error_code(), MxErrorCode::HttpServerError);
++    assert_eq!(requests.load(Ordering::SeqCst), 1);
++}

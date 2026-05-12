@@ -1,0 +1,15 @@
+case_id = "hyper-3621"
+repo = "hyperium/hyper"
+source_type = "open_source_pr"
+candidate_source = "bugfix_candidate"
+base_ref = "b79be911696f6a93e8d408080ebbf558b612ce3c"
+head_ref = "2b3cc9fa30540555f22665c7ef9b1d61e55449d9"
+pr = 3621
+title = "fix: Do not include user information in Host header"
+selection_confidence = "medium"
+negative_control = false
+
+[selection_notes]
+why_selected = "PR title claims a protocol/security-sensitive Host header fix; comments discuss correctness and compatibility. This is useful for MVP because it tests whether candidate selection has enough objective backing."
+known_weakness = "PR is closed and not merged in captured metadata, and there is no linked issue or follow-up fix in the frozen context. Treat as a medium-confidence high-value candidate, not proven ground truth."
+

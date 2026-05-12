@@ -1,0 +1,207 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index b301571..72438bb 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -239,10 +239,12 @@ dependencies = [
+  "hex",
+  "percent-encoding",
+  "reqwest",
++ "rustls",
+  "serde",
+  "serde_json",
+  "tokio",
+  "url",
++ "webpki-roots",
+ ]
+ 
+ [[package]]
+diff --git a/Cargo.toml b/Cargo.toml
+index 5d8afc0..580df68 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -51,6 +51,8 @@ url = "=2.5.4"
+ # default-features=false avoids native-tls/OpenSSL and keeps Apple slices on
+ # rustls.
+ reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"] }
++rustls = { version = "0.21", features = ["dangerous_configuration"] }
++webpki-roots = "0.25"
+ # Base64 encoding for `core-protocol::pushreg` padding field.
+ # Justification: docs/internal/research/feasibility-evidence.md §M8 PushReg —
+ # `PushSocket.swift:388-398` builds the variable-length anti-fingerprinting
+diff --git a/crates/core-http/Cargo.toml b/crates/core-http/Cargo.toml
+index ecf832b..5d42a37 100644
+--- a/crates/core-http/Cargo.toml
++++ b/crates/core-http/Cargo.toml
+@@ -16,10 +16,12 @@ hex.workspace = true
+ getrandom.workspace = true
+ percent-encoding.workspace = true
+ reqwest.workspace = true
++rustls.workspace = true
+ serde.workspace = true
+ serde_json.workspace = true
+ tokio.workspace = true
+ url.workspace = true
++webpki-roots.workspace = true
+ 
+ [dev-dependencies]
+ tokio = { workspace = true, features = ["test-util"] }
+diff --git a/crates/core-http/src/client.rs b/crates/core-http/src/client.rs
+index e7abdd7..fe006e0 100644
+--- a/crates/core-http/src/client.rs
++++ b/crates/core-http/src/client.rs
+@@ -48,10 +48,8 @@ impl HttpClient {
+     pub fn new(app_context: Arc<AppContext>, http_config: Arc<HttpConfig>) -> Self {
+         Self {
+             app_context,
+-            http_config,
+-            // TODO(core-http): HttpConfig-style TLS pinning is not wired in
+-            // this typed client yet; reqwest currently uses default TLS trust.
+-            inner: reqwest::Client::new(),
++            http_config: http_config.clone(),
++            inner: crate::tls::reqwest_client(http_config),
+         }
+     }
+ 
+diff --git a/crates/core-http/src/lib.rs b/crates/core-http/src/lib.rs
+index 5845b7e..05c4788 100644
+--- a/crates/core-http/src/lib.rs
++++ b/crates/core-http/src/lib.rs
+@@ -11,6 +11,7 @@ mod endpoint;
+ mod error;
+ mod foundation;
+ mod response;
++mod tls;
+ 
+ pub use client::{HttpClient, HttpTrace, ResponseMetadata};
+ pub use config::{EndpointConfig, EndpointConfigError, HostVerdict, HttpConfig, PinConfig};
+diff --git a/crates/core-http/src/tls.rs b/crates/core-http/src/tls.rs
+new file mode 100644
+index 0000000..be6c2c5
+--- /dev/null
++++ b/crates/core-http/src/tls.rs
+@@ -0,0 +1,125 @@
++use std::sync::Arc;
++use std::time::SystemTime;
++
++use rustls::client::{ServerCertVerified, ServerCertVerifier, ServerName, WebPkiVerifier};
++use rustls::{Certificate, CertificateError, ClientConfig, Error, OwnedTrustAnchor, RootCertStore};
++
++use crate::{HostVerdict, HttpConfig};
++
++pub(crate) fn reqwest_client(http_config: Arc<HttpConfig>) -> reqwest::Client {
++    reqwest::Client::builder()
++        .use_preconfigured_tls(client_config(http_config))
++        .build()
++        .expect("core-http rustls client config must be valid")
++}
++
++fn client_config(http_config: Arc<HttpConfig>) -> ClientConfig {
++    let mut cfg = ClientConfig::builder()
++        .with_safe_defaults()
++        .with_custom_certificate_verifier(Arc::new(MxServerCertVerifier::new(http_config)))
++        .with_no_client_auth();
++
++    // reqwest does not mutate preconfigured rustls configs; preserve the
++    // default h2/http1 ALPN behavior when supplying our custom verifier.
++    cfg.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
++    cfg
++}
++
++struct MxServerCertVerifier {
++    http_config: Arc<HttpConfig>,
++    os_trust: WebPkiVerifier,
++}
++
++impl MxServerCertVerifier {
++    fn new(http_config: Arc<HttpConfig>) -> Self {
++        Self {
++            http_config,
++            os_trust: WebPkiVerifier::new(os_root_store(), None),
++        }
++    }
++
++    fn verify_pinned_chain(
++        &self,
++        anchors: Vec<Vec<u8>>,
++        end_entity: &Certificate,
++        intermediates: &[Certificate],
++        server_name: &ServerName,
++        scts: &mut dyn Iterator<Item = &[u8]>,
++        ocsp_response: &[u8],
++        now: SystemTime,
++    ) -> Result<ServerCertVerified, Error> {
++        let mut roots = RootCertStore::empty();
++        for anchor in anchors {
++            roots.add(&Certificate(anchor))?;
++        }
++
++        // Trust-anchor pinning: this RootCertStore contains only the
++        // configured DER anchors for the host, so webpki can validate
++        // the server chain only if it terminates at one of those pins.
++        // Unlike SecTrust, rustls does not expose the built chain's root
++        // certificate here; requiring the peer to send the root would
++        // reject normal servers that omit trust anchors from TLS chains.
++        WebPkiVerifier::new(roots, None).verify_server_cert(
++            end_entity,
++            intermediates,
++            server_name,
++            scts,
++            ocsp_response,
++            now,
++        )
++    }
++}
++
++impl ServerCertVerifier for MxServerCertVerifier {
++    fn verify_server_cert(
++        &self,
++        end_entity: &Certificate,
++        intermediates: &[Certificate],
++        server_name: &ServerName,
++        scts: &mut dyn Iterator<Item = &[u8]>,
++        ocsp_response: &[u8],
++        now: SystemTime,
++    ) -> Result<ServerCertVerified, Error> {
++        let host = server_name_to_host(server_name);
++        match self.http_config.pin.load().host_verdict(&host) {
++            HostVerdict::Pinned(anchors) => self.verify_pinned_chain(
++                anchors,
++                end_entity,
++                intermediates,
++                server_name,
++                scts,
++                ocsp_response,
++                now,
++            ),
++            HostVerdict::UseOsTrust => self.os_trust.verify_server_cert(
++                end_entity,
++                intermediates,
++                server_name,
++                scts,
++                ocsp_response,
++                now,
++            ),
++            HostVerdict::Reject => Err(CertificateError::ApplicationVerificationFailure.into()),
++        }
++    }
++}
++
++fn server_name_to_host(server_name: &ServerName) -> String {
++    match server_name {
++        ServerName::DnsName(name) => name.as_ref().to_string(),
++        ServerName::IpAddress(addr) => addr.to_string(),
++        _ => String::new(),
++    }
++}
++
++fn os_root_store() -> RootCertStore {
++    let mut roots = RootCertStore::empty();
++    roots.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(|anchor| {
++        OwnedTrustAnchor::from_subject_spki_name_constraints(
++            anchor.subject,
++            anchor.spki,
++            anchor.name_constraints,
++        )
++    }));
++    roots
++}

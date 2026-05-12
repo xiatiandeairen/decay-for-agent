@@ -1,0 +1,32 @@
+Complexity impact:
+  changed_functions=8 evidence=2 partial=false diagnostics=0
+- id=1 category=complexity kind=new_high_risk subject=function source=diff_hunk+ast_snapshot
+  function=crates/core-http/src/tls.rs:verify_pinned_chain
+- id=2 category=complexity kind=new_high_risk subject=function source=diff_hunk+ast_snapshot
+  function=crates/core-http/src/tls.rs:verify_server_cert
+
+Stability impact:
+  evidence=1
+- id=3 category=stability kind=panic_like_added subject=line 13 source=stability
+  file=crates/core-http/src/tls.rs
+
+Quality impact:
+  evidence=5 prod_files_changed=3 test_files_changed=0 docs_files_changed=0
+- id=4 category=quality kind=dependency_changed subject=dependency manifest source=quality
+  file=Cargo.lock
+- id=5 category=quality kind=dependency_changed subject=dependency manifest source=quality
+  file=Cargo.toml
+- id=6 category=quality kind=dependency_changed subject=dependency manifest source=quality
+  file=crates/core-http/Cargo.toml
+- id=7 category=quality kind=test_gap subject=production change without tests source=quality
+  file=crates/core-http/src/client.rs
+- id=8 category=quality kind=sensitive_test_gap subject=sensitive production change without tests source=quality
+  file=crates/core-http/src/client.rs
+
+History impact:
+  evidence=2
+- id=9 category=history kind=churn_hotspot subject=4 commits in 90d, 832 lines changed in 180d source=git_history
+  file=crates/core-http/src/client.rs
+- id=10 category=history kind=churn_hotspot subject=3 commits in 90d, 31 lines changed in 180d source=git_history
+  file=crates/core-http/src/lib.rs
+recorded=true changeset=1 evidence_saved=10

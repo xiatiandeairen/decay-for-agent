@@ -1,0 +1,3 @@
+1bab54c fix: cancel-safe read_frame + split FrameErr::Decode + buffer shrink
+ crates/platform/core-transport/src/io.rs | 162 +++++++++++++++++++++++--------
+ 1 file changed, 121 insertions(+), 41 deletions(-)

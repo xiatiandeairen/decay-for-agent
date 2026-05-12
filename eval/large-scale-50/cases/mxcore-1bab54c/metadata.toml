@@ -1,0 +1,12 @@
+case_id = "mxcore-1bab54c"
+state = "frozen"
+repo = "/Users/taoxia/Workspace/work/rust/mxcore-proposal"
+source_type = "local_git_commit"
+commit = "1bab54c"
+base_ref = "8b460e1c03573b1c0eb5baca46e4df965f5e841a"
+head_ref = "1bab54c7af6fac38a070f7bdf5d5474686ea3901"
+title = "fix: cancel-safe read_frame + split FrameErr::Decode + buffer shrink"
+accepted = true
+objective_value_signal = "fix commit; async cancellation, frame decoding, and buffer memory behavior"
+risk_prompt_point = "single-file transport IO fix with cancel-safety and decode error semantics"
+reviewer_action = "verify cancellation invariants, decode error mapping, and buffer shrink behavior"

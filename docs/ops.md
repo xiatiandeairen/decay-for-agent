@@ -149,6 +149,41 @@ top_fixed_patterns:
 - 不把“测试通过”“工具能运行”“作者觉得不错”记为产品价值。
 - 不跨项目合并结论前，先保留项目名和任务类型，避免不同场景混在一起。
 
+## 外部 PR 验证
+
+v0.2.0 增加外部开源 PR 验证，用来避免只在本项目 dogfood 中自我证明。
+
+验证位置：
+
+- `eval/corpus/pr-cases.toml`：预注册 PR 样本。
+- `eval/results/`：每个 PR 的原始 `decay diff` 输出、changed files 和 GitHub metadata。
+- `eval/judgements/`：人工判定 useful / plausible / noise / missed。
+- `eval/reports/`：汇总指标。
+
+外部 PR 验证的基本规则：
+
+- 先固定样本，再运行 `decay`，不允许跑完后挑选结果好看的 PR。
+- negative control 必须进入分母；docs-only / test-only / deps-only PR 输出越安静越好。
+- 每条 useful evidence 必须能连接到外部事实：review comment、CI failure、测试补充、linked issue 或后续 fix。
+- history evidence 不能单独算 useful；必须和本次 diff 或外部事实结合。
+- missed risk 必须记录；不能只统计命中的 evidence。
+
+第一轮目标是 20 个 PR：
+
+- 2 个仓库，每个 10 个 PR。
+- 每个仓库包含 bug fix、feature、refactor 和 negative control。
+- 通过门槛：`negative_control_silence_rate >= 80%`、`precision@top3 >= 50%`、`actionable_pr_rate >= 40%`，且至少 3 条 useful evidence。
+
+运行方式：
+
+```bash
+cargo install --path .
+eval/scripts/run-pr-case.sh ripgrep-3210
+python3 eval/scripts/summarize.py
+```
+
+外部 PR runner 必须验证 git-ref diff 路径，即在 PR head 上运行 `decay diff <base-sha>`；不要用 named baseline diff 代替，否则会测到旧输出形态。
+
 ## 日常使用流程
 
 1. 在任务开始前保存 baseline：

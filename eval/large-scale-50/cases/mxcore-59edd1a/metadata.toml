@@ -1,0 +1,12 @@
+case_id = "mxcore-59edd1a"
+state = "frozen"
+repo = "/Users/taoxia/Workspace/work/rust/mxcore-proposal"
+source_type = "local_git_commit"
+commit = "59edd1a"
+base_ref = "412e52c06fc02d3c5c5ba1cd30d6c1048b9b9bb1"
+head_ref = "59edd1ac797186627834a8b3f7543e5fa9a2b647"
+title = "feat(core-transfer): harden transfer execution"
+accepted = true
+objective_value_signal = "commit explicitly says harden; critical boundary: transfer execution and filesystem/network IO"
+risk_prompt_point = "large transfer-core changes across adapter/config/core/error/types plus tests"
+reviewer_action = "review path safety, partial failure handling, cleanup behavior, and edge tests"

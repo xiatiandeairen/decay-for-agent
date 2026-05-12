@@ -1,0 +1,19 @@
+Complexity impact:
+  changed_functions=8 evidence=1 partial=false diagnostics=0
+- id=1 category=complexity kind=worsened subject=function source=diff_hunk+ast_snapshot
+  function=crates/platform/core-transport/src/io.rs:read_frame
+  metrics=cognitive:6->16, cyclomatic:6->12, statements:13->21
+
+Stability impact:
+  evidence=1
+- id=2 category=stability kind=panic_like_added subject=line 155 source=stability
+  file=crates/platform/core-transport/src/io.rs
+
+Quality impact:
+  evidence=0 prod_files_changed=1 test_files_changed=1 docs_files_changed=0
+
+History impact:
+  evidence=1
+- id=3 category=history kind=churn_hotspot subject=1 commits in 90d, 329 lines changed in 180d source=git_history
+  file=crates/platform/core-transport/src/io.rs
+recorded=true changeset=1 evidence_saved=3

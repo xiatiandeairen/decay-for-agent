@@ -1,0 +1,38 @@
+case_id = ""
+repo = ""
+pr = 0
+judge = ""
+judged_at = ""
+
+# bugfix | feature | refactor | negative
+expected_kind = ""
+
+# What a reviewer would expect before reading decay output.
+manual_prior = """
+"""
+
+# External facts from GitHub review, CI, tests, linked issues, or follow-up commits.
+external_facts = """
+"""
+
+[[evidence]]
+id = 1
+category = ""
+kind = ""
+file = ""
+subject = ""
+# useful | plausible | noise
+judgement = ""
+reason = ""
+
+[[missed]]
+file = ""
+subject = ""
+reason = ""
+
+[summary]
+confidence = "low"
+action_changed = false
+notes = """
+"""
+

@@ -1,0 +1,17 @@
+d8ef46c feat(core-storage): R100 parity — flock + WAL hook + slow-query + corruption latch
+ Cargo.lock                             |  33 ++
+ Cargo.toml                             |  11 +
+ bindings/swift/include/mxcore.h        | 224 +----------
+ bindings/swift/include/mxcore_errors.h | 258 +++++++++++++
+ crates/core-ffi/src/http_config.rs     |  12 +-
+ crates/core-ffi/src/push_config.rs     |  28 +-
+ crates/core-ffi/src/transport.rs       |   9 +-
+ crates/core-push/src/handle.rs         |   4 +-
+ crates/core-push/src/register.rs       |   4 +-
+ crates/core-storage/Cargo.toml         |   3 +
+ crates/core-storage/src/diag.rs        | 677 +++++++++++++++++++++++++++++++++
+ crates/core-storage/src/lib.rs         |   2 +
+ crates/core-storage/src/pool.rs        | 608 +++++++++++++++++++++++++++--
+ crates/shared/core-http/src/config.rs  |  10 +-
+ docs/PROGRESS.md                       |   6 +-
+ 15 files changed, 1595 insertions(+), 294 deletions(-)

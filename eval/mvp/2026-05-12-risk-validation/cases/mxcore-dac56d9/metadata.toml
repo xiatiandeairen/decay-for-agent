@@ -1,0 +1,15 @@
+case_id = "mxcore-dac56d9"
+repo = "/Users/taoxia/Workspace/work/rust/mxcore-proposal"
+source_type = "local_git_commit"
+candidate_source = "security_sensitive_feature"
+base_ref = "eeefff5f04acb8969590b47682be15cd0e950d47"
+head_ref = "dac56d9"
+commit = "dac56d9"
+title = "feat(core-http): add TLS pinning"
+selection_confidence = "high"
+negative_control = false
+
+[selection_notes]
+why_selected = "TLS pinning changes security boundary, dependency set, HTTP client construction, and certificate verification logic in a real project commit with a clear message."
+known_weakness = "No external issue tracker or production incident is linked in the local commit metadata, so severity is inferred from domain semantics and diff content."
+

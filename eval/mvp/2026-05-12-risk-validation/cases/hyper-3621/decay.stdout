@@ -1,0 +1,18 @@
+Complexity impact:
+  changed_functions=4 evidence=0 partial=false diagnostics=0
+
+Stability impact:
+  evidence=1
+- id=1 category=stability kind=panic_like_added subject=line 504 source=stability
+  file=src/server/conn/http1.rs
+
+Quality impact:
+  evidence=2 prod_files_changed=5 test_files_changed=3 docs_files_changed=0
+- id=2 category=quality kind=blast_radius subject=multiple crates or domains source=quality
+  file=src/client/conn/http2.rs
+- id=3 category=quality kind=mixed_concerns subject=multiple production domains source=quality
+  file=src/client/conn/http2.rs
+
+History impact:
+  evidence=0
+recorded=true changeset=1 evidence_saved=3

@@ -1,0 +1,15 @@
+case_id = "mxcore-34af95f"
+repo = "/Users/taoxia/Workspace/work/rust/mxcore-proposal"
+source_type = "local_git_commit"
+candidate_source = "negative_control"
+base_ref = "a2dbcdeb6fbd25baa02c3418c98ad053cf25b507"
+head_ref = "34af95f"
+commit = "34af95f"
+title = "docs(contacts): rename users.description to users.sig"
+selection_confidence = "high"
+negative_control = true
+
+[selection_notes]
+why_selected = "Docs-only schema wording change. Decay should not produce code complexity or stability warnings."
+known_weakness = "The content describes schema semantics, so product-level review may still matter; for decay diff risk evidence it is a negative control."
+

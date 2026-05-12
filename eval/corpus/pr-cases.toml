@@ -1,0 +1,88 @@
+# External PR validation corpus.
+#
+# These are candidate cases, not success stories. Keep failed/noisy cases in
+# the corpus unless the PR metadata itself becomes unavailable.
+
+[[cases]]
+id = "ripgrep-3210"
+repo = "BurntSushi/ripgrep"
+pr = 3210
+kind = "feature"
+status = "candidate"
+reason = "Adds globset behavior; should exercise parser/path-matching complexity and tests."
+
+[[cases]]
+id = "ripgrep-3224"
+repo = "BurntSushi/ripgrep"
+pr = 3224
+kind = "bugfix"
+status = "candidate"
+reason = "Separates flags from paths in decompression invocation; should touch CLI/process behavior."
+
+[[cases]]
+id = "ripgrep-3230"
+repo = "BurntSushi/ripgrep"
+pr = 3230
+kind = "refactor"
+status = "candidate"
+reason = "Clippy-driven change; useful for checking low-risk refactor noise."
+
+[[cases]]
+id = "ripgrep-3227"
+repo = "BurntSushi/ripgrep"
+pr = 3227
+kind = "negative"
+status = "candidate"
+reason = "Docs typo; decay should stay quiet."
+
+[[cases]]
+id = "ripgrep-3219"
+repo = "BurntSushi/ripgrep"
+pr = 3219
+kind = "negative"
+status = "candidate"
+reason = "Documentation link change; decay should stay quiet."
+
+[[cases]]
+id = "hyper-3971"
+repo = "hyperium/hyper"
+pr = 3971
+kind = "feature"
+status = "candidate"
+reason = "Public API addition; should test API/stability and test-gap evidence."
+
+[[cases]]
+id = "hyper-3936"
+repo = "hyperium/hyper"
+pr = 3936
+kind = "bugfix"
+status = "candidate"
+reason = "HTTP/1 keep-alive behavior fix; should test protocol-sensitive evidence."
+
+[[cases]]
+id = "hyper-3865"
+repo = "hyperium/hyper"
+pr = 3865
+kind = "refactor"
+status = "candidate"
+reason = "Feature flag refactor; should test build/config classification."
+
+[[cases]]
+id = "hyper-3621"
+repo = "hyperium/hyper"
+pr = 3621
+kind = "bugfix"
+status = "candidate"
+reason = "Host header fix; should test security/protocol-sensitive evidence."
+
+[[cases]]
+id = "hyper-3606"
+repo = "hyperium/hyper"
+pr = 3606
+kind = "refactor"
+status = "candidate"
+reason = "Small refactor; useful for noise calibration."
+
+# Add 10 more cases after the first smoke run. The next batch should include
+# clap-rs/clap and pulldown-cmark/pulldown-cmark to broaden parser/API coverage.
+

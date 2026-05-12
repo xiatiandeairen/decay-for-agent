@@ -1,0 +1,12 @@
+case_id = "mxcore-eeefff5"
+state = "frozen"
+repo = "/Users/taoxia/Workspace/work/rust/mxcore-proposal"
+source_type = "local_git_commit"
+commit = "eeefff5"
+base_ref = "6b50f6ce8dae0e19c3ed343f5dddc96926b48982"
+head_ref = "eeefff5f04acb8969590b47682be15cd0e950d47"
+title = "feat(core-http): retry transient request failures"
+accepted = true
+objective_value_signal = "critical_boundary: HTTP retry behavior and error handling"
+risk_prompt_point = "retry policy can duplicate requests, mask errors, or alter timeout/failure semantics"
+reviewer_action = "verify idempotency assumptions, retryable error mapping, backoff, and tests"

@@ -1,0 +1,6 @@
+/results/*
+!/results/.gitkeep
+/reports/*
+!/reports/.gitkeep
+__pycache__/
+*.pyc

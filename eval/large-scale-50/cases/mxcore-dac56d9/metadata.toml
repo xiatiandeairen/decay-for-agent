@@ -1,0 +1,13 @@
+case_id = "mxcore-dac56d9"
+state = "frozen"
+repo = "/Users/taoxia/Workspace/work/rust/mxcore-proposal"
+source_type = "local_git_commit"
+commit = "dac56d9"
+base_ref = "eeefff5f04acb8969590b47682be15cd0e950d47"
+head_ref = "dac56d9"
+title = "feat(core-http): add TLS pinning"
+accepted = true
+objective_value_signal = "critical_boundary: TLS certificate verification and pinning"
+risk_prompt_point = "custom certificate verifier, root store semantics, new TLS dependencies, missing tests"
+reviewer_action = "review verifier semantics and require pin accept/reject/trust fallback tests"
+

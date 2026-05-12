@@ -1,0 +1,157 @@
+Complexity impact:
+  changed_functions=131 evidence=2 partial=false diagnostics=0
+- id=1 category=complexity kind=new_high_risk subject=function source=diff_hunk+ast_snapshot
+  function=crates/core-storage/src/pool.rs:drop
+- id=2 category=complexity kind=worsened subject=function source=diff_hunk+ast_snapshot
+  function=crates/core-storage/src/pool.rs:open
+  metrics=cognitive:3->17, cyclomatic:4->10, statements:5->15
+
+Stability impact:
+  evidence=27
+- id=3 category=stability kind=ffi_boundary_touched subject=crates/core-storage/src/diag.rs source=stability
+  file=crates/core-storage/src/diag.rs
+- id=4 category=stability kind=unsafe_added subject=line 331 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=5 category=stability kind=unsafe_added subject=line 337 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=6 category=stability kind=unsafe_added subject=line 349 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=7 category=stability kind=unsafe_added subject=line 351 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=8 category=stability kind=unsafe_added subject=line 357 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=9 category=stability kind=unsafe_added subject=line 368 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=10 category=stability kind=unsafe_added subject=line 372 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=11 category=stability kind=unsafe_added subject=line 419 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=12 category=stability kind=unsafe_added subject=line 427 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=13 category=stability kind=unsafe_added subject=line 443 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=14 category=stability kind=unsafe_added subject=line 445 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=15 category=stability kind=unsafe_added subject=line 459 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=16 category=stability kind=unsafe_added subject=line 470 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=17 category=stability kind=unsafe_added subject=line 477 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=18 category=stability kind=unsafe_added subject=line 482 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=19 category=stability kind=unsafe_added subject=line 488 source=stability
+  file=crates/core-storage/src/diag.rs
+- id=20 category=stability kind=panic_like_added subject=line 281 source=stability
+  file=crates/core-storage/src/pool.rs
+- id=21 category=stability kind=panic_like_added subject=line 429 source=stability
+  file=crates/core-storage/src/pool.rs
+- id=22 category=stability kind=unsafe_added subject=line 233 source=stability
+  file=crates/core-storage/src/pool.rs
+- id=23 category=stability kind=unsafe_added subject=line 234 source=stability
+  file=crates/core-storage/src/pool.rs
+- id=24 category=stability kind=unsafe_added subject=line 271 source=stability
+  file=crates/core-storage/src/pool.rs
+- id=25 category=stability kind=unsafe_added subject=line 277 source=stability
+  file=crates/core-storage/src/pool.rs
+- id=26 category=stability kind=unsafe_added subject=line 288 source=stability
+  file=crates/core-storage/src/pool.rs
+- id=27 category=stability kind=unsafe_added subject=line 514 source=stability
+  file=crates/core-storage/src/pool.rs
+- id=28 category=stability kind=unsafe_added subject=line 521 source=stability
+  file=crates/core-storage/src/pool.rs
+- id=29 category=stability kind=unsafe_added subject=line 531 source=stability
+  file=crates/core-storage/src/pool.rs
+
+Quality impact:
+  evidence=7 prod_files_changed=32 test_files_changed=9 docs_files_changed=6
+- id=30 category=quality kind=dependency_changed subject=dependency manifest source=quality
+  file=Cargo.lock
+- id=31 category=quality kind=dependency_changed subject=dependency manifest source=quality
+  file=Cargo.toml
+- id=32 category=quality kind=dependency_changed subject=dependency manifest source=quality
+  file=bindings/electron/Cargo.toml
+- id=33 category=quality kind=build_or_ci_changed subject=build or ci source=quality
+  file=bindings/electron/build.rs
+- id=34 category=quality kind=dependency_changed subject=dependency manifest source=quality
+  file=crates/core-storage/Cargo.toml
+- id=35 category=quality kind=blast_radius subject=multiple crates or domains source=quality
+  file=bindings/electron/.gitignore
+- id=36 category=quality kind=mixed_concerns subject=multiple production domains source=quality
+  file=bindings/electron/.gitignore
+
+History impact:
+  evidence=36
+- id=37 category=history kind=churn_hotspot subject=14 commits in 90d, 1385 lines changed in 180d source=git_history
+  file=bindings/electron/Cargo.lock
+- id=38 category=history kind=frequent_rework subject=14 commits in 30d, 14 commits in 180d source=git_history
+  file=bindings/electron/Cargo.lock
+- id=39 category=history kind=recently_bugfixed_area subject=fix(electron): align binding with core-push rename + UserSession ikey field source=git_history
+  file=bindings/electron/Cargo.lock
+- id=40 category=history kind=churn_hotspot subject=2 commits in 90d, 1878 lines changed in 180d source=git_history
+  file=bindings/electron/package-lock.json
+- id=41 category=history kind=churn_hotspot subject=3 commits in 90d, 204 lines changed in 180d source=git_history
+  file=bindings/electron/src/app_context.rs
+- id=42 category=history kind=recently_bugfixed_area subject=fix(electron): align binding with core-push rename + UserSession ikey field source=git_history
+  file=bindings/electron/src/app_context.rs
+- id=43 category=history kind=churn_hotspot subject=3 commits in 90d, 101 lines changed in 180d source=git_history
+  file=bindings/electron/src/error.rs
+- id=44 category=history kind=recently_bugfixed_area subject=fix(electron): align binding with core-push rename + UserSession ikey field source=git_history
+  file=bindings/electron/src/error.rs
+- id=45 category=history kind=churn_hotspot subject=1 commits in 90d, 90 lines changed in 180d source=git_history
+  file=bindings/electron/src/ikey.rs
+- id=46 category=history kind=churn_hotspot subject=8 commits in 90d, 23 lines changed in 180d source=git_history
+  file=bindings/electron/src/lib.rs
+- id=47 category=history kind=frequent_rework subject=8 commits in 30d, 8 commits in 180d source=git_history
+  file=bindings/electron/src/lib.rs
+- id=48 category=history kind=churn_hotspot subject=3 commits in 90d, 244 lines changed in 180d source=git_history
+  file=bindings/electron/src/threadsafe.rs
+- id=49 category=history kind=recently_bugfixed_area subject=fix(electron): align binding with core-push rename + UserSession ikey field source=git_history
+  file=bindings/electron/src/threadsafe.rs
+- id=50 category=history kind=churn_hotspot subject=3 commits in 90d, 524 lines changed in 180d source=git_history
+  file=bindings/electron/src/transport.rs
+- id=51 category=history kind=recently_bugfixed_area subject=fix(electron): align binding with core-push rename + UserSession ikey field source=git_history
+  file=bindings/electron/src/transport.rs
+- id=52 category=history kind=churn_hotspot subject=4 commits in 90d, 166 lines changed in 180d source=git_history
+  file=bindings/electron/src/transport_events.rs
+- id=53 category=history kind=recently_bugfixed_area subject=fix(electron): align binding with core-push rename + UserSession ikey field source=git_history
+  file=bindings/electron/src/transport_events.rs
+- id=54 category=history kind=churn_hotspot subject=27 commits in 90d, 2570 lines changed in 180d source=git_history
+  file=bindings/swift/include/mxcore.h
+- id=55 category=history kind=frequent_rework subject=27 commits in 30d, 27 commits in 180d source=git_history
+  file=bindings/swift/include/mxcore.h
+- id=56 category=history kind=recently_bugfixed_area subject=fix(push): prepend platform device byte on outbound data path source=git_history
+  file=bindings/swift/include/mxcore.h
+- id=57 category=history kind=churn_hotspot subject=1 commits in 90d, 332 lines changed in 180d source=git_history
+  file=crates/core-ffi/src/http_config.rs
+- id=58 category=history kind=churn_hotspot subject=1 commits in 90d, 327 lines changed in 180d source=git_history
+  file=crates/core-ffi/src/push_config.rs
+- id=59 category=history kind=churn_hotspot subject=21 commits in 90d, 4150 lines changed in 180d source=git_history
+  file=crates/core-ffi/src/transport.rs
+- id=60 category=history kind=frequent_rework subject=21 commits in 30d, 21 commits in 180d source=git_history
+  file=crates/core-ffi/src/transport.rs
+- id=61 category=history kind=recently_bugfixed_area subject=fix(push): prepend platform device byte on outbound data path source=git_history
+  file=crates/core-ffi/src/transport.rs
+- id=62 category=history kind=churn_hotspot subject=28 commits in 90d, 3063 lines changed in 180d source=git_history
+  file=crates/core-push/src/handle.rs
+- id=63 category=history kind=frequent_rework subject=28 commits in 30d, 28 commits in 180d source=git_history
+  file=crates/core-push/src/handle.rs
+- id=64 category=history kind=recently_bugfixed_area subject=fix(push): prepend platform device byte on outbound data path source=git_history
+  file=crates/core-push/src/handle.rs
+- id=65 category=history kind=churn_hotspot subject=14 commits in 90d, 1689 lines changed in 180d source=git_history
+  file=crates/core-push/src/register.rs
+- id=66 category=history kind=frequent_rework subject=14 commits in 30d, 14 commits in 180d source=git_history
+  file=crates/core-push/src/register.rs
+- id=67 category=history kind=recently_bugfixed_area subject=fix(push): prepend platform device byte on outbound data path source=git_history
+  file=crates/core-push/src/register.rs
+- id=68 category=history kind=churn_hotspot subject=3 commits in 90d, 47 lines changed in 180d source=git_history
+  file=crates/core-storage/src/lib.rs
+- id=69 category=history kind=recently_bugfixed_area subject=feat: W6.1/W6.2 push pipeline fixes + comprehensive wire diagnostics + Phase 2 infra crates source=git_history
+  file=crates/core-storage/src/lib.rs
+- id=70 category=history kind=churn_hotspot subject=3 commits in 90d, 497 lines changed in 180d source=git_history
+  file=crates/core-storage/src/pool.rs
+- id=71 category=history kind=recently_bugfixed_area subject=feat: W6.1/W6.2 push pipeline fixes + comprehensive wire diagnostics + Phase 2 infra crates source=git_history
+  file=crates/core-storage/src/pool.rs
+- id=72 category=history kind=churn_hotspot subject=1 commits in 90d, 584 lines changed in 180d source=git_history
+  file=crates/shared/core-http/src/config.rs
+recorded=true changeset=1 evidence_saved=72

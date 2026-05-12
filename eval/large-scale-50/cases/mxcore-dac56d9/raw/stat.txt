@@ -1,0 +1,8 @@
+dac56d9 feat(core-http): add TLS pinning
+ Cargo.lock                     |   2 +
+ Cargo.toml                     |   2 +
+ crates/core-http/Cargo.toml    |   2 +
+ crates/core-http/src/client.rs |   6 +-
+ crates/core-http/src/lib.rs    |   1 +
+ crates/core-http/src/tls.rs    | 125 +++++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 134 insertions(+), 4 deletions(-)

@@ -1,0 +1,12 @@
+Complexity impact:
+  changed_functions=0 evidence=0 partial=false diagnostics=0
+
+Stability impact:
+  evidence=0
+
+Quality impact:
+  evidence=0 prod_files_changed=0 test_files_changed=0 docs_files_changed=1
+
+History impact:
+  evidence=0
+recorded=true changeset=1 evidence_saved=0

@@ -1,0 +1,28 @@
+Complexity impact:
+  changed_functions=29 evidence=4 partial=false diagnostics=0
+- id=1 category=complexity kind=new_high_risk subject=function source=diff_hunk+ast_snapshot
+  function=crates/core-transfer/src/adapter.rs:download_part
+- id=2 category=complexity kind=worsened subject=function source=diff_hunk+ast_snapshot
+  function=crates/core-transfer/src/core.rs:execute_download
+  metrics=cognitive:25->29, cyclomatic:16->18, statements:28->47
+- id=3 category=complexity kind=worsened subject=function source=diff_hunk+ast_snapshot
+  function=crates/core-transfer/src/core.rs:execute_upload
+  metrics=cognitive:12->24, cyclomatic:11->16, statements:22->48
+- id=4 category=complexity kind=new_high_risk subject=function source=diff_hunk+ast_snapshot
+  function=crates/core-transfer/src/core.rs:finalize_download
+
+Stability impact:
+  evidence=0
+
+Quality impact:
+  evidence=0 prod_files_changed=6 test_files_changed=1 docs_files_changed=0
+
+History impact:
+  evidence=3
+- id=5 category=history kind=churn_hotspot subject=1 commits in 90d, 130 lines changed in 180d source=git_history
+  file=crates/core-transfer/src/adapter.rs
+- id=6 category=history kind=churn_hotspot subject=1 commits in 90d, 509 lines changed in 180d source=git_history
+  file=crates/core-transfer/src/core.rs
+- id=7 category=history kind=churn_hotspot subject=1 commits in 90d, 103 lines changed in 180d source=git_history
+  file=crates/core-transfer/src/types.rs
+recorded=true changeset=1 evidence_saved=7

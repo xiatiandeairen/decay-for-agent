@@ -1,0 +1,184 @@
+diff --git a/examples/client.rs b/examples/client.rs
+index a64c3527..be3de681 100644
+--- a/examples/client.rs
++++ b/examples/client.rs
+@@ -53,12 +53,10 @@ async fn fetch_url(url: hyper::Uri) -> Result<()> {
+         }
+     });
+ 
+-    let authority = url.authority().unwrap().clone();
+-
+     let path = url.path();
+     let req = Request::builder()
+         .uri(path)
+-        .header(hyper::header::HOST, authority.as_str())
++        .header(hyper::header::HOST, format!("{}:{}", host, port))
+         .body(Empty::<Bytes>::new())?;
+ 
+     let mut res = sender.send_request(req).await?;
+diff --git a/examples/client_json.rs b/examples/client_json.rs
+index 6a675352..07582a62 100644
+--- a/examples/client_json.rs
++++ b/examples/client_json.rs
+@@ -42,12 +42,10 @@ async fn fetch_json(url: hyper::Uri) -> Result<Vec<User>> {
+         }
+     });
+ 
+-    let authority = url.authority().unwrap().clone();
+-
+-    // Fetch the url...
++    // Fetch the URL...
+     let req = Request::builder()
+         .uri(url)
+-        .header(hyper::header::HOST, authority.as_str())
++        .header(hyper::header::HOST, format!("{}:{}", host, port))
+         .body(Empty::<Bytes>::new())?;
+ 
+     let res = sender.send_request(req).await?;
+diff --git a/examples/single_threaded.rs b/examples/single_threaded.rs
+index f297814c..eec67c0c 100644
+--- a/examples/single_threaded.rs
++++ b/examples/single_threaded.rs
+@@ -181,13 +181,11 @@ async fn http1_client(url: hyper::Uri) -> Result<(), Box<dyn std::error::Error>>
+         }
+     });
+ 
+-    let authority = url.authority().unwrap().clone();
+-
+     // Make 4 requests
+     for _ in 0..4 {
+         let req = Request::builder()
+             .uri(url.clone())
+-            .header(hyper::header::HOST, authority.as_str())
++            .header(hyper::header::HOST, format!("{}:{}", host, port))
+             .body(Body::from("test".to_string()))?;
+ 
+         let mut res = sender.send_request(req).await?;
+@@ -282,13 +280,11 @@ async fn http2_client(url: hyper::Uri) -> Result<(), Box<dyn std::error::Error>>
+         }
+     });
+ 
+-    let authority = url.authority().unwrap().clone();
+-
+     // Make 4 requests
+     for _ in 0..4 {
+         let req = Request::builder()
+             .uri(url.clone())
+-            .header(hyper::header::HOST, authority.as_str())
++            .header(hyper::header::HOST, format!("{}:{}", host, port))
+             .body(Body::from("test".to_string()))?;
+ 
+         let mut res = sender.send_request(req).await?;
+diff --git a/src/client/conn/http2.rs b/src/client/conn/http2.rs
+index 3292f5a5..87f4b0e8 100644
+--- a/src/client/conn/http2.rs
++++ b/src/client/conn/http2.rs
+@@ -342,14 +342,6 @@ where
+         self
+     }
+ 
+-    /// Sets the max size of received header frames.
+-    ///
+-    /// Default is currently 16KB, but can change.
+-    pub fn max_header_list_size(&mut self, max: u32) -> &mut Self {
+-        self.h2_builder.max_header_list_size = max;
+-        self
+-    }
+-
+     /// Sets an interval for HTTP2 Ping frames should be sent to keep a
+     /// connection alive.
+     ///
+diff --git a/src/proto/h2/client.rs b/src/proto/h2/client.rs
+index 7cb6c6ed..59e0f45c 100644
+--- a/src/proto/h2/client.rs
++++ b/src/proto/h2/client.rs
+@@ -51,7 +51,6 @@ const DEFAULT_CONN_WINDOW: u32 = 1024 * 1024 * 5; // 5mb
+ const DEFAULT_STREAM_WINDOW: u32 = 1024 * 1024 * 2; // 2mb
+ const DEFAULT_MAX_FRAME_SIZE: u32 = 1024 * 16; // 16kb
+ const DEFAULT_MAX_SEND_BUF_SIZE: usize = 1024 * 1024; // 1mb
+-const DEFAULT_MAX_HEADER_LIST_SIZE: u32 = 1024 * 16; // 16kb
+ 
+ // The maximum number of concurrent streams that the client is allowed to open
+ // before it receives the initial SETTINGS frame from the server.
+@@ -69,7 +68,6 @@ pub(crate) struct Config {
+     pub(crate) initial_stream_window_size: u32,
+     pub(crate) initial_max_send_streams: usize,
+     pub(crate) max_frame_size: u32,
+-    pub(crate) max_header_list_size: u32,
+     pub(crate) keep_alive_interval: Option<Duration>,
+     pub(crate) keep_alive_timeout: Duration,
+     pub(crate) keep_alive_while_idle: bool,
+@@ -86,7 +84,6 @@ impl Default for Config {
+             initial_stream_window_size: DEFAULT_STREAM_WINDOW,
+             initial_max_send_streams: DEFAULT_INITIAL_MAX_SEND_STREAMS,
+             max_frame_size: DEFAULT_MAX_FRAME_SIZE,
+-            max_header_list_size: DEFAULT_MAX_HEADER_LIST_SIZE,
+             keep_alive_interval: None,
+             keep_alive_timeout: Duration::from_secs(20),
+             keep_alive_while_idle: false,
+@@ -104,7 +101,6 @@ fn new_builder(config: &Config) -> Builder {
+         .initial_window_size(config.initial_stream_window_size)
+         .initial_connection_window_size(config.initial_conn_window_size)
+         .max_frame_size(config.max_frame_size)
+-        .max_header_list_size(config.max_header_list_size)
+         .max_send_buffer_size(config.max_send_buffer_size)
+         .enable_push(false);
+     if let Some(max) = config.max_concurrent_reset_streams {
+diff --git a/src/proto/h2/server.rs b/src/proto/h2/server.rs
+index 3ccb8a9c..b56e3cfa 100644
+--- a/src/proto/h2/server.rs
++++ b/src/proto/h2/server.rs
+@@ -38,7 +38,8 @@ const DEFAULT_CONN_WINDOW: u32 = 1024 * 1024; // 1mb
+ const DEFAULT_STREAM_WINDOW: u32 = 1024 * 1024; // 1mb
+ const DEFAULT_MAX_FRAME_SIZE: u32 = 1024 * 16; // 16kb
+ const DEFAULT_MAX_SEND_BUF_SIZE: usize = 1024 * 400; // 400kb
+-const DEFAULT_SETTINGS_MAX_HEADER_LIST_SIZE: u32 = 1024 * 16; // 16kb
++                                                     // 16 MB "sane default" taken from golang http2
++const DEFAULT_SETTINGS_MAX_HEADER_LIST_SIZE: u32 = 16 << 20;
+ const DEFAULT_MAX_LOCAL_ERROR_RESET_STREAMS: usize = 1024;
+ 
+ #[derive(Clone, Debug)]
+diff --git a/src/server/conn/http1.rs b/src/server/conn/http1.rs
+index 5f07df1d..e3737edb 100644
+--- a/src/server/conn/http1.rs
++++ b/src/server/conn/http1.rs
+@@ -501,19 +501,14 @@ where
+     type Output = crate::Result<()>;
+ 
+     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+-        if let Some(conn) = self.inner.as_mut() {
+-            match ready!(Pin::new(&mut conn.conn).poll(cx)) {
+-                Ok(proto::Dispatched::Shutdown) => Poll::Ready(Ok(())),
+-                Ok(proto::Dispatched::Upgrade(pending)) => {
+-                    let (io, buf, _) = self.inner.take().unwrap().conn.into_inner();
+-                    pending.fulfill(Upgraded::new(io, buf));
+-                    Poll::Ready(Ok(()))
+-                }
+-                Err(e) => Poll::Ready(Err(e)),
++        match ready!(Pin::new(&mut self.inner.as_mut().unwrap().conn).poll(cx)) {
++            Ok(proto::Dispatched::Shutdown) => Poll::Ready(Ok(())),
++            Ok(proto::Dispatched::Upgrade(pending)) => {
++                let (io, buf, _) = self.inner.take().unwrap().conn.into_inner();
++                pending.fulfill(Upgraded::new(io, buf));
++                Poll::Ready(Ok(()))
+             }
+-        } else {
+-            // inner is `None`, meaning the connection was upgraded, thus it's `Poll::Ready(Ok(()))`
+-            Poll::Ready(Ok(()))
++            Err(e) => Poll::Ready(Err(e)),
+         }
+     }
+ }
+diff --git a/src/server/conn/http2.rs b/src/server/conn/http2.rs
+index bc754f26..6c8dfb5e 100644
+--- a/src/server/conn/http2.rs
++++ b/src/server/conn/http2.rs
+@@ -262,7 +262,7 @@ impl<E> Builder<E> {
+ 
+     /// Sets the max size of received header frames.
+     ///
+-    /// Default is currently 16KB, but can change.
++    /// Default is currently ~16MB, but may change.
+     pub fn max_header_list_size(&mut self, max: u32) -> &mut Self {
+         self.h2_builder.max_header_list_size = max;
+         self

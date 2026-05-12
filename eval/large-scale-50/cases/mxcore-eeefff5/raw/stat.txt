@@ -1,0 +1,6 @@
+eeefff5 feat(core-http): retry transient request failures
+ Cargo.lock                            |   3 +-
+ crates/core-http/Cargo.toml           |   4 +-
+ crates/core-http/src/client.rs        | 104 +++++++++++++++++++++++++++++++---
+ crates/core-http/tests/error_codes.rs |  87 ++++++++++++++++++++++++++--
+ 4 files changed, 181 insertions(+), 17 deletions(-)

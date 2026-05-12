@@ -1,0 +1,201 @@
+# Open-source candidates discovered before decay output is consulted.
+
+[[candidates]]
+id = "hyper-4056"
+repo = "hyperium/hyper"
+pr = 4056
+title = "fix(http1): fix reading large bodies on 32-bit systems"
+state = "accepted"
+objective_value_signal = "merged fix; comment confirms usize::MAX boundary behavior"
+risk_prompt_point = "HTTP/1 decoder large-body arithmetic on 32-bit systems"
+reviewer_action = "verify overflow/boundary tests and platform assumptions"
+
+[[candidates]]
+id = "hyper-4061"
+repo = "hyperium/hyper"
+pr = 4061
+title = "fix(http2): do not reserve capacity before body data is available"
+state = "accepted"
+objective_value_signal = "merged fix; critical boundary: HTTP/2 body buffering/capacity"
+risk_prompt_point = "capacity reservation before body availability may create memory behavior risk"
+reviewer_action = "review allocation behavior and tests for body availability timing"
+
+[[candidates]]
+id = "hyper-3988"
+repo = "hyperium/hyper"
+pr = 3988
+title = "fix(http1): fix rare missed write wakeup on connections v2"
+state = "accepted"
+objective_value_signal = "merged fix; rare wakeup/concurrency bug; tests added"
+risk_prompt_point = "HTTP/1 dispatch wakeup readiness and connection progress"
+reviewer_action = "verify wakeup invariants and regression tests"
+
+[[candidates]]
+id = "hyper-4043"
+repo = "hyperium/hyper"
+pr = 4043
+title = "fix(http1): allow keep-alive for chunked requests with trailers"
+state = "accepted"
+objective_value_signal = "merged fix; protocol behavior; maintainer approved fix and test"
+risk_prompt_point = "HTTP/1 keep-alive + chunked trailers state transition"
+reviewer_action = "verify trailer parsing and keep-alive regression test"
+
+[[candidates]]
+id = "hyper-4042"
+repo = "hyperium/hyper"
+pr = 4042
+title = "fix(http2): cancel pipe_task and send RST_STREAM on response future drop"
+state = "accepted"
+objective_value_signal = "merged fix; maintainer says tracking this down; critical HTTP/2 cancellation behavior"
+risk_prompt_point = "response future drop must cancel task and send RST_STREAM"
+reviewer_action = "verify cancellation, stream reset, and task lifetime tests"
+
+[[candidates]]
+id = "hyper-4038"
+repo = "hyperium/hyper"
+pr = 4038
+title = "fix(ffi): validate null pointers before dereferencing in request/resp..."
+state = "accepted"
+objective_value_signal = "merged fix; critical boundary: FFI null pointer safety"
+risk_prompt_point = "request/response FFI pointer validation"
+reviewer_action = "verify null checks before deref and add FFI safety tests"
+
+[[candidates]]
+id = "hyper-3998"
+repo = "hyperium/hyper"
+pr = 3998
+title = "fix(client): reading trailers shouldn't propagate `NO_ERROR` from early response"
+state = "accepted"
+objective_value_signal = "merged fix; HTTP client trailer/error propagation"
+risk_prompt_point = "body incoming state and early response NO_ERROR propagation"
+reviewer_action = "verify trailer/error semantics and regression tests"
+
+[[candidates]]
+id = "hyper-4019"
+repo = "hyperium/hyper"
+pr = 4019
+title = "fix: non-utf8 char may cause panic when calling to_str"
+state = "accepted"
+objective_value_signal = "merged fix; panic avoidance"
+risk_prompt_point = "non-UTF8 input causing panic on to_str"
+reviewer_action = "verify invalid UTF-8 path and panic-free behavior"
+
+[[candidates]]
+id = "hyper-4011"
+repo = "hyperium/hyper"
+pr = 4011
+title = "fix(http1): use case-insensitive matching for trailer fields"
+state = "accepted"
+objective_value_signal = "merged fix; review requested integration tests from related PR"
+risk_prompt_point = "HTTP/1 trailer field matching semantics"
+reviewer_action = "verify case-insensitive matching and integration tests"
+
+[[candidates]]
+id = "hyper-3952"
+repo = "hyperium/hyper"
+pr = 3952
+title = "fix(http1): poll_loop writes when ready"
+state = "accepted"
+objective_value_signal = "merged fix; maintainer review explicitly discusses tricky select/waker loop"
+risk_prompt_point = "HTTP/1 poll loop readiness, waker registration, fairness/yield behavior"
+reviewer_action = "verify waker invariants, starvation control, and regression tests"
+
+[[candidates]]
+id = "hyper-3977"
+repo = "hyperium/hyper"
+pr = 3977
+title = "Revert \"fix(http1): fix rare missed write wakeup on connections (#3952)\""
+state = "accepted"
+objective_value_signal = "revert of a previous fix"
+risk_prompt_point = "original wakeup fix likely introduced unacceptable behavior or risk"
+reviewer_action = "compare reverted diff against original fix and identify regression mechanism"
+
+[[candidates]]
+id = "hyper-3185"
+repo = "hyperium/hyper"
+pr = 3185
+title = "fix(server): start header read timeout immediately"
+state = "accepted"
+objective_value_signal = "merged fix; extensive discussion of DoS/idle timeout semantics and user report"
+risk_prompt_point = "HTTP/1 header timeout starts too late, allowing idle connections"
+reviewer_action = "verify timeout semantics, DoS boundary, and compatibility tests"
+
+[[candidates]]
+id = "ripgrep-3195"
+repo = "BurntSushi/ripgrep"
+pr = 3195
+title = "searcher: fix regression with `--line-buffered` flag"
+state = "accepted"
+objective_value_signal = "merged regression fix; changelog and tests"
+risk_prompt_point = "line buffering behavior in searcher"
+reviewer_action = "verify regression test and buffering semantics"
+
+[[candidates]]
+id = "ripgrep-3189"
+repo = "BurntSushi/ripgrep"
+pr = 3189
+title = "ignore: fix global gitignore bug that arises with absolute paths"
+state = "accepted"
+objective_value_signal = "merged bug fix; changelog and regression test"
+risk_prompt_point = "global gitignore resolution with absolute paths"
+reviewer_action = "verify path normalization and ignore matching tests"
+
+[[candidates]]
+id = "ripgrep-3182"
+repo = "BurntSushi/ripgrep"
+pr = 3182
+title = "printer: fix panic in replacements in look-around corner case"
+state = "accepted"
+objective_value_signal = "merged panic fix; regression test"
+risk_prompt_point = "replacement rendering with look-around corner case"
+reviewer_action = "verify panic-free behavior and replacement semantics"
+
+[[candidates]]
+id = "ripgrep-3185"
+repo = "BurntSushi/ripgrep"
+pr = 3185
+title = "fix slow searching of `stdin` with large values of `-A/--after-context`"
+state = "accepted"
+objective_value_signal = "merged performance/behavior fix; changelog"
+risk_prompt_point = "stdin search with large after-context affects buffering/performance"
+reviewer_action = "verify performance-sensitive buffering behavior"
+
+[[candidates]]
+id = "ripgrep-3154"
+repo = "BurntSushi/ripgrep"
+pr = 3154
+title = "printer: hack in a fix for `-l/--files-with-matches` when using `--pcre2 --multiline` with look-around"
+state = "accepted"
+objective_value_signal = "merged bug fix; regression test"
+risk_prompt_point = "PCRE2 multiline look-around with files-with-matches output"
+reviewer_action = "verify search semantics across PCRE2/multiline/output mode"
+
+[[candidates]]
+id = "ripgrep-2885"
+repo = "BurntSushi/ripgrep"
+pr = 2885
+title = "regex: fix inner literal extraction that resulted in false negatives"
+state = "accepted"
+objective_value_signal = "merged bug fix; false negatives in regex/literal extraction"
+risk_prompt_point = "literal extraction can change search correctness"
+reviewer_action = "verify false-negative regression cases and literal optimizer behavior"
+
+[[candidates]]
+id = "ripgrep-2787"
+repo = "BurntSushi/ripgrep"
+pr = 2787
+title = "Set up ripgrep for compilation on non-unix, non-windows platforms"
+state = "accepted"
+objective_value_signal = "changes requested review; CI/platform compatibility risk"
+risk_prompt_point = "non-unix/non-windows build behavior and CI coverage"
+reviewer_action = "verify platform guards and CI build coverage"
+
+[[candidates]]
+id = "ripgrep-2692"
+repo = "BurntSushi/ripgrep"
+pr = 2692
+title = "ignore crate: Fix reference cycle for compiled matchers"
+state = "accepted"
+objective_value_signal = "merged bug fix; reference cycle in ignore matcher compilation"
+risk_prompt_point = "compiled matcher cycle handling"
+reviewer_action = "verify cycle detection and ignore matching behavior"

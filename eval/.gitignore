@@ -2,7 +2,8 @@
 !/results/.gitkeep
 /reports/*
 !/reports/.gitkeep
-!/reports/*.md
+!/reports/50-case-summary.md
+!/reports/batch-*.md
 /cases/*/raw/decay.db
 __pycache__/
 *.pyc

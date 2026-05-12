@@ -672,6 +672,44 @@ fn diff_reports_config_value_delta_as_semantic_risk() {
 }
 
 #[test]
+fn diff_reports_env_default_delta_as_semantic_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn retry_limit() -> String {
+    std::env::var("MX_RETRY_LIMIT").unwrap_or_else(|_| "3".to_string())
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed env default");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn retry_limit() -> String {
+    std::env::var("MX_RETRY_LIMIT").unwrap_or_else(|_| "30".to_string())
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Top risk findings:"))
+        .stdout(predicate::str::contains("[high] src/lib.rs"))
+        .stdout(predicate::str::contains("Semantic impact:"))
+        .stdout(predicate::str::contains("kind=env_default_changed"))
+        .stdout(predicate::str::contains("MX_RETRY_LIMIT: 3 -> 30"));
+}
+
+#[test]
 fn diff_promotes_public_api_signature_change_to_top_risk() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let project = tmp.path().join("project");

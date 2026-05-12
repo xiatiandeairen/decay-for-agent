@@ -303,6 +303,7 @@ fn detect_semantic(diff: &GitDiff) -> Vec<EvidenceRecord> {
             continue;
         };
         records.extend(detect_default_value_changes(path, file));
+        records.extend(detect_env_default_changes(path, file));
         records.extend(detect_dependency_feature_changes(path, file));
         records.extend(detect_config_value_changes(path, file));
     }
@@ -381,6 +382,89 @@ fn detect_dependency_feature_changes(
         ));
     }
     records
+}
+
+fn detect_env_default_changes(
+    path: &str,
+    file: &crate::git_diff::GitFileDiff,
+) -> Vec<EvidenceRecord> {
+    if !path.ends_with(".rs") {
+        return Vec::new();
+    }
+
+    let mut records = Vec::new();
+    for hunk in &file.hunks {
+        let deleted: Vec<_> = hunk
+            .lines
+            .iter()
+            .filter(|line| matches!(line.kind, HunkLineKind::Deletion))
+            .filter_map(|line| parse_env_default(&line.content))
+            .collect();
+        let added: Vec<_> = hunk
+            .lines
+            .iter()
+            .filter(|line| matches!(line.kind, HunkLineKind::Addition))
+            .filter_map(|line| parse_env_default(&line.content))
+            .collect();
+
+        for before in &deleted {
+            for after in &added {
+                if before.name == after.name && before.value != after.value {
+                    records.push(EvidenceRecord::new(
+                        "env_default_changed",
+                        path,
+                        format!("{}: {} -> {}", before.name, before.value, after.value),
+                        "semantic_diff",
+                    ));
+                }
+            }
+        }
+    }
+    records
+}
+
+fn parse_env_default(line: &str) -> Option<NamedValue> {
+    let line = line.trim();
+    if !(line.contains("env::var(") && (line.contains("unwrap_or") || line.contains("or_else"))) {
+        return None;
+    }
+
+    let strings = quoted_strings(line);
+    let name = strings.first()?;
+    let value = strings.last()?;
+    if strings.len() < 2 || name == value {
+        return None;
+    }
+    Some(NamedValue {
+        name: name.clone(),
+        value: value.clone(),
+    })
+}
+
+fn quoted_strings(line: &str) -> Vec<String> {
+    let mut values = Vec::new();
+    let mut chars = line.chars();
+    while let Some(ch) = chars.next() {
+        if ch != '"' {
+            continue;
+        }
+        let mut value = String::new();
+        let mut escaped = false;
+        for next in chars.by_ref() {
+            if escaped {
+                value.push(next);
+                escaped = false;
+            } else if next == '\\' {
+                escaped = true;
+            } else if next == '"' {
+                break;
+            } else {
+                value.push(next);
+            }
+        }
+        values.push(value);
+    }
+    values
 }
 
 fn detect_config_value_changes(

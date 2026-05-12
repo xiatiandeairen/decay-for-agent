@@ -499,6 +499,11 @@ fn risk_findings(report: &impact::ImpactReport) -> Vec<RiskFinding> {
                 84,
                 "review production configuration boundary change and add rollout/regression checks",
             ),
+            "env_default_changed" => (
+                "high",
+                84,
+                "review runtime environment default change and add compatibility checks",
+            ),
             "default_value_changed" => (
                 "high",
                 82,

@@ -1,4 +1,5 @@
 use crate::evidence::EvidenceRecord;
+use crate::file_role::{self, FileRole};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QualityFileChange {
@@ -7,6 +8,8 @@ pub struct QualityFileChange {
     pub added_lines: u32,
     pub deleted_lines: u32,
     pub sensitive: bool,
+    pub executable_code_changed: bool,
+    pub test_code_changed: bool,
 }
 
 impl QualityFileChange {
@@ -17,6 +20,8 @@ impl QualityFileChange {
             added_lines: 0,
             deleted_lines: 0,
             sensitive: false,
+            executable_code_changed: true,
+            test_code_changed: false,
         }
     }
 
@@ -43,57 +48,65 @@ pub fn detect_quality(files: &[QualityFileChange]) -> QualityReport {
     let mut crates = Vec::new();
     let mut has_sensitive_prod = false;
     let mut first_prod_file = None;
+    let mut executable_prod_files_changed = 0;
+    let mut first_executable_prod_file = None;
 
     for file in files {
         let Some(path) = file.path() else {
             continue;
         };
+        let inline_test_change = file.test_code_changed;
 
-        if is_ignored_generated_path(path) {
-            continue;
-        }
-
-        if is_docs_path(path) {
-            report.docs_files_changed += 1;
-            continue;
-        }
-
-        if is_test_path(path) {
-            report.test_files_changed += 1;
-            continue;
-        }
-
-        if is_dependency_path(path) {
-            push_record(
-                &mut report,
-                "dependency_changed",
-                path,
-                "dependency manifest",
-            );
-            continue;
-        }
-
-        if is_build_or_ci_path(path) {
-            push_record(&mut report, "build_or_ci_changed", path, "build or ci");
-            continue;
-        }
-
-        if is_prod_path(path) {
-            report.prod_files_changed += 1;
-            if first_prod_file.is_none() {
-                first_prod_file = Some(path.to_string());
+        match file_role::classify(path) {
+            FileRole::Generated | FileRole::Unknown => continue,
+            FileRole::Docs => {
+                report.docs_files_changed += 1;
+                continue;
             }
-            push_unique(&mut prod_domains, domain_for(path));
-            push_unique(&mut crates, crate_for(path));
+            FileRole::Test => {
+                report.test_files_changed += 1;
+                continue;
+            }
+            FileRole::Dependency => {
+                push_record(
+                    &mut report,
+                    "dependency_changed",
+                    path,
+                    "dependency manifest",
+                );
+                continue;
+            }
+            FileRole::Build => {
+                push_record(&mut report, "build_or_ci_changed", path, "build or ci");
+                continue;
+            }
+            FileRole::Prod => {
+                report.prod_files_changed += 1;
+                if inline_test_change {
+                    report.test_files_changed += 1;
+                }
+                if first_prod_file.is_none() {
+                    first_prod_file = Some(path.to_string());
+                }
+                if !file.executable_code_changed {
+                    continue;
+                }
+                executable_prod_files_changed += 1;
+                if first_executable_prod_file.is_none() {
+                    first_executable_prod_file = Some(path.to_string());
+                }
+                push_unique(&mut prod_domains, domain_for(path));
+                push_unique(&mut crates, crate_for(path));
 
-            if file.sensitive || is_sensitive_path(path) {
-                has_sensitive_prod = true;
+                if file.sensitive || is_sensitive_path(path) {
+                    has_sensitive_prod = true;
+                }
             }
         }
     }
 
-    if report.prod_files_changed > 0 && report.test_files_changed == 0 {
-        let file = first_prod_file.as_deref().unwrap_or("");
+    if executable_prod_files_changed > 0 && report.test_files_changed == 0 {
+        let file = first_executable_prod_file.as_deref().unwrap_or("");
         push_record(
             &mut report,
             "test_gap",
@@ -145,45 +158,6 @@ fn push_unique(items: &mut Vec<String>, value: String) {
     if !items.iter().any(|item| item == &value) {
         items.push(value);
     }
-}
-
-fn is_docs_path(path: &str) -> bool {
-    path.starts_with("docs/")
-        || path == "README.md"
-        || path == "README.zh.md"
-        || path.ends_with(".md")
-        || path.ends_with(".adoc")
-        || path.ends_with(".rst")
-}
-
-fn is_test_path(path: &str) -> bool {
-    path.starts_with("tests/")
-        || path.contains("/tests/")
-        || path.ends_with("_test.rs")
-        || path.ends_with(".test.rs")
-        || path.ends_with("_spec.rs")
-}
-
-fn is_dependency_path(path: &str) -> bool {
-    path == "Cargo.toml" || path.ends_with("/Cargo.toml")
-}
-
-fn is_build_or_ci_path(path: &str) -> bool {
-    path == "build.rs"
-        || path.ends_with("/build.rs")
-        || path.starts_with(".github/workflows/")
-        || path == ".gitlab-ci.yml"
-        || path == "azure-pipelines.yml"
-        || path == "Jenkinsfile"
-}
-
-fn is_prod_path(path: &str) -> bool {
-    path.starts_with("src/") || path.starts_with("crates/")
-}
-
-fn is_ignored_generated_path(path: &str) -> bool {
-    path.split('/')
-        .any(|part| part == "target" || part == "generated")
 }
 
 fn is_sensitive_path(path: &str) -> bool {

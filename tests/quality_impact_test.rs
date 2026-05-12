@@ -44,6 +44,49 @@ fn production_change_without_tests_triggers_test_gap() {
 }
 
 #[test]
+fn production_comment_only_change_does_not_trigger_test_gap() {
+    let report = detect_quality(&[QualityFileChange {
+        old_path: Some("src/lib.rs".to_string()),
+        new_path: Some("src/lib.rs".to_string()),
+        added_lines: 1,
+        deleted_lines: 1,
+        sensitive: false,
+        executable_code_changed: false,
+        test_code_changed: false,
+    }]);
+
+    assert!(
+        report
+            .records
+            .iter()
+            .all(|record| record.kind != "test_gap"),
+        "got {report:#?}"
+    );
+}
+
+#[test]
+fn inline_test_change_counts_as_test_coverage_change() {
+    let report = detect_quality(&[QualityFileChange {
+        old_path: Some("src/lib.rs".to_string()),
+        new_path: Some("src/lib.rs".to_string()),
+        added_lines: 20,
+        deleted_lines: 0,
+        sensitive: false,
+        executable_code_changed: true,
+        test_code_changed: true,
+    }]);
+
+    assert!(
+        report
+            .records
+            .iter()
+            .all(|record| record.kind != "test_gap"),
+        "got {report:#?}"
+    );
+    assert_eq!(report.test_files_changed, 1);
+}
+
+#[test]
 fn production_and_test_change_does_not_trigger_general_test_gap() {
     assert_lacks_kind(&["src/diff.rs", "tests/diff_test.rs"], "test_gap");
 }

@@ -54,6 +54,34 @@ fn run(project: &Path, args: &[&str]) {
     );
 }
 
+fn git_head(project: &Path) -> String {
+    let output = StdCommand::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(project)
+        .output()
+        .expect("git rev-parse");
+    assert!(
+        output.status.success(),
+        "git rev-parse failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+fn git_short_head(project: &Path) -> String {
+    let output = StdCommand::new("git")
+        .args(["rev-parse", "--short=8", "HEAD"])
+        .current_dir(project)
+        .output()
+        .expect("git rev-parse short");
+    assert!(
+        output.status.success(),
+        "git rev-parse --short failed:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
 fn db_count(db: &Path, sql: &str) -> i64 {
     let conn = rusqlite::Connection::open(db).expect("open db");
     conn.query_row(sql, [], |row| row.get(0))
@@ -196,6 +224,145 @@ pub fn improves(x: i32) -> i32 {
 }
 
 #[test]
+fn diff_git_ref_prints_execution_context_and_top_findings() {
+    let (_tmp, project, db) = base_project();
+    let base = git_head(&project);
+    write_lib(
+        &project,
+        r#"
+pub fn old_debt(x: i32) -> i32 {
+    let mut out = 0;
+    if x > 0 { out += 1; }
+    if x > 1 { out += 1; }
+    if x > 2 { out += 1; }
+    if x > 3 { out += 1; }
+    if x > 4 { out += 1; }
+    if x > 5 { out += 1; }
+    if x > 6 { out += 1; }
+    if x > 7 { out += 1; }
+    if x > 8 { out += 1; }
+    if x > 9 { out += 1; }
+    if x > 10 { out += 1; }
+    if x > 11 { out += 1; }
+    if x > 12 { out += 1; }
+    if x > 13 { out += 1; }
+    if x > 14 { out += 1; }
+    out
+}
+
+pub fn target(x: i32) -> i32 {
+    if x > 0 { return 1; }
+    if x > 1 { return 2; }
+    if x > 2 { return 3; }
+    if x > 3 { return 4; }
+    if x > 4 { return 5; }
+    if x > 5 { return 6; }
+    if x > 6 { return 7; }
+    if x > 7 { return 8; }
+    if x > 8 { return 9; }
+    if x > 9 { return 10; }
+    if x > 10 { return 11; }
+    if x > 11 { return 12; }
+    if x > 12 { return 13; }
+    if x > 13 { return 14; }
+    if x > 14 { return 15; }
+    0
+}
+
+pub fn improves(x: i32) -> i32 {
+    if x > 0 {
+        return x;
+    }
+    0
+}
+"#,
+    );
+
+    decay_cmd(&project, &db)
+        .args(["diff", &base])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("Diff context:"))
+        .stdout(predicate::str::contains("mode=git_ref"))
+        .stdout(predicate::str::contains(format!("base={base}")))
+        .stdout(predicate::str::contains("head="))
+        .stdout(predicate::str::contains("changed_files=1"))
+        .stdout(predicate::str::contains("Top risk findings:"))
+        .stdout(predicate::str::contains("[high] src/lib.rs:target"));
+}
+
+#[test]
+fn diff_short_git_ref_prefers_commit_over_baseline_version() {
+    let (_tmp, project, db) = base_project();
+    let base_short = git_short_head(&project);
+
+    decay_cmd(&project, &db)
+        .args(["baseline", &base_short])
+        .assert()
+        .success();
+
+    write_lib(
+        &project,
+        r#"
+pub fn old_debt(x: i32) -> i32 {
+    let mut out = 0;
+    if x > 0 { out += 1; }
+    if x > 1 { out += 1; }
+    if x > 2 { out += 1; }
+    if x > 3 { out += 1; }
+    if x > 4 { out += 1; }
+    if x > 5 { out += 1; }
+    if x > 6 { out += 1; }
+    if x > 7 { out += 1; }
+    if x > 8 { out += 1; }
+    if x > 9 { out += 1; }
+    if x > 10 { out += 1; }
+    if x > 11 { out += 1; }
+    if x > 12 { out += 1; }
+    if x > 13 { out += 1; }
+    if x > 14 { out += 1; }
+    out
+}
+
+pub fn target(x: i32) -> i32 {
+    if x > 0 { return 1; }
+    if x > 1 { return 2; }
+    if x > 2 { return 3; }
+    if x > 3 { return 4; }
+    if x > 4 { return 5; }
+    if x > 5 { return 6; }
+    if x > 6 { return 7; }
+    if x > 7 { return 8; }
+    if x > 8 { return 9; }
+    if x > 9 { return 10; }
+    if x > 10 { return 11; }
+    if x > 11 { return 12; }
+    if x > 12 { return 13; }
+    if x > 13 { return 14; }
+    if x > 14 { return 15; }
+    0
+}
+
+pub fn improves(x: i32) -> i32 {
+    if x > 0 {
+        return x;
+    }
+    0
+}
+"#,
+    );
+
+    decay_cmd(&project, &db)
+        .args(["diff", &base_short])
+        .assert()
+        .failure()
+        .stdout(predicate::str::contains("mode=git_ref"))
+        .stdout(predicate::str::contains("warning=short_git_ref_resolved"))
+        .stdout(predicate::str::contains("Top risk findings:"))
+        .stdout(predicate::str::contains("target"));
+}
+
+#[test]
 fn diff_reports_improved_complexity_as_positive_evidence() {
     let (_tmp, project, db) = base_project();
     write_lib(
@@ -274,6 +441,67 @@ fn diff_does_not_report_unchanged_moved_function_as_new_debt() {
 }
 
 #[test]
+fn diff_treats_same_file_same_name_signature_change_as_existing_function() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn render(value: i32) -> i32 {
+    if value > 0 { return 1; }
+    if value > 1 { return 2; }
+    if value > 2 { return 3; }
+    if value > 3 { return 4; }
+    if value > 4 { return 5; }
+    if value > 5 { return 6; }
+    if value > 6 { return 7; }
+    if value > 7 { return 8; }
+    if value > 8 { return 9; }
+    if value > 9 { return 10; }
+    if value > 10 { return 11; }
+    if value > 11 { return 12; }
+    0
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "base");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn render(value: i32, fallback: i32) -> i32 {
+    if value > 0 { return 1; }
+    if value > 1 { return 2; }
+    if value > 2 { return 3; }
+    if value > 3 { return 4; }
+    if value > 4 { return 5; }
+    if value > 5 { return 6; }
+    if value > 6 { return 7; }
+    if value > 7 { return 8; }
+    if value > 8 { return 9; }
+    if value > 9 { return 10; }
+    if value > 10 { return 11; }
+    if value > 11 { return 12; }
+    fallback
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Complexity impact:"))
+        .stdout(predicate::str::contains("kind=new_high_risk").not())
+        .stdout(predicate::str::contains("kind=touched_existing_risky"))
+        .stdout(predicate::str::contains("render"));
+}
+
+#[test]
 fn diff_ignores_non_rust_files_for_complexity_evidence() {
     let (_tmp, project, db) = base_project();
     fs::create_dir_all(project.join("docs")).expect("create docs");
@@ -330,6 +558,82 @@ pub extern "C" fn mx_send(value: i32) -> i32 {
         .stdout(predicate::str::contains("kind=sensitive_test_gap"))
         .stdout(predicate::str::contains("bug").not())
         .stdout(predicate::str::contains("risk=high").not());
+}
+
+#[test]
+fn diff_reports_default_value_delta_as_semantic_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub const DEFAULT_MAX_HEADER_LIST_SIZE: usize = 1024 * 16;
+
+pub fn limit() -> usize {
+    DEFAULT_MAX_HEADER_LIST_SIZE
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed default header limit");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub const DEFAULT_MAX_HEADER_LIST_SIZE: usize = 16 << 20;
+
+pub fn limit() -> usize {
+    DEFAULT_MAX_HEADER_LIST_SIZE
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Top risk findings:"))
+        .stdout(predicate::str::contains("[high] src/lib.rs"))
+        .stdout(predicate::str::contains("Semantic impact:"))
+        .stdout(predicate::str::contains("category=semantic"))
+        .stdout(predicate::str::contains("kind=default_value_changed"))
+        .stdout(predicate::str::contains("DEFAULT_MAX_HEADER_LIST_SIZE"))
+        .stdout(predicate::str::contains("1024 * 16 -> 16 << 20"));
+}
+
+#[test]
+fn diff_reports_sensitive_dependency_feature_as_semantic_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(project.join("src/lib.rs"), "pub fn ok() -> bool { true }\n").expect("write lib");
+    commit_all(&project, "feat: seed crate");
+
+    fs::write(
+        project.join("Cargo.toml"),
+        "[package]\nname='impact-fixture'\nversion='0.1.0'\nedition='2021'\n\n[dependencies]\nrustls = { version = \"0.21\", features = [\"dangerous_configuration\"] }\n",
+    )
+    .expect("write cargo");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Top risk findings:"))
+        .stdout(predicate::str::contains("[high] Cargo.toml"))
+        .stdout(predicate::str::contains("Semantic impact:"))
+        .stdout(predicate::str::contains("category=semantic"))
+        .stdout(predicate::str::contains(
+            "kind=security_sensitive_dependency_changed",
+        ))
+        .stdout(predicate::str::contains(
+            "rustls feature dangerous_configuration",
+        ))
+        .stdout(predicate::str::contains("kind=dependency_changed"));
 }
 
 #[test]
@@ -415,4 +719,107 @@ fn diff_reports_history_evidence_for_churned_bugfixed_code() {
     assert_eq!(db_count(&db, "SELECT COUNT(*) FROM changesets"), 1);
     assert_eq!(db_count(&db, "SELECT COUNT(*) FROM file_changes"), 1);
     assert_eq!(db_count(&db, "SELECT COUNT(*) FROM evidence_items"), 3);
+}
+
+#[test]
+fn diff_history_does_not_count_current_pr_commit_as_prior_history() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub fn message() -> &'static str { \"immediately quick\" }\n",
+    )
+    .expect("write lib");
+    commit_all(&project, "feat: add message");
+    let base = git_head(&project);
+
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub fn message() -> &'static str { \"immediately quit\" }\n",
+    )
+    .expect("write lib");
+    commit_all(&project, "fix typo in message docs");
+
+    decay_cmd(&project, &db)
+        .args(["diff", &base])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("History impact:"))
+        .stdout(predicate::str::contains("kind=recently_bugfixed_area").not());
+}
+
+#[test]
+fn diff_does_not_report_build_script_complexity_as_function_debt() {
+    let (_tmp, project, db) = base_project();
+    fs::write(project.join("build.rs"), "fn main() {}\n").expect("write build");
+    commit_all(&project, "base build script");
+
+    fs::write(
+        project.join("build.rs"),
+        r#"
+fn main() {
+    if option_env!("A").is_some() {}
+    if option_env!("B").is_some() {}
+    if option_env!("C").is_some() {}
+    if option_env!("D").is_some() {}
+    if option_env!("E").is_some() {}
+    if option_env!("F").is_some() {}
+    if option_env!("G").is_some() {}
+    if option_env!("H").is_some() {}
+    if option_env!("I").is_some() {}
+    if option_env!("J").is_some() {}
+    if option_env!("K").is_some() {}
+    if option_env!("L").is_some() {}
+}
+"#,
+    )
+    .expect("write build");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("function=build.rs:main").not())
+        .stdout(predicate::str::contains("kind=build_or_ci_changed"));
+}
+
+#[test]
+fn diff_does_not_report_inline_test_complexity_as_function_debt() {
+    let (_tmp, project, db) = base_project();
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn prod() {}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_large_fixture() {
+        if true {}
+        if true {}
+        if true {}
+        if true {}
+        if true {}
+        if true {}
+        if true {}
+        if true {}
+        if true {}
+        if true {}
+        if true {}
+        if true {}
+    }
+}
+"#,
+    )
+    .expect("write lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("test_large_fixture").not())
+        .stdout(predicate::str::contains("test_gap").not());
 }

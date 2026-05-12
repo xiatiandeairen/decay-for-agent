@@ -4,6 +4,7 @@ pub mod diff;
 pub mod error;
 pub mod evidence;
 pub mod evidence_store;
+pub mod file_role;
 pub mod fingerprint;
 pub mod git_diff;
 pub mod impact;

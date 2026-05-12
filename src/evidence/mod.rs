@@ -1,3 +1,4 @@
+pub mod debt;
 pub mod history;
 pub mod quality;
 pub mod stability;

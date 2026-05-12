@@ -13,22 +13,38 @@ use crate::types::{DiffEntry, DiffKind, FunctionSet, MetricId};
 /// Two versions compare baseline `<from>` to baseline `<to>`.
 pub fn run(args: &common::ScanArgs, from: &str, to: Option<&str>) -> Result<i32> {
     let project = common::resolve_project()?;
-    if to.is_none() && is_git_ref(&project.root, from) {
-        let report = impact::analyze_worktree_diff(&project.root, from)?;
-        let recording = record_impact_report(&project, from, &report);
-        print_impact_report(&report, Some(&recording));
-        return Ok(
-            if report.evidences.iter().any(|e| {
-                matches!(
-                    e.kind,
-                    impact::EvidenceKind::Worsened | impact::EvidenceKind::NewHighRisk
-                )
-            }) {
-                1
-            } else {
-                0
-            },
-        );
+    if to.is_none() {
+        if let Some(git_ref) = resolve_git_ref(&project.root, from)? {
+            let report = impact::analyze_worktree_diff(&project.root, &git_ref.commit)?;
+            let recording = record_impact_report(&project, &git_ref.commit, &report);
+            let context = GitDiffContext {
+                repo_root: project.root.display().to_string(),
+                base_input: from.to_string(),
+                base_commit: git_ref.commit,
+                head_commit: git_rev_parse(&project.root, "HEAD")?,
+                changed_files: report.file_changes.len(),
+                short_ref: git_ref.short_input,
+            };
+            print_impact_report(&context, &report, Some(&recording));
+            return Ok(
+                if report.evidences.iter().any(|e| {
+                    matches!(
+                        e.kind,
+                        impact::EvidenceKind::Worsened | impact::EvidenceKind::NewHighRisk
+                    )
+                }) {
+                    1
+                } else {
+                    0
+                },
+            );
+        }
+        if looks_like_git_ref(from) {
+            println!(
+                "warning=git_ref_not_found input={} message=\"trying stored baseline version\"",
+                from
+            );
+        }
     }
 
     let conn = store::open_db()?;
@@ -107,13 +123,32 @@ pub fn run(args: &common::ScanArgs, from: &str, to: Option<&str>) -> Result<i32>
     Ok(if entries.is_empty() { 0 } else { 1 })
 }
 
-fn is_git_ref(project_root: &std::path::Path, name: &str) -> bool {
-    std::process::Command::new("git")
-        .args(["rev-parse", "--verify", name])
+#[derive(Debug, Clone)]
+struct ResolvedGitRef {
+    commit: String,
+    short_input: bool,
+}
+
+fn resolve_git_ref(project_root: &std::path::Path, name: &str) -> Result<Option<ResolvedGitRef>> {
+    let output = std::process::Command::new("git")
+        .args(["rev-parse", "--verify", &format!("{name}^{{commit}}")])
         .current_dir(project_root)
         .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+        .map_err(|source| crate::error::DecayError::Io {
+            path: "git".to_string(),
+            source,
+        })?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    Ok(Some(ResolvedGitRef {
+        commit: String::from_utf8_lossy(&output.stdout).trim().to_string(),
+        short_input: name.len() < 40 && looks_like_git_ref(name),
+    }))
+}
+
+fn looks_like_git_ref(name: &str) -> bool {
+    (7..=40).contains(&name.len()) && name.chars().all(|ch| ch.is_ascii_hexdigit())
 }
 
 fn record_impact_report(
@@ -156,10 +191,37 @@ fn git_rev_parse(project_root: &std::path::Path, name: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+#[derive(Debug, Clone)]
+struct GitDiffContext {
+    repo_root: String,
+    base_input: String,
+    base_commit: String,
+    head_commit: String,
+    changed_files: usize,
+    short_ref: bool,
+}
+
 fn print_impact_report(
+    context: &GitDiffContext,
     report: &impact::ImpactReport,
     recording: Option<&std::result::Result<SavedDiffEvidence, String>>,
 ) {
+    println!("Diff context:");
+    println!("  repo_root={}", context.repo_root);
+    println!("  mode=git_ref");
+    println!("  base_input={}", context.base_input);
+    println!("  base={}", context.base_commit);
+    println!("  head={}", context.head_commit);
+    println!("  changed_files={}", context.changed_files);
+    if context.short_ref {
+        println!(
+            "warning=short_git_ref_resolved input={} resolved={}",
+            context.base_input, context.base_commit
+        );
+    }
+    println!();
+    print_risk_findings(report);
+    println!();
     println!("Complexity impact:");
     println!(
         "  changed_functions={} evidence={} partial={} diagnostics={}",
@@ -221,6 +283,23 @@ fn print_impact_report(
         println!("  file={}", evidence.file);
     }
     println!();
+    println!("Semantic impact:");
+    println!("  evidence={}", report.semantic_evidence.len());
+    for (idx, evidence) in report.semantic_evidence.iter().enumerate() {
+        println!(
+            "- id={} category=semantic kind={} subject={} source={}",
+            report.evidences.len()
+                + report.stability_evidence.len()
+                + report.quality.records.len()
+                + idx
+                + 1,
+            evidence.kind,
+            evidence.subject,
+            evidence.source
+        );
+        println!("  file={}", evidence.file);
+    }
+    println!();
     println!("History impact:");
     println!("  evidence={}", report.history.records.len());
     for (idx, evidence) in report.history.records.iter().enumerate() {
@@ -229,6 +308,7 @@ fn print_impact_report(
             report.evidences.len()
                 + report.stability_evidence.len()
                 + report.quality.records.len()
+                + report.semantic_evidence.len()
                 + idx
                 + 1,
             evidence.kind,
@@ -251,6 +331,177 @@ fn print_impact_report(
         }
         None => {}
     }
+}
+
+#[derive(Debug, Clone)]
+struct RiskFinding {
+    severity: &'static str,
+    title: String,
+    detail: String,
+    action: &'static str,
+    score: u32,
+}
+
+fn print_risk_findings(report: &impact::ImpactReport) {
+    let mut findings = risk_findings(report);
+    println!("Top risk findings:");
+    if findings.is_empty() {
+        println!("  none");
+        return;
+    }
+    findings.sort_by(|a, b| b.score.cmp(&a.score).then(a.title.cmp(&b.title)));
+    for (idx, finding) in findings.iter().take(10).enumerate() {
+        println!("{}. [{}] {}", idx + 1, finding.severity, finding.title);
+        println!("   {}", finding.detail);
+        println!("   action: {}", finding.action);
+    }
+    if findings.len() > 10 {
+        println!("  truncated=true remaining={}", findings.len() - 10);
+    }
+}
+
+fn risk_findings(report: &impact::ImpactReport) -> Vec<RiskFinding> {
+    let mut findings = Vec::new();
+
+    for evidence in &report.evidences {
+        let score = match evidence.kind {
+            impact::EvidenceKind::NewHighRisk => 90,
+            impact::EvidenceKind::Worsened => 80,
+            impact::EvidenceKind::TouchedExistingRisky => 55,
+            impact::EvidenceKind::IdentityUncertain => 50,
+            impact::EvidenceKind::Improved => 10,
+        };
+        if score < 50 {
+            continue;
+        }
+        findings.push(RiskFinding {
+            severity: if score >= 80 { "high" } else { "medium" },
+            title: format!("{}:{}", evidence.file, evidence.function),
+            detail: format!("complexity {}", evidence.kind.as_str()),
+            action: "review function complexity and add focused regression tests",
+            score,
+        });
+    }
+
+    let mut stability_by_file = std::collections::BTreeMap::<String, Vec<&str>>::new();
+    for evidence in &report.stability_evidence {
+        stability_by_file
+            .entry(evidence.file.clone())
+            .or_default()
+            .push(evidence.kind.as_str());
+    }
+    for (file, kinds) in stability_by_file {
+        let unsafe_count = kinds.iter().filter(|kind| **kind == "unsafe_added").count();
+        let panic_count = kinds
+            .iter()
+            .filter(|kind| **kind == "panic_like_added")
+            .count();
+        let ffi_count = kinds
+            .iter()
+            .filter(|kind| **kind == "ffi_boundary_touched")
+            .count();
+        let score = if unsafe_count > 0 || panic_count > 0 {
+            85
+        } else if ffi_count > 0 {
+            70
+        } else {
+            60
+        };
+        let mut parts = Vec::new();
+        if unsafe_count > 0 {
+            parts.push(format!("{unsafe_count} unsafe additions"));
+        }
+        if panic_count > 0 {
+            parts.push(format!("{panic_count} panic-like additions"));
+        }
+        if ffi_count > 0 {
+            parts.push("FFI boundary touched".to_string());
+        }
+        findings.push(RiskFinding {
+            severity: if score >= 80 { "high" } else { "medium" },
+            title: file,
+            detail: parts.join(" + "),
+            action: "review runtime failure and boundary-safety invariants",
+            score,
+        });
+    }
+
+    let dependency_count = report
+        .quality
+        .records
+        .iter()
+        .filter(|evidence| evidence.kind == "dependency_changed")
+        .count();
+    if dependency_count > 0 {
+        findings.push(RiskFinding {
+            severity: "medium",
+            title: "dependency manifests changed".to_string(),
+            detail: format!("{dependency_count} dependency files changed"),
+            action: "review dependency and feature changes for behavior/security impact",
+            score: 45,
+        });
+    }
+    for evidence in &report.quality.records {
+        let (score, action) = match evidence.kind.as_str() {
+            "sensitive_test_gap" => (88, "add or justify missing tests for sensitive code"),
+            "test_gap" => (
+                65,
+                "add focused tests or document why existing coverage is enough",
+            ),
+            "blast_radius" | "mixed_concerns" => {
+                (60, "split the diff or document the shared review rationale")
+            }
+            _ => continue,
+        };
+        findings.push(RiskFinding {
+            severity: if score >= 80 { "high" } else { "medium" },
+            title: evidence.file.clone(),
+            detail: format!("quality {}", evidence.kind),
+            action,
+            score,
+        });
+    }
+
+    for evidence in &report.semantic_evidence {
+        let (severity, score, action) = match evidence.kind.as_str() {
+            "security_sensitive_dependency_changed" => (
+                "high",
+                86,
+                "review dependency feature semantics and require targeted compatibility/security checks",
+            ),
+            "default_value_changed" => (
+                "high",
+                82,
+                "review behavior boundary change and add regression coverage for old and new defaults",
+            ),
+            _ => (
+                "medium",
+                60,
+                "review semantic behavior impact before merge",
+            ),
+        };
+        findings.push(RiskFinding {
+            severity,
+            title: evidence.file.clone(),
+            detail: format!("semantic {} {}", evidence.kind, evidence.subject),
+            action,
+            score,
+        });
+    }
+
+    for evidence in &report.history.records {
+        if evidence.kind == "churn_hotspot" || evidence.kind == "recently_bugfixed_area" {
+            findings.push(RiskFinding {
+                severity: "low",
+                title: evidence.file.clone(),
+                detail: format!("history {}", evidence.subject),
+                action: "use as supporting context, not as a standalone blocker",
+                score: 25,
+            });
+        }
+    }
+
+    findings
 }
 
 fn print_missing(args: &common::ScanArgs, version: &str) {

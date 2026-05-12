@@ -2,6 +2,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command as StdCommand;
 
 use assert_cmd::Command;
 use predicates::prelude::*;
@@ -61,6 +62,42 @@ fn fresh_healthy_workspace() -> (tempfile::TempDir, PathBuf, PathBuf) {
     )
     .expect("write lib.rs");
     (tmp, project, db)
+}
+
+fn init_git_repo(project: &Path) {
+    fs::create_dir_all(project.join("src")).expect("create src");
+    fs::write(
+        project.join("Cargo.toml"),
+        "[package]\nname='doctor-debt-fixture'\nversion='0.1.0'\nedition='2021'\n",
+    )
+    .expect("write Cargo.toml");
+    run(project, &["git", "init"]);
+    run(
+        project,
+        &["git", "config", "user.email", "decay@example.test"],
+    );
+    run(project, &["git", "config", "user.name", "Decay Test"]);
+}
+
+fn run(project: &Path, args: &[&str]) {
+    let (bin, rest) = args.split_first().expect("command");
+    let output = StdCommand::new(bin)
+        .args(rest)
+        .current_dir(project)
+        .output()
+        .expect("run command");
+    assert!(
+        output.status.success(),
+        "command failed: {:?}\nstdout:\n{}\nstderr:\n{}",
+        args,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn commit_all(project: &Path, message: &str) {
+    run(project, &["git", "add", "."]);
+    run(project, &["git", "commit", "--no-verify", "-m", message]);
 }
 
 #[test]
@@ -190,6 +227,74 @@ fn doctor_default_prod_scope_excludes_tests_examples_and_target() {
         .stdout(predicate::str::contains("example_noise").not())
         .stdout(predicate::str::contains("integration_noise").not())
         .stdout(predicate::str::contains("target_noise").not());
+}
+
+#[test]
+fn doctor_reports_hot_debt_with_history_and_boundary_tags() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_git_repo(&project);
+
+    fs::write(project.join("src/stable.rs"), noisy_fn("stable_debt")).expect("write stable debt");
+    fs::write(project.join("src/ffi.rs"), noisy_fn("ffi_hot_debt")).expect("write ffi debt");
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub mod stable;\npub mod ffi;\n",
+    )
+    .expect("write lib");
+    commit_all(&project, "base");
+    for idx in 0..3 {
+        fs::write(
+            project.join("src/ffi.rs"),
+            format!("// churn {idx}\n{}", noisy_fn("ffi_hot_debt")),
+        )
+        .expect("write ffi churn");
+        commit_all(&project, &format!("fix: ffi churn {idx}"));
+    }
+
+    decay_cmd(&project, &db)
+        .arg("doctor")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Hot complexity debt:"))
+        .stdout(predicate::str::contains("kind=hot_complexity_debt"))
+        .stdout(predicate::str::contains("file=src/ffi.rs"))
+        .stdout(predicate::str::contains("tag=boundary:ffi"))
+        .stdout(predicate::str::contains("tag=history:churn_hotspot"))
+        .stdout(predicate::str::contains("source=doctor+git_history"));
+}
+
+#[test]
+fn doctor_hot_debt_ignores_test_only_complexity_even_with_scope_all() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_git_repo(&project);
+    fs::write(project.join("src/lib.rs"), "pub fn ok() -> i32 { 1 }\n").expect("write lib");
+    fs::create_dir_all(project.join("tests")).expect("create tests");
+    fs::write(project.join("tests/noise.rs"), noisy_fn("test_noise")).expect("write test noise");
+    commit_all(&project, "base");
+
+    decay_cmd(&project, &db)
+        .args(["doctor", "--scope", "all"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("test_noise"))
+        .stdout(predicate::str::contains("Hot complexity debt:"))
+        .stdout(predicate::str::contains("evidence=0"));
+}
+
+#[test]
+fn doctor_hot_debt_history_failure_is_diagnostic_not_failure() {
+    let (_tmp, project, db) = fresh_workspace();
+
+    decay_cmd(&project, &db)
+        .arg("doctor")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Hot complexity debt:"))
+        .stdout(predicate::str::contains("diagnostic="));
 }
 
 #[test]

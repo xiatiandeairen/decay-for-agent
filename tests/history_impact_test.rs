@@ -208,6 +208,34 @@ fn repeated_recent_changes_to_same_production_file_trigger_churn_hotspot() {
 }
 
 #[test]
+fn single_large_change_is_churn_not_frequent_rework() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    init_repo(&project);
+
+    commit_file(&project, "src/lib.rs", &rust_body(0), "feat: add lib");
+    let large_body = (0..100)
+        .map(|idx| format!("pub fn value_{idx}() -> i32 {{ {idx} }}\n"))
+        .collect::<String>();
+    commit_file(
+        &project,
+        "src/lib.rs",
+        &large_body,
+        "refactor: reshape module once",
+    );
+
+    write_file(
+        &project,
+        "src/lib.rs",
+        &(large_body + "\npub fn next() -> i32 { 1 }\n"),
+    );
+    let report = history(&project, &["src/lib.rs"]);
+
+    assert_has(&report, "churn_hotspot");
+    assert_lacks(&report, "frequent_rework");
+}
+
+#[test]
 fn recently_bugfixed_production_file_touched_again_triggers_recently_bugfixed_area() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let project = tmp.path().join("project");

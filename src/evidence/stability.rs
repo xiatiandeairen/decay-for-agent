@@ -1,6 +1,9 @@
 use std::collections::BTreeSet;
+use std::iter::Peekable;
+use std::str::Chars;
 
 use crate::evidence::EvidenceRecord;
+use crate::file_role;
 
 const SOURCE: &str = "stability";
 
@@ -11,7 +14,7 @@ pub fn detect_stability(
     added_lines: &BTreeSet<u32>,
     touched_lines: &BTreeSet<u32>,
 ) -> Vec<EvidenceRecord> {
-    if !path.ends_with(".rs") {
+    if !path.ends_with(".rs") || !file_role::classify(path).is_prod() {
         return Vec::new();
     }
 
@@ -35,7 +38,13 @@ pub fn detect_stability(
         touched_lines,
         &mut records,
     );
-    detect_added_line_risks(path, after, added_lines, &mut records);
+    detect_added_line_risks(
+        path,
+        before.unwrap_or_default(),
+        after,
+        added_lines,
+        &mut records,
+    );
     detect_serde_field_changes(
         path,
         before.unwrap_or_default(),
@@ -55,8 +64,8 @@ fn detect_ffi_boundary(
     touched_lines: &BTreeSet<u32>,
     records: &mut Vec<EvidenceRecord>,
 ) {
-    if !function_context_contains(after, touched_lines, &["#[no_mangle]", "extern \"C\""])
-        && !function_context_contains(before, touched_lines, &["#[no_mangle]", "extern \"C\""])
+    if !function_context_contains_ffi_boundary(after, touched_lines)
+        && !function_context_contains_ffi_boundary(before, touched_lines)
     {
         return;
     }
@@ -104,6 +113,7 @@ fn detect_public_api_changes(
 
 fn detect_added_line_risks(
     path: &str,
+    before: &str,
     after: &str,
     added_lines: &BTreeSet<u32>,
     records: &mut Vec<EvidenceRecord>,
@@ -113,13 +123,18 @@ fn detect_added_line_risks(
         if !added_lines.contains(&line_no) {
             continue;
         }
+        if line_is_in_test_context(after, line_no) {
+            continue;
+        }
 
         let code = strip_line_comment(line).trim();
         if code.is_empty() {
             continue;
         }
+        let code_without_strings = strip_string_literals(code);
+        let existed_before = code_existed_before(before, code);
 
-        if code.contains("unsafe") {
+        if !existed_before && code_without_strings.contains("unsafe") {
             records.push(EvidenceRecord::new(
                 "unsafe_added",
                 path,
@@ -128,7 +143,11 @@ fn detect_added_line_risks(
             ));
         }
 
-        if code.contains(".unwrap(") || code.contains(".expect(") || code.contains("panic!(") {
+        if !existed_before
+            && (code_without_strings.contains(".unwrap(")
+                || code_without_strings.contains(".expect(")
+                || code_without_strings.contains("panic!("))
+        {
             records.push(EvidenceRecord::new(
                 "panic_like_added",
                 path,
@@ -137,7 +156,7 @@ fn detect_added_line_risks(
             ));
         }
 
-        if contains_storage_migration_sql(code) {
+        if is_storage_or_migration_path(path) && contains_storage_migration_sql(code) {
             records.push(EvidenceRecord::new(
                 "storage_migration_touched",
                 path,
@@ -215,6 +234,11 @@ fn contains_storage_migration_sql(line: &str) -> bool {
     ]
     .iter()
     .any(|keyword| upper.contains(keyword))
+}
+
+fn is_storage_or_migration_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.contains("storage") || lower.contains("store") || lower.contains("migration")
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -298,15 +322,62 @@ fn strip_line_comment(line: &str) -> &str {
     line.split_once("//").map(|(code, _)| code).unwrap_or(line)
 }
 
+fn code_existed_before(before: &str, code: &str) -> bool {
+    let normalized = normalize_space(code);
+    before
+        .lines()
+        .map(strip_line_comment)
+        .map(str::trim)
+        .any(|line| normalize_space(line) == normalized)
+}
+
+fn strip_string_literals(line: &str) -> String {
+    let mut output = String::with_capacity(line.len());
+    let mut chars = line.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == 'r' && chars.peek() == Some(&'#') {
+            output.push(' ');
+            consume_raw_string_literal(&mut chars, &mut output);
+        } else if ch == '"' {
+            output.push(' ');
+            consume_quoted_string_literal(&mut chars, &mut output);
+        } else {
+            output.push(ch);
+        }
+    }
+
+    output
+}
+
+fn consume_quoted_string_literal(chars: &mut Peekable<Chars<'_>>, output: &mut String) {
+    let mut escaped = false;
+    for ch in chars.by_ref() {
+        output.push(' ');
+        if escaped {
+            escaped = false;
+        } else if ch == '\\' {
+            escaped = true;
+        } else if ch == '"' {
+            break;
+        }
+    }
+}
+
+fn consume_raw_string_literal(chars: &mut Peekable<Chars<'_>>, output: &mut String) {
+    for ch in chars.by_ref() {
+        output.push(' ');
+        if ch == '"' {
+            break;
+        }
+    }
+}
+
 fn normalize_space(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn function_context_contains(
-    source: &str,
-    touched_lines: &BTreeSet<u32>,
-    needles: &[&str],
-) -> bool {
+fn function_context_contains_ffi_boundary(source: &str, touched_lines: &BTreeSet<u32>) -> bool {
     if touched_lines.is_empty() {
         return false;
     }
@@ -315,13 +386,57 @@ fn function_context_contains(
         return false;
     }
     for touched in touched_lines {
+        if line_is_in_test_context(source, *touched) {
+            continue;
+        }
         let idx = touched.saturating_sub(1) as usize;
+        if idx >= lines.len() {
+            continue;
+        }
         let start = idx.saturating_sub(4);
         let end = (idx + 4).min(lines.len().saturating_sub(1));
-        let context = lines[start..=end].join("\n");
-        if needles.iter().any(|needle| context.contains(needle)) {
+        if lines[start..=end].iter().any(|line| {
+            let code = strip_line_comment(line).trim();
+            code.contains("#[no_mangle]") || code.contains("extern \"C\"")
+        }) {
             return true;
         }
     }
+    false
+}
+
+fn line_is_in_test_context(source: &str, line_no: u32) -> bool {
+    let mut depth = 0usize;
+    let mut test_depth = None;
+    let mut pending_test_cfg = false;
+
+    for (idx, line) in source.lines().enumerate() {
+        let current_line = idx as u32 + 1;
+        let trimmed = strip_line_comment(line).trim();
+
+        if test_depth.is_some_and(|scope_depth| depth < scope_depth) {
+            test_depth = None;
+        }
+        if current_line == line_no {
+            return test_depth.is_some() || trimmed.starts_with("#[test]");
+        }
+
+        if trimmed.starts_with("#[cfg(test)]") {
+            pending_test_cfg = true;
+        }
+        if pending_test_cfg && trimmed.contains("mod tests") && trimmed.contains('{') {
+            test_depth = Some(depth + 1);
+            pending_test_cfg = false;
+        } else if !trimmed.starts_with("#[cfg(test)]")
+            && !trimmed.starts_with("#[cfg_attr")
+            && !trimmed.is_empty()
+        {
+            pending_test_cfg = false;
+        }
+
+        depth = depth.saturating_add(line.matches('{').count());
+        depth = depth.saturating_sub(line.matches('}').count());
+    }
+
     false
 }

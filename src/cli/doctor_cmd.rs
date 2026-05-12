@@ -1,5 +1,6 @@
 use crate::cli::common::{self, MetricBreach};
 use crate::error::Result;
+use crate::evidence::debt::{detect_hot_debt, DebtInput, DebtReport};
 use crate::metric::{self, ProblemGroupId};
 use crate::types::{Function, MetricId};
 
@@ -8,11 +9,12 @@ pub fn run(args: &common::ScanArgs) -> Result<i32> {
     let project = common::resolve_project()?;
     let scan = common::scan_current(&project.root, args)?;
     let findings = build_findings(&scan.funcs);
+    let hot_debt = detect_hot_debt(&project.root, &debt_inputs(&findings));
 
     if args.verbose {
-        print_verbose(args, &scan, &findings);
+        print_verbose(args, &scan, &findings, &hot_debt);
     } else {
-        print_concise(args, &scan, &findings);
+        print_concise(args, &scan, &findings, &hot_debt);
     }
     Ok(0)
 }
@@ -41,7 +43,12 @@ pub(crate) fn build_findings(funcs: &[Function]) -> Vec<GroupFindings> {
         .collect()
 }
 
-fn print_concise(args: &common::ScanArgs, scan: &common::ScanResult, groups: &[GroupFindings]) {
+fn print_concise(
+    args: &common::ScanArgs,
+    scan: &common::ScanResult,
+    groups: &[GroupFindings],
+    hot_debt: &DebtReport,
+) {
     let finding_count = total_records(groups);
     if finding_count == 0 {
         println!("status=ok findings=0 scope={}", args.scope.as_str());
@@ -70,20 +77,16 @@ fn print_concise(args: &common::ScanArgs, scan: &common::ScanResult, groups: &[G
             print_concise_record(record);
         }
     }
+    print_hot_debt(hot_debt);
 }
 
-fn print_verbose(args: &common::ScanArgs, scan: &common::ScanResult, groups: &[GroupFindings]) {
-    println!("decay v{}", env!("CARGO_PKG_VERSION"));
-    println!("Mode: doctor");
-    println!("Scope: {}", args.scope.as_str());
-    println!(
-        "Scanned: {} files, {} functions in {:.2}s",
-        scan.file_count,
-        scan.funcs.len(),
-        scan.elapsed_secs
-    );
-    println!("Diagnostics: {}", scan.diagnostic_count);
-    println!();
+fn print_verbose(
+    args: &common::ScanArgs,
+    scan: &common::ScanResult,
+    groups: &[GroupFindings],
+    hot_debt: &DebtReport,
+) {
+    print_verbose_header(args, scan);
 
     let finding_count = total_records(groups);
     if finding_count == 0 {
@@ -119,6 +122,67 @@ fn print_verbose(args: &common::ScanArgs, scan: &common::ScanResult, groups: &[G
             print_verbose_record(record);
         }
     }
+    print_hot_debt(hot_debt);
+}
+
+fn print_verbose_header(args: &common::ScanArgs, scan: &common::ScanResult) {
+    println!("decay v{}", env!("CARGO_PKG_VERSION"));
+    println!("Mode: doctor");
+    println!("Scope: {}", args.scope.as_str());
+    println!(
+        "Scanned: {} files, {} functions in {:.2}s",
+        scan.file_count,
+        scan.funcs.len(),
+        scan.elapsed_secs
+    );
+    println!("Diagnostics: {}", scan.diagnostic_count);
+    println!();
+}
+
+fn print_hot_debt(report: &DebtReport) {
+    println!();
+    println!("Hot complexity debt:");
+    println!(
+        "  evidence={} diagnostics={}",
+        report.records.len(),
+        report.diagnostics.len()
+    );
+    for (idx, record) in report.records.iter().enumerate() {
+        println!(
+            "- id={} category=debt kind={} subject={} source={}",
+            idx + 1,
+            record.kind,
+            record.subject,
+            record.source
+        );
+        println!("  file={}", record.file);
+        println!("  score={}", record.score);
+        for tag in &record.tags {
+            println!("  tag={tag}");
+        }
+    }
+    for diagnostic in &report.diagnostics {
+        println!("diagnostic={diagnostic}");
+    }
+}
+
+fn debt_inputs(groups: &[GroupFindings]) -> Vec<DebtInput> {
+    let mut inputs = Vec::new();
+    for group in groups {
+        for record in &group.records {
+            let complexity_overage = record
+                .breaches
+                .iter()
+                .map(|breach| breach.overage)
+                .sum::<u32>();
+            inputs.push(DebtInput {
+                file: record.function.file.clone(),
+                function: record.function.name.clone(),
+                complexity_overage,
+            });
+        }
+    }
+    inputs
 }
 
 pub(crate) fn print_concise_record(record: &FindingRecord) {

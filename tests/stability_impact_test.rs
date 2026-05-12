@@ -183,6 +183,38 @@ pub fn new_parse(input: Option<&str>) -> &str {
 }
 
 #[test]
+fn moved_existing_unwrap_line_is_not_reported_as_added_panic_like() {
+    let before = r#"
+pub fn poll(inner: &mut Option<i32>) -> i32 {
+    if inner.is_some() {
+        let value = inner.take().unwrap();
+        return value;
+    }
+    0
+}
+"#;
+    let after = r#"
+pub fn poll(inner: &mut Option<i32>) -> i32 {
+    match inner.as_mut().unwrap() {
+        value => *value,
+    }
+    let value = inner.take().unwrap();
+    value
+}
+"#;
+
+    let records = detect(
+        "src/server/conn/http1.rs",
+        Some(before),
+        Some(after),
+        &["inner.take().unwrap()"],
+        &["inner.take().unwrap()"],
+    );
+
+    assert!(records.is_empty(), "got {records:#?}");
+}
+
+#[test]
 fn storage_migration_sql_is_stability_evidence() {
     let after = r#"
 pub fn migrate(conn: &rusqlite::Connection) -> rusqlite::Result<()> {
@@ -252,6 +284,91 @@ unsafe { call_ffi() }
         Some(after),
         &["unsafe { call_ffi"],
         &["unsafe { call_ffi"],
+    );
+
+    assert!(records.is_empty());
+}
+
+#[test]
+fn test_files_do_not_trigger_runtime_stability_evidence() {
+    let after = r#"
+#[test]
+fn covers_ffi_fixture() {
+    let code = "extern C fixture";
+    let value = Some(1).expect("fixture");
+    unsafe { std::ptr::read(&value); }
+}
+"#;
+
+    let records = detect(
+        "tests/integration.rs",
+        None,
+        Some(after),
+        &["extern \"C\"", "expect(\"fixture\")", "unsafe {"],
+        &["extern \"C\"", "expect(\"fixture\")", "unsafe {"],
+    );
+
+    assert!(records.is_empty());
+}
+
+#[test]
+fn inline_test_module_does_not_trigger_runtime_stability_evidence() {
+    let after = r#"
+pub fn body() {}
+
+#[cfg(test)]
+mod tests {
+    extern crate test;
+
+    #[test]
+    fn size_hint() {
+        assert!(true);
+        assert_eq!(1, 1);
+    }
+}
+"#;
+
+    let records = detect(
+        "src/body/incoming/mod.rs",
+        None,
+        Some(after),
+        &["extern crate test", "assert!(true)", "assert_eq!(1"],
+        &["extern crate test", "assert!(true)", "assert_eq!(1"],
+    );
+
+    assert!(records.is_empty());
+}
+
+#[test]
+fn prod_rule_source_strings_do_not_trigger_stability_evidence() {
+    let after = r#"
+pub fn detector_fixture(line: &str) -> bool {
+    let markers = ["extern \"C\"", "unsafe", "ALTER TABLE"];
+    markers.iter().any(|marker| line.contains(marker))
+}
+"#;
+
+    let records = detect(
+        "src/evidence/stability.rs",
+        None,
+        Some(after),
+        &["extern \\\"C\\\"", "unsafe", "ALTER TABLE"],
+        &["extern \\\"C\\\"", "unsafe", "ALTER TABLE"],
+    );
+
+    assert!(records.is_empty());
+}
+
+#[test]
+fn touched_line_beyond_file_length_does_not_panic() {
+    let mut touched = BTreeSet::new();
+    touched.insert(99);
+    let records = detect_stability(
+        "src/lib.rs",
+        None,
+        Some("pub fn ok() {}\n"),
+        &touched,
+        &touched,
     );
 
     assert!(records.is_empty());

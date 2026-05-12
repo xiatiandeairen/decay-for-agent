@@ -1,0 +1,35 @@
+Diff context:
+  repo_root=/private/tmp/decay-pr-eval/hyper-3606/repo
+  mode=git_ref
+  base_input=0013bdda5cd34ed6fca089eceb0133395b7be041
+  base=0013bdda5cd34ed6fca089eceb0133395b7be041
+  head=31cff092bc10625f624c04371b38b4e9e31d3d24
+  changed_files=5
+
+Top risk findings:
+1. [high] src/body/incoming/channel.rs
+   1 panic-like additions
+   action: review runtime failure and boundary-safety invariants
+2. [medium] src/body/incoming.rs
+   quality mixed_concerns
+   action: split the diff or document the shared review rationale
+
+Complexity impact:
+  changed_functions=61 evidence=0 partial=false diagnostics=0
+
+Stability impact:
+  evidence=1
+- id=1 category=stability kind=panic_like_added subject=line 158 source=stability
+  file=src/body/incoming/channel.rs
+
+Quality impact:
+  evidence=1 prod_files_changed=5 test_files_changed=3 docs_files_changed=0
+- id=2 category=quality kind=mixed_concerns subject=multiple production domains source=quality
+  file=src/body/incoming.rs
+
+Semantic impact:
+  evidence=0
+
+History impact:
+  evidence=0
+recorded=true changeset=1 evidence_saved=2

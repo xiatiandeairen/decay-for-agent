@@ -1,0 +1,8 @@
+case_id = "hyper-3936"
+repo = "hyperium/hyper"
+pr = 3936
+kind = "bugfix"
+status = "candidate"
+base_sha = "72ebcffb7d82cda15aa74507b2cc522ca2a7a94d"
+head_sha = "8474cf8145838dc92e0170eaf8364a18cb82439a"
+diff_exit = 1

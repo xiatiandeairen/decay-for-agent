@@ -1,0 +1,35 @@
+Diff context:
+  repo_root=/private/tmp/decay-pr-eval/ripgrep-3230/repo
+  mode=git_ref
+  base_input=4519153e5e461527f4bca45b042fff45c4ec6fb9
+  base=4519153e5e461527f4bca45b042fff45c4ec6fb9
+  head=7a0da2f2805e79ea3a3cda418a5686d4d38e9cdb
+  changed_files=4
+
+Top risk findings:
+1. [medium] crates/core/search.rs
+   quality blast_radius
+   action: split the diff or document the shared review rationale
+2. [medium] crates/core/search.rs
+   quality mixed_concerns
+   action: split the diff or document the shared review rationale
+
+Complexity impact:
+  changed_functions=4 evidence=0 partial=false diagnostics=0
+
+Stability impact:
+  evidence=0
+
+Quality impact:
+  evidence=2 prod_files_changed=3 test_files_changed=1 docs_files_changed=0
+- id=1 category=quality kind=blast_radius subject=multiple crates or domains source=quality
+  file=crates/core/search.rs
+- id=2 category=quality kind=mixed_concerns subject=multiple production domains source=quality
+  file=crates/core/search.rs
+
+Semantic impact:
+  evidence=0
+
+History impact:
+  evidence=0
+recorded=true changeset=1 evidence_saved=2

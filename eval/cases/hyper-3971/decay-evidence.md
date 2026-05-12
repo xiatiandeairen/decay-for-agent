@@ -1,0 +1,79 @@
+# Decay Evidence
+
+- evidence_count: 8
+
+## Top risk findings
+
+```text
+1. [high] src/proto/h1/role.rs
+   2 panic-like additions
+   action: review runtime failure and boundary-safety invariants
+2. [medium] src/ext/mod.rs
+   quality mixed_concerns
+   action: split the diff or document the shared review rationale
+3. [medium] src/proto/h1/role.rs:encode_headers_with_original_case
+   complexity touched_existing_risky
+   action: review function complexity and add focused regression tests
+4. [medium] src/proto/h1/role.rs:parse
+   complexity touched_existing_risky
+   action: review function complexity and add focused regression tests
+5. [medium] src/proto/h1/role.rs:parse
+   complexity touched_existing_risky
+   action: review function complexity and add focused regression tests
+6. [low] src/proto/h1/role.rs
+   history 0 commits in 90d, 85 lines changed in 180d
+   action: use as supporting context, not as a standalone blocker
+7. [low] src/proto/h1/role.rs
+   history fix(http1): use httparse config for Servers (#4002)
+   action: use as supporting context, not as a standalone blocker
+```
+
+## Complexity impact
+
+```text
+changed_functions=5 evidence=3 partial=false diagnostics=0
+- id=1 category=complexity kind=touched_existing_risky subject=function source=diff_hunk+ast_snapshot
+  function=src/proto/h1/role.rs:encode_headers_with_original_case
+  metrics=cognitive:6->6, cyclomatic:4->4, statements:13->13
+- id=2 category=complexity kind=touched_existing_risky subject=function source=diff_hunk+ast_snapshot
+  function=src/proto/h1/role.rs:parse
+  metrics=cognitive:53->53, cyclomatic:34->34, statements:98->98
+- id=3 category=complexity kind=touched_existing_risky subject=function source=diff_hunk+ast_snapshot
+  function=src/proto/h1/role.rs:parse
+  metrics=cognitive:64->64, cyclomatic:29->29, statements:62->62
+```
+
+## Stability impact
+
+```text
+evidence=2
+- id=4 category=stability kind=panic_like_added subject=line 322 source=stability
+  file=src/proto/h1/role.rs
+- id=5 category=stability kind=panic_like_added subject=line 1117 source=stability
+  file=src/proto/h1/role.rs
+```
+
+## Quality impact
+
+```text
+evidence=1 prod_files_changed=2 test_files_changed=1 docs_files_changed=0
+- id=6 category=quality kind=mixed_concerns subject=multiple production domains source=quality
+  file=src/ext/mod.rs
+```
+
+## Semantic impact
+
+```text
+evidence=0
+```
+
+## History impact
+
+```text
+evidence=2
+- id=7 category=history kind=churn_hotspot subject=0 commits in 90d, 85 lines changed in 180d source=git_history
+  file=src/proto/h1/role.rs
+- id=8 category=history kind=recently_bugfixed_area subject=fix(http1): use httparse config for Servers (#4002) source=git_history
+  file=src/proto/h1/role.rs
+recorded=true changeset=1 evidence_saved=8
+```

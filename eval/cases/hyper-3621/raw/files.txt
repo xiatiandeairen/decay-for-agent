@@ -1,0 +1,8 @@
+M	examples/client.rs
+M	examples/client_json.rs
+M	examples/single_threaded.rs
+M	src/client/conn/http2.rs
+M	src/proto/h2/client.rs
+M	src/proto/h2/server.rs
+M	src/server/conn/http1.rs
+M	src/server/conn/http2.rs

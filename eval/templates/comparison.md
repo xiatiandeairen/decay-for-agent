@@ -5,6 +5,7 @@ Fill this after both `ground-truth.md` and `decay-evidence.md` exist.
 ## Metrics
 
 ```toml
+judgement_status = "todo"
 top3_total = 0
 top3_useful = 0
 actionable = false

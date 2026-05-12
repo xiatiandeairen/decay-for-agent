@@ -1,0 +1,8 @@
+case_id = "ripgrep-3230"
+repo = "BurntSushi/ripgrep"
+pr = 3230
+kind = "refactor"
+status = "candidate"
+base_sha = "4519153e5e461527f4bca45b042fff45c4ec6fb9"
+head_sha = "7a0da2f2805e79ea3a3cda418a5686d4d38e9cdb"
+diff_exit = 0

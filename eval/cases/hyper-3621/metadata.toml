@@ -1,0 +1,8 @@
+case_id = "hyper-3621"
+repo = "hyperium/hyper"
+pr = 3621
+kind = "bugfix"
+status = "candidate"
+base_sha = "b79be911696f6a93e8d408080ebbf558b612ce3c"
+head_sha = "2b3cc9fa30540555f22665c7ef9b1d61e55449d9"
+diff_exit = 0

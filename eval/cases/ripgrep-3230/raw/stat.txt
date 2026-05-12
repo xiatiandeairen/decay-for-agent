@@ -1,0 +1,5 @@
+ crates/core/search.rs        | 8 ++++----
+ crates/globset/src/glob.rs   | 2 +-
+ crates/matcher/tests/util.rs | 2 +-
+ crates/pcre2/src/matcher.rs  | 2 +-
+ 4 files changed, 7 insertions(+), 7 deletions(-)

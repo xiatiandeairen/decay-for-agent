@@ -1,0 +1,6 @@
+ src/body/incoming.rs         | 597 -------------------------------------------
+ src/body/incoming/channel.rs | 185 ++++++++++++++
+ src/body/incoming/h2.rs      |  91 +++++++
+ src/body/incoming/mod.rs     | 357 ++++++++++++++++++++++++++
+ src/proto/h1/dispatch.rs     |   8 +-
+ 5 files changed, 637 insertions(+), 601 deletions(-)

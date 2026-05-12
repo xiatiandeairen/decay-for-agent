@@ -1,0 +1,8 @@
+case_id = "ripgrep-3210"
+repo = "BurntSushi/ripgrep"
+pr = 3210
+kind = "feature"
+status = "candidate"
+base_sha = "36b7597693c994ffaf023b95d2e18aeeda7d9286"
+head_sha = "8c8cdf204b35c272991388f8e7674c23e9e661ac"
+diff_exit = 1

@@ -1,0 +1,8 @@
+case_id = "hyper-3865"
+repo = "hyperium/hyper"
+pr = 3865
+kind = "refactor"
+status = "candidate"
+base_sha = "c449528a33d266a8ca1210baca11e5d649ca6c27"
+head_sha = "8e1999a74667cd3f1c8939f4b385b57a657d4202"
+diff_exit = 1

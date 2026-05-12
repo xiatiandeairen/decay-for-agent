@@ -1,0 +1,10 @@
+M	src/client/client.rs
+M	src/client/conn.rs
+M	src/client/conn/http1.rs
+M	src/proto/h1/conn.rs
+M	src/proto/h1/io.rs
+M	src/proto/h1/mod.rs
+M	src/proto/h1/role.rs
+M	src/server/conn.rs
+M	src/server/conn/http1.rs
+M	src/server/server.rs

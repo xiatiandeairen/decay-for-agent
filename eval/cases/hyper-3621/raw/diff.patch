@@ -1,0 +1,1163 @@
+diff --git a/examples/client.rs b/examples/client.rs
+index a64c3527..be3de681 100644
+--- a/examples/client.rs
++++ b/examples/client.rs
+@@ -1,81 +1,79 @@
+ #![deny(warnings)]
+ #![warn(rust_2018_idioms)]
+ use std::env;
+ 
+ use bytes::Bytes;
+ use http_body_util::{BodyExt, Empty};
+ use hyper::Request;
+ use tokio::io::{self, AsyncWriteExt as _};
+ use tokio::net::TcpStream;
+ 
+ #[path = "../benches/support/mod.rs"]
+ mod support;
+ use support::TokioIo;
+ 
+ // A simple type alias so as to DRY.
+ type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+ 
+ #[tokio::main]
+ async fn main() -> Result<()> {
+     pretty_env_logger::init();
+ 
+     // Some simple CLI args requirements...
+     let url = match env::args().nth(1) {
+         Some(url) => url,
+         None => {
+             println!("Usage: client <url>");
+             return Ok(());
+         }
+     };
+ 
+     // HTTPS requires picking a TLS implementation, so give a better
+     // warning if the user tries to request an 'https' URL.
+     let url = url.parse::<hyper::Uri>().unwrap();
+     if url.scheme_str() != Some("http") {
+         println!("This example only works with 'http' URLs.");
+         return Ok(());
+     }
+ 
+     fetch_url(url).await
+ }
+ 
+ async fn fetch_url(url: hyper::Uri) -> Result<()> {
+     let host = url.host().expect("uri has no host");
+     let port = url.port_u16().unwrap_or(80);
+     let addr = format!("{}:{}", host, port);
+     let stream = TcpStream::connect(addr).await?;
+     let io = TokioIo::new(stream);
+ 
+     let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
+     tokio::task::spawn(async move {
+         if let Err(err) = conn.await {
+             println!("Connection failed: {:?}", err);
+         }
+     });
+ 
+-    let authority = url.authority().unwrap().clone();
+-
+     let path = url.path();
+     let req = Request::builder()
+         .uri(path)
+-        .header(hyper::header::HOST, authority.as_str())
++        .header(hyper::header::HOST, format!("{}:{}", host, port))
+         .body(Empty::<Bytes>::new())?;
+ 
+     let mut res = sender.send_request(req).await?;
+ 
+     println!("Response: {}", res.status());
+     println!("Headers: {:#?}\n", res.headers());
+ 
+     // Stream the body, writing each chunk to stdout as we get it
+     // (instead of buffering and printing at the end).
+     while let Some(next) = res.frame().await {
+         let frame = next?;
+         if let Some(chunk) = frame.data_ref() {
+             io::stdout().write_all(&chunk).await?;
+         }
+     }
+ 
+     println!("\n\nDone!");
+ 
+     Ok(())
+ }
+diff --git a/examples/client_json.rs b/examples/client_json.rs
+index 6a675352..07582a62 100644
+--- a/examples/client_json.rs
++++ b/examples/client_json.rs
+@@ -1,69 +1,67 @@
+ #![deny(warnings)]
+ #![warn(rust_2018_idioms)]
+ 
+ use bytes::Bytes;
+ use http_body_util::{BodyExt, Empty};
+ use hyper::{body::Buf, Request};
+ use serde::Deserialize;
+ use tokio::net::TcpStream;
+ 
+ #[path = "../benches/support/mod.rs"]
+ mod support;
+ use support::TokioIo;
+ 
+ // A simple type alias so as to DRY.
+ type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+ 
+ #[tokio::main]
+ async fn main() -> Result<()> {
+     let url = "http://jsonplaceholder.typicode.com/users".parse().unwrap();
+     let users = fetch_json(url).await?;
+     // print users
+     println!("users: {:#?}", users);
+ 
+     // print the sum of ids
+     let sum = users.iter().fold(0, |acc, user| acc + user.id);
+     println!("sum of ids: {}", sum);
+     Ok(())
+ }
+ 
+ async fn fetch_json(url: hyper::Uri) -> Result<Vec<User>> {
+     let host = url.host().expect("uri has no host");
+     let port = url.port_u16().unwrap_or(80);
+     let addr = format!("{}:{}", host, port);
+ 
+     let stream = TcpStream::connect(addr).await?;
+     let io = TokioIo::new(stream);
+ 
+     let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
+     tokio::task::spawn(async move {
+         if let Err(err) = conn.await {
+             println!("Connection failed: {:?}", err);
+         }
+     });
+ 
+-    let authority = url.authority().unwrap().clone();
+-
+-    // Fetch the url...
++    // Fetch the URL...
+     let req = Request::builder()
+         .uri(url)
+-        .header(hyper::header::HOST, authority.as_str())
++        .header(hyper::header::HOST, format!("{}:{}", host, port))
+         .body(Empty::<Bytes>::new())?;
+ 
+     let res = sender.send_request(req).await?;
+ 
+     // asynchronously aggregate the chunks of the body
+     let body = res.collect().await?.aggregate();
+ 
+     // try to parse as json with serde_json
+     let users = serde_json::from_reader(body.reader())?;
+ 
+     Ok(users)
+ }
+ 
+ #[derive(Deserialize, Debug)]
+ struct User {
+     id: i32,
+     #[allow(unused)]
+     name: String,
+ }
+diff --git a/examples/single_threaded.rs b/examples/single_threaded.rs
+index f297814c..eec67c0c 100644
+--- a/examples/single_threaded.rs
++++ b/examples/single_threaded.rs
+@@ -104,268 +104,264 @@ fn main() {
+     });
+ 
+     let client_http1 = thread::spawn(move || {
+         // Configure a runtime for the client that runs everything on the current thread
+         let rt = tokio::runtime::Builder::new_current_thread()
+             .enable_all()
+             .build()
+             .expect("build runtime");
+ 
+         // Combine it with a `LocalSet,  which means it can spawn !Send futures...
+         let local = tokio::task::LocalSet::new();
+         local
+             .block_on(
+                 &rt,
+                 http1_client("http://localhost:3001".parse::<hyper::Uri>().unwrap()),
+             )
+             .unwrap();
+     });
+ 
+     server_http2.join().unwrap();
+     client_http2.join().unwrap();
+ 
+     server_http1.join().unwrap();
+     client_http1.join().unwrap();
+ }
+ 
+ async fn http1_server() -> Result<(), Box<dyn std::error::Error>> {
+     let addr = SocketAddr::from(([127, 0, 0, 1], 3001));
+ 
+     let listener = TcpListener::bind(addr).await?;
+ 
+     // For each connection, clone the counter to use in our service...
+     let counter = Rc::new(Cell::new(0));
+ 
+     loop {
+         let (stream, _) = listener.accept().await?;
+ 
+         let io = IOTypeNotSend::new(TokioIo::new(stream));
+ 
+         let cnt = counter.clone();
+ 
+         let service = service_fn(move |_| {
+             let prev = cnt.get();
+             cnt.set(prev + 1);
+             let value = cnt.get();
+             async move { Ok::<_, Error>(Response::new(Body::from(format!("Request #{}", value)))) }
+         });
+ 
+         tokio::task::spawn_local(async move {
+             if let Err(err) = hyper::server::conn::http1::Builder::new()
+                 .serve_connection(io, service)
+                 .await
+             {
+                 println!("Error serving connection: {:?}", err);
+             }
+         });
+     }
+ }
+ 
+ async fn http1_client(url: hyper::Uri) -> Result<(), Box<dyn std::error::Error>> {
+     let host = url.host().expect("uri has no host");
+     let port = url.port_u16().unwrap_or(80);
+     let addr = format!("{}:{}", host, port);
+     let stream = TcpStream::connect(addr).await?;
+ 
+     let io = IOTypeNotSend::new(TokioIo::new(stream));
+ 
+     let (mut sender, conn) = hyper::client::conn::http1::handshake(io).await?;
+ 
+     tokio::task::spawn_local(async move {
+         if let Err(err) = conn.await {
+             let mut stdout = io::stdout();
+             stdout
+                 .write_all(format!("Connection failed: {:?}", err).as_bytes())
+                 .await
+                 .unwrap();
+             stdout.flush().await.unwrap();
+         }
+     });
+ 
+-    let authority = url.authority().unwrap().clone();
+-
+     // Make 4 requests
+     for _ in 0..4 {
+         let req = Request::builder()
+             .uri(url.clone())
+-            .header(hyper::header::HOST, authority.as_str())
++            .header(hyper::header::HOST, format!("{}:{}", host, port))
+             .body(Body::from("test".to_string()))?;
+ 
+         let mut res = sender.send_request(req).await?;
+ 
+         let mut stdout = io::stdout();
+         stdout
+             .write_all(format!("Response: {}\n", res.status()).as_bytes())
+             .await
+             .unwrap();
+         stdout
+             .write_all(format!("Headers: {:#?}\n", res.headers()).as_bytes())
+             .await
+             .unwrap();
+         stdout.flush().await.unwrap();
+ 
+         // Print the response body
+         while let Some(next) = res.frame().await {
+             let frame = next?;
+             if let Some(chunk) = frame.data_ref() {
+                 stdout.write_all(&chunk).await.unwrap();
+             }
+         }
+         stdout.write_all(b"\n-----------------\n").await.unwrap();
+         stdout.flush().await.unwrap();
+     }
+     Ok(())
+ }
+ 
+ async fn http2_server() -> Result<(), Box<dyn std::error::Error>> {
+     let mut stdout = io::stdout();
+ 
+     let addr: SocketAddr = ([127, 0, 0, 1], 3000).into();
+     // Using a !Send request counter is fine on 1 thread...
+     let counter = Rc::new(Cell::new(0));
+ 
+     let listener = TcpListener::bind(addr).await?;
+ 
+     stdout
+         .write_all(format!("Listening on http://{}", addr).as_bytes())
+         .await
+         .unwrap();
+     stdout.flush().await.unwrap();
+ 
+     loop {
+         let (stream, _) = listener.accept().await?;
+         let io = IOTypeNotSend::new(TokioIo::new(stream));
+ 
+         // For each connection, clone the counter to use in our service...
+         let cnt = counter.clone();
+ 
+         let service = service_fn(move |_| {
+             let prev = cnt.get();
+             cnt.set(prev + 1);
+             let value = cnt.get();
+             async move { Ok::<_, Error>(Response::new(Body::from(format!("Request #{}", value)))) }
+         });
+ 
+         tokio::task::spawn_local(async move {
+             if let Err(err) = http2::Builder::new(LocalExec)
+                 .serve_connection(io, service)
+                 .await
+             {
+                 let mut stdout = io::stdout();
+                 stdout
+                     .write_all(format!("Error serving connection: {:?}", err).as_bytes())
+                     .await
+                     .unwrap();
+                 stdout.flush().await.unwrap();
+             }
+         });
+     }
+ }
+ 
+ async fn http2_client(url: hyper::Uri) -> Result<(), Box<dyn std::error::Error>> {
+     let host = url.host().expect("uri has no host");
+     let port = url.port_u16().unwrap_or(80);
+     let addr = format!("{}:{}", host, port);
+     let stream = TcpStream::connect(addr).await?;
+ 
+     let stream = IOTypeNotSend::new(TokioIo::new(stream));
+ 
+     let (mut sender, conn) = hyper::client::conn::http2::handshake(LocalExec, stream).await?;
+ 
+     tokio::task::spawn_local(async move {
+         if let Err(err) = conn.await {
+             let mut stdout = io::stdout();
+             stdout
+                 .write_all(format!("Connection failed: {:?}", err).as_bytes())
+                 .await
+                 .unwrap();
+             stdout.flush().await.unwrap();
+         }
+     });
+ 
+-    let authority = url.authority().unwrap().clone();
+-
+     // Make 4 requests
+     for _ in 0..4 {
+         let req = Request::builder()
+             .uri(url.clone())
+-            .header(hyper::header::HOST, authority.as_str())
++            .header(hyper::header::HOST, format!("{}:{}", host, port))
+             .body(Body::from("test".to_string()))?;
+ 
+         let mut res = sender.send_request(req).await?;
+ 
+         let mut stdout = io::stdout();
+         stdout
+             .write_all(format!("Response: {}\n", res.status()).as_bytes())
+             .await
+             .unwrap();
+         stdout
+             .write_all(format!("Headers: {:#?}\n", res.headers()).as_bytes())
+             .await
+             .unwrap();
+         stdout.flush().await.unwrap();
+ 
+         // Print the response body
+         while let Some(next) = res.frame().await {
+             let frame = next?;
+             if let Some(chunk) = frame.data_ref() {
+                 stdout.write_all(&chunk).await.unwrap();
+             }
+         }
+         stdout.write_all(b"\n-----------------\n").await.unwrap();
+         stdout.flush().await.unwrap();
+     }
+     Ok(())
+ }
+ 
+ // NOTE: This part is only needed for HTTP/2. HTTP/1 doesn't need an executor.
+ //
+ // Since the Server needs to spawn some background tasks, we needed
+ // to configure an Executor that can spawn !Send futures...
+ #[derive(Clone, Copy, Debug)]
+ struct LocalExec;
+ 
+ impl<F> hyper::rt::Executor<F> for LocalExec
+ where
+     F: std::future::Future + 'static, // not requiring `Send`
+ {
+     fn execute(&self, fut: F) {
+         // This will spawn into the currently running `LocalSet`.
+         tokio::task::spawn_local(fut);
+     }
+ }
+ 
+ struct IOTypeNotSend {
+     _marker: PhantomData<*const ()>,
+     stream: TokioIo<TcpStream>,
+ }
+ 
+ impl IOTypeNotSend {
+     fn new(stream: TokioIo<TcpStream>) -> Self {
+         Self {
+             _marker: PhantomData,
+             stream,
+         }
+     }
+ }
+ 
+ impl hyper::rt::Write for IOTypeNotSend {
+     fn poll_write(
+         mut self: Pin<&mut Self>,
+         cx: &mut Context<'_>,
+         buf: &[u8],
+     ) -> Poll<Result<usize, std::io::Error>> {
+         Pin::new(&mut self.stream).poll_write(cx, buf)
+     }
+ 
+     fn poll_flush(
+         mut self: Pin<&mut Self>,
+         cx: &mut Context<'_>,
+     ) -> Poll<Result<(), std::io::Error>> {
+         Pin::new(&mut self.stream).poll_flush(cx)
+     }
+ 
+     fn poll_shutdown(
+         mut self: Pin<&mut Self>,
+         cx: &mut Context<'_>,
+     ) -> Poll<Result<(), std::io::Error>> {
+         Pin::new(&mut self.stream).poll_shutdown(cx)
+diff --git a/src/client/conn/http2.rs b/src/client/conn/http2.rs
+index 3292f5a5..87f4b0e8 100644
+--- a/src/client/conn/http2.rs
++++ b/src/client/conn/http2.rs
+@@ -265,168 +265,160 @@ where
+         M: Timer + Send + Sync + 'static,
+     {
+         self.timer = Time::Timer(Arc::new(timer));
+         self
+     }
+ 
+     /// Sets the [`SETTINGS_INITIAL_WINDOW_SIZE`][spec] option for HTTP2
+     /// stream-level flow control.
+     ///
+     /// Passing `None` will do nothing.
+     ///
+     /// If not set, hyper will use a default.
+     ///
+     /// [spec]: https://httpwg.org/specs/rfc9113.html#SETTINGS_INITIAL_WINDOW_SIZE
+     pub fn initial_stream_window_size(&mut self, sz: impl Into<Option<u32>>) -> &mut Self {
+         if let Some(sz) = sz.into() {
+             self.h2_builder.adaptive_window = false;
+             self.h2_builder.initial_stream_window_size = sz;
+         }
+         self
+     }
+ 
+     /// Sets the max connection-level flow control for HTTP2
+     ///
+     /// Passing `None` will do nothing.
+     ///
+     /// If not set, hyper will use a default.
+     pub fn initial_connection_window_size(&mut self, sz: impl Into<Option<u32>>) -> &mut Self {
+         if let Some(sz) = sz.into() {
+             self.h2_builder.adaptive_window = false;
+             self.h2_builder.initial_conn_window_size = sz;
+         }
+         self
+     }
+ 
+     /// Sets the initial maximum of locally initiated (send) streams.
+     ///
+     /// This value will be overwritten by the value included in the initial
+     /// SETTINGS frame received from the peer as part of a [connection preface].
+     ///
+     /// Passing `None` will do nothing.
+     ///
+     /// If not set, hyper will use a default.
+     ///
+     /// [connection preface]: https://httpwg.org/specs/rfc9113.html#preface
+     pub fn initial_max_send_streams(&mut self, initial: impl Into<Option<usize>>) -> &mut Self {
+         if let Some(initial) = initial.into() {
+             self.h2_builder.initial_max_send_streams = initial;
+         }
+         self
+     }
+ 
+     /// Sets whether to use an adaptive flow control.
+     ///
+     /// Enabling this will override the limits set in
+     /// `initial_stream_window_size` and
+     /// `initial_connection_window_size`.
+     pub fn adaptive_window(&mut self, enabled: bool) -> &mut Self {
+         use proto::h2::SPEC_WINDOW_SIZE;
+ 
+         self.h2_builder.adaptive_window = enabled;
+         if enabled {
+             self.h2_builder.initial_conn_window_size = SPEC_WINDOW_SIZE;
+             self.h2_builder.initial_stream_window_size = SPEC_WINDOW_SIZE;
+         }
+         self
+     }
+ 
+     /// Sets the maximum frame size to use for HTTP2.
+     ///
+     /// Passing `None` will do nothing.
+     ///
+     /// If not set, hyper will use a default.
+     pub fn max_frame_size(&mut self, sz: impl Into<Option<u32>>) -> &mut Self {
+         if let Some(sz) = sz.into() {
+             self.h2_builder.max_frame_size = sz;
+         }
+         self
+     }
+ 
+-    /// Sets the max size of received header frames.
+-    ///
+-    /// Default is currently 16KB, but can change.
+-    pub fn max_header_list_size(&mut self, max: u32) -> &mut Self {
+-        self.h2_builder.max_header_list_size = max;
+-        self
+-    }
+-
+     /// Sets an interval for HTTP2 Ping frames should be sent to keep a
+     /// connection alive.
+     ///
+     /// Pass `None` to disable HTTP2 keep-alive.
+     ///
+     /// Default is currently disabled.
+     pub fn keep_alive_interval(&mut self, interval: impl Into<Option<Duration>>) -> &mut Self {
+         self.h2_builder.keep_alive_interval = interval.into();
+         self
+     }
+ 
+     /// Sets a timeout for receiving an acknowledgement of the keep-alive ping.
+     ///
+     /// If the ping is not acknowledged within the timeout, the connection will
+     /// be closed. Does nothing if `keep_alive_interval` is disabled.
+     ///
+     /// Default is 20 seconds.
+     pub fn keep_alive_timeout(&mut self, timeout: Duration) -> &mut Self {
+         self.h2_builder.keep_alive_timeout = timeout;
+         self
+     }
+ 
+     /// Sets whether HTTP2 keep-alive should apply while the connection is idle.
+     ///
+     /// If disabled, keep-alive pings are only sent while there are open
+     /// request/responses streams. If enabled, pings are also sent when no
+     /// streams are active. Does nothing if `keep_alive_interval` is
+     /// disabled.
+     ///
+     /// Default is `false`.
+     pub fn keep_alive_while_idle(&mut self, enabled: bool) -> &mut Self {
+         self.h2_builder.keep_alive_while_idle = enabled;
+         self
+     }
+ 
+     /// Sets the maximum number of HTTP2 concurrent locally reset streams.
+     ///
+     /// See the documentation of [`h2::client::Builder::max_concurrent_reset_streams`] for more
+     /// details.
+     ///
+     /// The default value is determined by the `h2` crate.
+     ///
+     /// [`h2::client::Builder::max_concurrent_reset_streams`]: https://docs.rs/h2/client/struct.Builder.html#method.max_concurrent_reset_streams
+     pub fn max_concurrent_reset_streams(&mut self, max: usize) -> &mut Self {
+         self.h2_builder.max_concurrent_reset_streams = Some(max);
+         self
+     }
+ 
+     /// Set the maximum write buffer size for each HTTP/2 stream.
+     ///
+     /// Default is currently 1MB, but may change.
+     ///
+     /// # Panics
+     ///
+     /// The value must be no larger than `u32::MAX`.
+     pub fn max_send_buf_size(&mut self, max: usize) -> &mut Self {
+         assert!(max <= std::u32::MAX as usize);
+         self.h2_builder.max_send_buffer_size = max;
+         self
+     }
+ 
+     /// Configures the maximum number of pending reset streams allowed before a GOAWAY will be sent.
+     ///
+     /// This will default to the default value set by the [`h2` crate](https://crates.io/crates/h2).
+     /// As of v0.4.0, it is 20.
+     ///
+     /// See <https://github.com/hyperium/hyper/issues/2877> for more information.
+     pub fn max_pending_accept_reset_streams(&mut self, max: impl Into<Option<usize>>) -> &mut Self {
+         self.h2_builder.max_pending_accept_reset_streams = max.into();
+         self
+     }
+ 
+     /// Constructs a connection with the configured options and IO.
+     /// See [`client::conn`](crate::client::conn) for more.
+     ///
+     /// Note, if [`Connection`] is not `await`-ed, [`SendRequest`] will
+     /// do nothing.
+     pub fn handshake<T, B>(
+         &self,
+         io: T,
+diff --git a/src/proto/h2/client.rs b/src/proto/h2/client.rs
+index 7cb6c6ed..59e0f45c 100644
+--- a/src/proto/h2/client.rs
++++ b/src/proto/h2/client.rs
+@@ -1,187 +1,183 @@
+ use std::{
+     convert::Infallible,
+     future::Future,
+     marker::PhantomData,
+     pin::Pin,
+     task::{Context, Poll},
+     time::Duration,
+ };
+ 
+ use crate::rt::{Read, Write};
+ use bytes::Bytes;
+ use futures_channel::mpsc::{Receiver, Sender};
+ use futures_channel::{mpsc, oneshot};
+ use futures_util::future::{Either, FusedFuture, FutureExt as _};
+ use futures_util::ready;
+ use futures_util::stream::{StreamExt as _, StreamFuture};
+ use h2::client::{Builder, Connection, SendRequest};
+ use h2::SendStream;
+ use http::{Method, StatusCode};
+ use pin_project_lite::pin_project;
+ 
+ use super::ping::{Ponger, Recorder};
+ use super::{ping, H2Upgraded, PipeToSendStream, SendBuf};
+ use crate::body::{Body, Incoming as IncomingBody};
+ use crate::client::dispatch::{Callback, SendWhen};
+ use crate::common::io::Compat;
+ use crate::common::time::Time;
+ use crate::ext::Protocol;
+ use crate::headers;
+ use crate::proto::h2::UpgradedSendStream;
+ use crate::proto::Dispatched;
+ use crate::rt::bounds::Http2ClientConnExec;
+ use crate::upgrade::Upgraded;
+ use crate::{Request, Response};
+ use h2::client::ResponseFuture;
+ 
+ type ClientRx<B> = crate::client::dispatch::Receiver<Request<B>, Response<IncomingBody>>;
+ 
+ ///// An mpsc channel is used to help notify the `Connection` task when *all*
+ ///// other handles to it have been dropped, so that it can shutdown.
+ type ConnDropRef = mpsc::Sender<Infallible>;
+ 
+ ///// A oneshot channel watches the `Connection` task, and when it completes,
+ ///// the "dispatch" task will be notified and can shutdown sooner.
+ type ConnEof = oneshot::Receiver<Infallible>;
+ 
+ // Our defaults are chosen for the "majority" case, which usually are not
+ // resource constrained, and so the spec default of 64kb can be too limiting
+ // for performance.
+ const DEFAULT_CONN_WINDOW: u32 = 1024 * 1024 * 5; // 5mb
+ const DEFAULT_STREAM_WINDOW: u32 = 1024 * 1024 * 2; // 2mb
+ const DEFAULT_MAX_FRAME_SIZE: u32 = 1024 * 16; // 16kb
+ const DEFAULT_MAX_SEND_BUF_SIZE: usize = 1024 * 1024; // 1mb
+-const DEFAULT_MAX_HEADER_LIST_SIZE: u32 = 1024 * 16; // 16kb
+ 
+ // The maximum number of concurrent streams that the client is allowed to open
+ // before it receives the initial SETTINGS frame from the server.
+ // This default value is derived from what the HTTP/2 spec recommends as the
+ // minimum value that endpoints advertise to their peers. It means that using
+ // this value will minimize the chance of the failure where the local endpoint
+ // attempts to open too many streams and gets rejected by the remote peer with
+ // the `REFUSED_STREAM` error.
+ const DEFAULT_INITIAL_MAX_SEND_STREAMS: usize = 100;
+ 
+ #[derive(Clone, Debug)]
+ pub(crate) struct Config {
+     pub(crate) adaptive_window: bool,
+     pub(crate) initial_conn_window_size: u32,
+     pub(crate) initial_stream_window_size: u32,
+     pub(crate) initial_max_send_streams: usize,
+     pub(crate) max_frame_size: u32,
+-    pub(crate) max_header_list_size: u32,
+     pub(crate) keep_alive_interval: Option<Duration>,
+     pub(crate) keep_alive_timeout: Duration,
+     pub(crate) keep_alive_while_idle: bool,
+     pub(crate) max_concurrent_reset_streams: Option<usize>,
+     pub(crate) max_send_buffer_size: usize,
+     pub(crate) max_pending_accept_reset_streams: Option<usize>,
+ }
+ 
+ impl Default for Config {
+     fn default() -> Config {
+         Config {
+             adaptive_window: false,
+             initial_conn_window_size: DEFAULT_CONN_WINDOW,
+             initial_stream_window_size: DEFAULT_STREAM_WINDOW,
+             initial_max_send_streams: DEFAULT_INITIAL_MAX_SEND_STREAMS,
+             max_frame_size: DEFAULT_MAX_FRAME_SIZE,
+-            max_header_list_size: DEFAULT_MAX_HEADER_LIST_SIZE,
+             keep_alive_interval: None,
+             keep_alive_timeout: Duration::from_secs(20),
+             keep_alive_while_idle: false,
+             max_concurrent_reset_streams: None,
+             max_send_buffer_size: DEFAULT_MAX_SEND_BUF_SIZE,
+             max_pending_accept_reset_streams: None,
+         }
+     }
+ }
+ 
+ fn new_builder(config: &Config) -> Builder {
+     let mut builder = Builder::default();
+     builder
+         .initial_max_send_streams(config.initial_max_send_streams)
+         .initial_window_size(config.initial_stream_window_size)
+         .initial_connection_window_size(config.initial_conn_window_size)
+         .max_frame_size(config.max_frame_size)
+-        .max_header_list_size(config.max_header_list_size)
+         .max_send_buffer_size(config.max_send_buffer_size)
+         .enable_push(false);
+     if let Some(max) = config.max_concurrent_reset_streams {
+         builder.max_concurrent_reset_streams(max);
+     }
+     if let Some(max) = config.max_pending_accept_reset_streams {
+         builder.max_pending_accept_reset_streams(max);
+     }
+     builder
+ }
+ 
+ fn new_ping_config(config: &Config) -> ping::Config {
+     ping::Config {
+         bdp_initial_window: if config.adaptive_window {
+             Some(config.initial_stream_window_size)
+         } else {
+             None
+         },
+         keep_alive_interval: config.keep_alive_interval,
+         keep_alive_timeout: config.keep_alive_timeout,
+         keep_alive_while_idle: config.keep_alive_while_idle,
+     }
+ }
+ 
+ pub(crate) async fn handshake<T, B, E>(
+     io: T,
+     req_rx: ClientRx<B>,
+     config: &Config,
+     mut exec: E,
+     timer: Time,
+ ) -> crate::Result<ClientTask<B, E, T>>
+ where
+     T: Read + Write + Unpin + 'static,
+     B: Body + 'static,
+     B::Data: Send + 'static,
+     E: Http2ClientConnExec<B, T> + Unpin,
+     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+ {
+     let (h2_tx, mut conn) = new_builder(config)
+         .handshake::<_, SendBuf<B::Data>>(Compat::new(io))
+         .await
+         .map_err(crate::Error::new_h2)?;
+ 
+     // An mpsc channel is used entirely to detect when the
+     // 'Client' has been dropped. This is to get around a bug
+     // in h2 where dropping all SendRequests won't notify a
+     // parked Connection.
+     let (conn_drop_ref, rx) = mpsc::channel(1);
+     let (cancel_tx, conn_eof) = oneshot::channel();
+ 
+     let conn_drop_rx = rx.into_future();
+ 
+     let ping_config = new_ping_config(config);
+ 
+     let (conn, ping) = if ping_config.is_enabled() {
+         let pp = conn.ping_pong().expect("conn.ping_pong");
+         let (recorder, ponger) = ping::channel(pp, ping_config, timer);
+ 
+         let conn: Conn<_, B> = Conn::new(ponger, conn);
+         (Either::Left(conn), recorder)
+     } else {
+         (Either::Right(conn), ping::disabled())
+     };
+     let conn: ConnMapErr<T, B> = ConnMapErr {
+         conn,
+         is_terminated: false,
+     };
+ 
+     exec.execute_h2_future(H2ClientFuture::Task {
+         task: ConnTask::new(conn, conn_drop_rx, cancel_tx),
+     });
+ 
+     Ok(ClientTask {
+         ping,
+         conn_drop_ref,
+         conn_eof,
+         executor: exec,
+         h2_tx,
+         req_rx,
+         fut_ctx: None,
+diff --git a/src/proto/h2/server.rs b/src/proto/h2/server.rs
+index 3ccb8a9c..b56e3cfa 100644
+--- a/src/proto/h2/server.rs
++++ b/src/proto/h2/server.rs
+@@ -1,121 +1,122 @@
+ use std::error::Error as StdError;
+ use std::future::Future;
+ use std::pin::Pin;
+ use std::task::{Context, Poll};
+ use std::time::Duration;
+ 
+ use bytes::Bytes;
+ use futures_util::ready;
+ use h2::server::{Connection, Handshake, SendResponse};
+ use h2::{Reason, RecvStream};
+ use http::{Method, Request};
+ use pin_project_lite::pin_project;
+ 
+ use super::{ping, PipeToSendStream, SendBuf};
+ use crate::body::{Body, Incoming as IncomingBody};
+ use crate::common::date;
+ use crate::common::io::Compat;
+ use crate::common::time::Time;
+ use crate::ext::Protocol;
+ use crate::headers;
+ use crate::proto::h2::ping::Recorder;
+ use crate::proto::h2::{H2Upgraded, UpgradedSendStream};
+ use crate::proto::Dispatched;
+ use crate::rt::bounds::Http2ServerConnExec;
+ use crate::rt::{Read, Write};
+ use crate::service::HttpService;
+ 
+ use crate::upgrade::{OnUpgrade, Pending, Upgraded};
+ use crate::Response;
+ 
+ // Our defaults are chosen for the "majority" case, which usually are not
+ // resource constrained, and so the spec default of 64kb can be too limiting
+ // for performance.
+ //
+ // At the same time, a server more often has multiple clients connected, and
+ // so is more likely to use more resources than a client would.
+ const DEFAULT_CONN_WINDOW: u32 = 1024 * 1024; // 1mb
+ const DEFAULT_STREAM_WINDOW: u32 = 1024 * 1024; // 1mb
+ const DEFAULT_MAX_FRAME_SIZE: u32 = 1024 * 16; // 16kb
+ const DEFAULT_MAX_SEND_BUF_SIZE: usize = 1024 * 400; // 400kb
+-const DEFAULT_SETTINGS_MAX_HEADER_LIST_SIZE: u32 = 1024 * 16; // 16kb
++                                                     // 16 MB "sane default" taken from golang http2
++const DEFAULT_SETTINGS_MAX_HEADER_LIST_SIZE: u32 = 16 << 20;
+ const DEFAULT_MAX_LOCAL_ERROR_RESET_STREAMS: usize = 1024;
+ 
+ #[derive(Clone, Debug)]
+ pub(crate) struct Config {
+     pub(crate) adaptive_window: bool,
+     pub(crate) initial_conn_window_size: u32,
+     pub(crate) initial_stream_window_size: u32,
+     pub(crate) max_frame_size: u32,
+     pub(crate) enable_connect_protocol: bool,
+     pub(crate) max_concurrent_streams: Option<u32>,
+     pub(crate) max_pending_accept_reset_streams: Option<usize>,
+     pub(crate) max_local_error_reset_streams: Option<usize>,
+     pub(crate) keep_alive_interval: Option<Duration>,
+     pub(crate) keep_alive_timeout: Duration,
+     pub(crate) max_send_buffer_size: usize,
+     pub(crate) max_header_list_size: u32,
+ }
+ 
+ impl Default for Config {
+     fn default() -> Config {
+         Config {
+             adaptive_window: false,
+             initial_conn_window_size: DEFAULT_CONN_WINDOW,
+             initial_stream_window_size: DEFAULT_STREAM_WINDOW,
+             max_frame_size: DEFAULT_MAX_FRAME_SIZE,
+             enable_connect_protocol: false,
+             max_concurrent_streams: Some(200),
+             max_pending_accept_reset_streams: None,
+             max_local_error_reset_streams: Some(DEFAULT_MAX_LOCAL_ERROR_RESET_STREAMS),
+             keep_alive_interval: None,
+             keep_alive_timeout: Duration::from_secs(20),
+             max_send_buffer_size: DEFAULT_MAX_SEND_BUF_SIZE,
+             max_header_list_size: DEFAULT_SETTINGS_MAX_HEADER_LIST_SIZE,
+         }
+     }
+ }
+ 
+ pin_project! {
+     pub(crate) struct Server<T, S, B, E>
+     where
+         S: HttpService<IncomingBody>,
+         B: Body,
+     {
+         exec: E,
+         timer: Time,
+         service: S,
+         state: State<T, B>,
+     }
+ }
+ 
+ enum State<T, B>
+ where
+     B: Body,
+ {
+     Handshaking {
+         ping_config: ping::Config,
+         hs: Handshake<Compat<T>, SendBuf<B::Data>>,
+     },
+     Serving(Serving<T, B>),
+     Closed,
+ }
+ 
+ struct Serving<T, B>
+ where
+     B: Body,
+ {
+     ping: Option<(ping::Recorder, ping::Ponger)>,
+     conn: Connection<Compat<T>, SendBuf<B::Data>>,
+     closing: Option<crate::Error>,
+ }
+ 
+ impl<T, S, B, E> Server<T, S, B, E>
+ where
+     T: Read + Write + Unpin,
+     S: HttpService<IncomingBody, ResBody = B>,
+     S::Error: Into<Box<dyn StdError + Send + Sync>>,
+     B: Body + 'static,
+     E: Http2ServerConnExec<S::Future, B>,
+ {
+     pub(crate) fn new(
+diff --git a/src/server/conn/http1.rs b/src/server/conn/http1.rs
+index 5f07df1d..e3737edb 100644
+--- a/src/server/conn/http1.rs
++++ b/src/server/conn/http1.rs
+@@ -424,96 +424,91 @@ impl Builder {
+         if !self.h1_keep_alive {
+             conn.disable_keep_alive();
+         }
+         if self.h1_half_close {
+             conn.set_allow_half_close();
+         }
+         if self.h1_title_case_headers {
+             conn.set_title_case_headers();
+         }
+         if self.h1_preserve_header_case {
+             conn.set_preserve_header_case();
+         }
+         if let Some(max_headers) = self.h1_max_headers {
+             conn.set_http1_max_headers(max_headers);
+         }
+         if let Some(dur) = self
+             .timer
+             .check(self.h1_header_read_timeout, "header_read_timeout")
+         {
+             conn.set_http1_header_read_timeout(dur);
+         };
+         if let Some(writev) = self.h1_writev {
+             if writev {
+                 conn.set_write_strategy_queue();
+             } else {
+                 conn.set_write_strategy_flatten();
+             }
+         }
+         conn.set_flush_pipeline(self.pipeline_flush);
+         if let Some(max) = self.max_buf_size {
+             conn.set_max_buf_size(max);
+         }
+         let sd = proto::h1::dispatch::Server::new(service);
+         let proto = proto::h1::Dispatcher::new(sd, conn);
+         Connection { conn: proto }
+     }
+ }
+ 
+ /// A future binding a connection with a Service with Upgrade support.
+ #[must_use = "futures do nothing unless polled"]
+ #[allow(missing_debug_implementations)]
+ pub struct UpgradeableConnection<T, S>
+ where
+     S: HttpService<IncomingBody>,
+ {
+     pub(super) inner: Option<Connection<T, S>>,
+ }
+ 
+ impl<I, B, S> UpgradeableConnection<I, S>
+ where
+     S: HttpService<IncomingBody, ResBody = B>,
+     S::Error: Into<Box<dyn StdError + Send + Sync>>,
+     I: Read + Write + Unpin,
+     B: Body + 'static,
+     B::Error: Into<Box<dyn StdError + Send + Sync>>,
+ {
+     /// Start a graceful shutdown process for this connection.
+     ///
+     /// This `Connection` should continue to be polled until shutdown
+     /// can finish.
+     pub fn graceful_shutdown(mut self: Pin<&mut Self>) {
+         // Connection (`inner`) is `None` if it was upgraded (and `poll` is `Ready`).
+         // In that case, we don't need to call `graceful_shutdown`.
+         if let Some(conn) = self.inner.as_mut() {
+             Pin::new(conn).graceful_shutdown()
+         }
+     }
+ }
+ 
+ impl<I, B, S> Future for UpgradeableConnection<I, S>
+ where
+     S: HttpService<IncomingBody, ResBody = B>,
+     S::Error: Into<Box<dyn StdError + Send + Sync>>,
+     I: Read + Write + Unpin + Send + 'static,
+     B: Body + 'static,
+     B::Error: Into<Box<dyn StdError + Send + Sync>>,
+ {
+     type Output = crate::Result<()>;
+ 
+     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+-        if let Some(conn) = self.inner.as_mut() {
+-            match ready!(Pin::new(&mut conn.conn).poll(cx)) {
+-                Ok(proto::Dispatched::Shutdown) => Poll::Ready(Ok(())),
+-                Ok(proto::Dispatched::Upgrade(pending)) => {
+-                    let (io, buf, _) = self.inner.take().unwrap().conn.into_inner();
+-                    pending.fulfill(Upgraded::new(io, buf));
+-                    Poll::Ready(Ok(()))
+-                }
+-                Err(e) => Poll::Ready(Err(e)),
++        match ready!(Pin::new(&mut self.inner.as_mut().unwrap().conn).poll(cx)) {
++            Ok(proto::Dispatched::Shutdown) => Poll::Ready(Ok(())),
++            Ok(proto::Dispatched::Upgrade(pending)) => {
++                let (io, buf, _) = self.inner.take().unwrap().conn.into_inner();
++                pending.fulfill(Upgraded::new(io, buf));
++                Poll::Ready(Ok(()))
+             }
+-        } else {
+-            // inner is `None`, meaning the connection was upgraded, thus it's `Poll::Ready(Ok(()))`
+-            Poll::Ready(Ok(()))
++            Err(e) => Poll::Ready(Err(e)),
+         }
+     }
+ }
+diff --git a/src/server/conn/http2.rs b/src/server/conn/http2.rs
+index bc754f26..6c8dfb5e 100644
+--- a/src/server/conn/http2.rs
++++ b/src/server/conn/http2.rs
+@@ -185,118 +185,118 @@ impl<E> Builder<E> {
+ 
+         self.h2_builder.adaptive_window = enabled;
+         if enabled {
+             self.h2_builder.initial_conn_window_size = SPEC_WINDOW_SIZE;
+             self.h2_builder.initial_stream_window_size = SPEC_WINDOW_SIZE;
+         }
+         self
+     }
+ 
+     /// Sets the maximum frame size to use for HTTP2.
+     ///
+     /// Passing `None` will do nothing.
+     ///
+     /// If not set, hyper will use a default.
+     pub fn max_frame_size(&mut self, sz: impl Into<Option<u32>>) -> &mut Self {
+         if let Some(sz) = sz.into() {
+             self.h2_builder.max_frame_size = sz;
+         }
+         self
+     }
+ 
+     /// Sets the [`SETTINGS_MAX_CONCURRENT_STREAMS`][spec] option for HTTP2
+     /// connections.
+     ///
+     /// Default is 200, but not part of the stability of hyper. It could change
+     /// in a future release. You are encouraged to set your own limit.
+     ///
+     /// Passing `None` will remove any limit.
+     ///
+     /// [spec]: https://httpwg.org/specs/rfc9113.html#SETTINGS_MAX_CONCURRENT_STREAMS
+     pub fn max_concurrent_streams(&mut self, max: impl Into<Option<u32>>) -> &mut Self {
+         self.h2_builder.max_concurrent_streams = max.into();
+         self
+     }
+ 
+     /// Sets an interval for HTTP2 Ping frames should be sent to keep a
+     /// connection alive.
+     ///
+     /// Pass `None` to disable HTTP2 keep-alive.
+     ///
+     /// Default is currently disabled.
+     pub fn keep_alive_interval(&mut self, interval: impl Into<Option<Duration>>) -> &mut Self {
+         self.h2_builder.keep_alive_interval = interval.into();
+         self
+     }
+ 
+     /// Sets a timeout for receiving an acknowledgement of the keep-alive ping.
+     ///
+     /// If the ping is not acknowledged within the timeout, the connection will
+     /// be closed. Does nothing if `keep_alive_interval` is disabled.
+     ///
+     /// Default is 20 seconds.
+     pub fn keep_alive_timeout(&mut self, timeout: Duration) -> &mut Self {
+         self.h2_builder.keep_alive_timeout = timeout;
+         self
+     }
+ 
+     /// Set the maximum write buffer size for each HTTP/2 stream.
+     ///
+     /// Default is currently ~400KB, but may change.
+     ///
+     /// # Panics
+     ///
+     /// The value must be no larger than `u32::MAX`.
+     pub fn max_send_buf_size(&mut self, max: usize) -> &mut Self {
+         assert!(max <= std::u32::MAX as usize);
+         self.h2_builder.max_send_buffer_size = max;
+         self
+     }
+ 
+     /// Enables the [extended CONNECT protocol].
+     ///
+     /// [extended CONNECT protocol]: https://datatracker.ietf.org/doc/html/rfc8441#section-4
+     pub fn enable_connect_protocol(&mut self) -> &mut Self {
+         self.h2_builder.enable_connect_protocol = true;
+         self
+     }
+ 
+     /// Sets the max size of received header frames.
+     ///
+-    /// Default is currently 16KB, but can change.
++    /// Default is currently ~16MB, but may change.
+     pub fn max_header_list_size(&mut self, max: u32) -> &mut Self {
+         self.h2_builder.max_header_list_size = max;
+         self
+     }
+ 
+     /// Set the timer used in background tasks.
+     pub fn timer<M>(&mut self, timer: M) -> &mut Self
+     where
+         M: Timer + Send + Sync + 'static,
+     {
+         self.timer = Time::Timer(Arc::new(timer));
+         self
+     }
+ 
+     /// Bind a connection together with a [`Service`](crate::service::Service).
+     ///
+     /// This returns a Future that must be polled in order for HTTP to be
+     /// driven on the connection.
+     pub fn serve_connection<S, I, Bd>(&self, io: I, service: S) -> Connection<I, S, E>
+     where
+         S: HttpService<IncomingBody, ResBody = Bd>,
+         S::Error: Into<Box<dyn StdError + Send + Sync>>,
+         Bd: Body + 'static,
+         Bd::Error: Into<Box<dyn StdError + Send + Sync>>,
+         I: Read + Write + Unpin,
+         E: Http2ServerConnExec<S::Future, Bd>,
+     {
+         let proto = proto::h2::Server::new(
+             io,
+             service,
+             &self.h2_builder,
+             self.exec.clone(),
+             self.timer.clone(),
+         );
+         Connection { conn: proto }
+     }
+ }

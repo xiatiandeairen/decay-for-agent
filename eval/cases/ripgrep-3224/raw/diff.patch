@@ -1,0 +1,135 @@
+diff --git a/crates/cli/src/decompress.rs b/crates/cli/src/decompress.rs
+index 3616a38..1e32953 100644
+--- a/crates/cli/src/decompress.rs
++++ b/crates/cli/src/decompress.rs
+@@ -411,122 +411,122 @@ impl io::Read for DecompressionReader {
+ /// Windows.
+ ///
+ /// Note that this could still return a relative path if PATH contains a
+ /// relative path. We permit this since it is assumed that the user has set
+ /// this explicitly, and thus, desires this behavior.
+ ///
+ /// # Platform behavior
+ ///
+ /// On non-Windows, this is a no-op.
+ pub fn resolve_binary<P: AsRef<Path>>(
+     prog: P,
+ ) -> Result<PathBuf, CommandError> {
+     if !cfg!(windows) {
+         return Ok(prog.as_ref().to_path_buf());
+     }
+     try_resolve_binary(prog)
+ }
+ 
+ /// Resolves a path to a program to a path by searching for the program in
+ /// `PATH`.
+ ///
+ /// If the program could not be resolved, then an error is returned.
+ ///
+ /// The purpose of doing this instead of passing the path to the program
+ /// directly to Command::new is that Command::new will hand relative paths
+ /// to CreateProcess on Windows, which will implicitly search the current
+ /// working directory for the executable. This could be undesirable for
+ /// security reasons. e.g., running ripgrep with the -z/--search-zip flag on an
+ /// untrusted directory tree could result in arbitrary programs executing on
+ /// Windows.
+ ///
+ /// Note that this could still return a relative path if PATH contains a
+ /// relative path. We permit this since it is assumed that the user has set
+ /// this explicitly, and thus, desires this behavior.
+ ///
+ /// If `check_exists` is false or the path is already an absolute path this
+ /// will return immediately.
+ fn try_resolve_binary<P: AsRef<Path>>(
+     prog: P,
+ ) -> Result<PathBuf, CommandError> {
+     use std::env;
+ 
+     fn is_exe(path: &Path) -> bool {
+         let Ok(md) = path.metadata() else { return false };
+         !md.is_dir()
+     }
+ 
+     let prog = prog.as_ref();
+     if prog.is_absolute() {
+         return Ok(prog.to_path_buf());
+     }
+     let Some(syspaths) = env::var_os("PATH") else {
+         let msg = "system PATH environment variable not found";
+         return Err(CommandError::io(io::Error::new(
+             io::ErrorKind::Other,
+             msg,
+         )));
+     };
+     for syspath in env::split_paths(&syspaths) {
+         if syspath.as_os_str().is_empty() {
+             continue;
+         }
+         let abs_prog = syspath.join(prog);
+         if is_exe(&abs_prog) {
+             return Ok(abs_prog.to_path_buf());
+         }
+         if abs_prog.extension().is_none() {
+             for extension in ["com", "exe"] {
+                 let abs_prog = abs_prog.with_extension(extension);
+                 if is_exe(&abs_prog) {
+                     return Ok(abs_prog.to_path_buf());
+                 }
+             }
+         }
+     }
+     let msg = format!("{}: could not find executable in PATH", prog.display());
+     return Err(CommandError::io(io::Error::new(io::ErrorKind::Other, msg)));
+ }
+ 
+ fn default_decompression_commands() -> Vec<DecompressionCommand> {
+-    const ARGS_GZIP: &[&str] = &["gzip", "-d", "-c"];
+-    const ARGS_BZIP: &[&str] = &["bzip2", "-d", "-c"];
+-    const ARGS_XZ: &[&str] = &["xz", "-d", "-c"];
+-    const ARGS_LZ4: &[&str] = &["lz4", "-d", "-c"];
+-    const ARGS_LZMA: &[&str] = &["xz", "--format=lzma", "-d", "-c"];
+-    const ARGS_BROTLI: &[&str] = &["brotli", "-d", "-c"];
+-    const ARGS_ZSTD: &[&str] = &["zstd", "-q", "-d", "-c"];
+-    const ARGS_UNCOMPRESS: &[&str] = &["uncompress", "-c"];
++    const ARGS_GZIP: &[&str] = &["gzip", "-d", "-c", "--"];
++    const ARGS_BZIP: &[&str] = &["bzip2", "-d", "-c", "--"];
++    const ARGS_XZ: &[&str] = &["xz", "-d", "-c", "--"];
++    const ARGS_LZ4: &[&str] = &["lz4", "-d", "-c", "--"];
++    const ARGS_LZMA: &[&str] = &["xz", "--format=lzma", "-d", "-c", "--"];
++    const ARGS_BROTLI: &[&str] = &["brotli", "-d", "-c", "--"];
++    const ARGS_ZSTD: &[&str] = &["zstd", "-q", "-d", "-c", "--"];
++    const ARGS_UNCOMPRESS: &[&str] = &["uncompress", "-c", "--"];
+ 
+     fn add(glob: &str, args: &[&str], cmds: &mut Vec<DecompressionCommand>) {
+         let bin = match resolve_binary(Path::new(args[0])) {
+             Ok(bin) => bin,
+             Err(err) => {
+                 log::debug!("{}", err);
+                 return;
+             }
+         };
+         cmds.push(DecompressionCommand {
+             glob: glob.to_string(),
+             bin,
+             args: args
+                 .iter()
+                 .skip(1)
+                 .map(|s| OsStr::new(s).to_os_string())
+                 .collect(),
+         });
+     }
+     let mut cmds = vec![];
+     add("*.gz", ARGS_GZIP, &mut cmds);
+     add("*.tgz", ARGS_GZIP, &mut cmds);
+     add("*.bz2", ARGS_BZIP, &mut cmds);
+     add("*.tbz2", ARGS_BZIP, &mut cmds);
+     add("*.xz", ARGS_XZ, &mut cmds);
+     add("*.txz", ARGS_XZ, &mut cmds);
+     add("*.lz4", ARGS_LZ4, &mut cmds);
+     add("*.lzma", ARGS_LZMA, &mut cmds);
+     add("*.br", ARGS_BROTLI, &mut cmds);
+     add("*.zst", ARGS_ZSTD, &mut cmds);
+     add("*.zstd", ARGS_ZSTD, &mut cmds);
+     add("*.Z", ARGS_UNCOMPRESS, &mut cmds);
+     cmds
+ }

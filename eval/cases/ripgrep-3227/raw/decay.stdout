@@ -1,0 +1,26 @@
+Diff context:
+  repo_root=/private/tmp/decay-pr-eval/ripgrep-3227/repo
+  mode=git_ref
+  base_input=57c190d56eedac90c061a238b63dbfed434fee50
+  base=57c190d56eedac90c061a238b63dbfed434fee50
+  head=44b4ac7ca4b3685c95d95f87189ab5b40e26958e
+  changed_files=1
+
+Top risk findings:
+  none
+
+Complexity impact:
+  changed_functions=0 evidence=0 partial=false diagnostics=0
+
+Stability impact:
+  evidence=0
+
+Quality impact:
+  evidence=0 prod_files_changed=1 test_files_changed=0 docs_files_changed=0
+
+Semantic impact:
+  evidence=0
+
+History impact:
+  evidence=0
+recorded=true changeset=1 evidence_saved=0

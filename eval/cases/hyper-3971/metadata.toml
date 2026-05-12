@@ -1,0 +1,8 @@
+case_id = "hyper-3971"
+repo = "hyperium/hyper"
+pr = 3971
+kind = "feature"
+status = "candidate"
+base_sha = "0f0b6ed3ac55ac1682afd2104cb8d0385149249a"
+head_sha = "59e587943ff4f0865bdacbe2f8262cbd4805191e"
+diff_exit = 0

@@ -17,13 +17,13 @@
 
 | Case | Repo | Kind | Source | Evidence | Top Risks | Judged |
 |---|---|---:|---|---:|---:|---|
-| hyper-3606 | hyperium/hyper | refactor | legacy-results | 2 | 0 | no |
-| hyper-3621 | hyperium/hyper | bugfix | legacy-results | 3 | 0 | no |
-| hyper-3865 | hyperium/hyper | refactor | legacy-results | 10 | 0 | no |
-| hyper-3936 | hyperium/hyper | bugfix | legacy-results | 6 | 0 | no |
-| hyper-3971 | hyperium/hyper | feature | legacy-results | 8 | 0 | no |
-| ripgrep-3210 | BurntSushi/ripgrep | feature | legacy-results | 6 | 0 | no |
-| ripgrep-3219 | BurntSushi/ripgrep | negative | legacy-results | 0 | 0 | no |
-| ripgrep-3224 | BurntSushi/ripgrep | bugfix | legacy-results | 1 | 0 | no |
-| ripgrep-3227 | BurntSushi/ripgrep | negative | legacy-results | 0 | 0 | no |
-| ripgrep-3230 | BurntSushi/ripgrep | refactor | legacy-results | 2 | 0 | no |
+| hyper-3606 | hyperium/hyper | refactor | cases | 2 | 2 | no |
+| hyper-3621 | hyperium/hyper | bugfix | cases | 4 | 4 | no |
+| hyper-3865 | hyperium/hyper | refactor | cases | 10 | 9 | no |
+| hyper-3936 | hyperium/hyper | bugfix | cases | 6 | 6 | no |
+| hyper-3971 | hyperium/hyper | feature | cases | 8 | 7 | no |
+| ripgrep-3210 | BurntSushi/ripgrep | feature | cases | 5 | 5 | no |
+| ripgrep-3219 | BurntSushi/ripgrep | negative | cases | 0 | 0 | no |
+| ripgrep-3224 | BurntSushi/ripgrep | bugfix | cases | 9 | 9 | no |
+| ripgrep-3227 | BurntSushi/ripgrep | negative | cases | 0 | 0 | no |
+| ripgrep-3230 | BurntSushi/ripgrep | refactor | cases | 2 | 2 | no |

@@ -1,0 +1,4 @@
+M	crates/core/search.rs
+M	crates/globset/src/glob.rs
+M	crates/matcher/tests/util.rs
+M	crates/pcre2/src/matcher.rs

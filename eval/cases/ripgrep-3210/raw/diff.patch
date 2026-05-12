@@ -1,0 +1,1601 @@
+diff --git a/crates/globset/src/glob.rs b/crates/globset/src/glob.rs
+index dc33876..96ee345 100644
+--- a/crates/globset/src/glob.rs
++++ b/crates/globset/src/glob.rs
+@@ -188,170 +188,231 @@ impl GlobStrategic {
+             }
+             MatchStrategy::Suffix { ref suffix, component } => {
+                 if component && byte_path == &suffix.as_bytes()[1..] {
+                     return true;
+                 }
+                 ends_with(suffix.as_bytes(), byte_path)
+             }
+             MatchStrategy::RequiredExtension(ref ext) => {
+                 let ext = ext.as_bytes();
+                 &*candidate.ext == ext && self.re.is_match(byte_path)
+             }
+             MatchStrategy::Regex => self.re.is_match(byte_path),
+         }
+     }
+ }
+ 
+ /// A builder for a pattern.
+ ///
+ /// This builder enables configuring the match semantics of a pattern. For
+ /// example, one can make matching case insensitive.
+ ///
+ /// The lifetime `'a` refers to the lifetime of the pattern string.
+ #[derive(Clone, Debug)]
+ pub struct GlobBuilder<'a> {
+     /// The glob pattern to compile.
+     glob: &'a str,
+     /// Options for the pattern.
+     opts: GlobOptions,
+ }
+ 
+ #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+ #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+ struct GlobOptions {
+     /// Whether to match case insensitively.
+     case_insensitive: bool,
+     /// Whether to require a literal separator to match a separator in a file
+     /// path. e.g., when enabled, `*` won't match `/`.
+     literal_separator: bool,
+     /// Whether or not to use `\` to escape special characters.
+     /// e.g., when enabled, `\*` will match a literal `*`.
+     backslash_escape: bool,
+     /// Whether or not an empty case in an alternate will be removed.
+     /// e.g., when enabled, `{,a}` will match "" and "a".
+     empty_alternates: bool,
+     /// Whether or not an unclosed character class is allowed. When an unclosed
+     /// character class is found, the opening `[` is treated as a literal `[`.
+     /// When this isn't enabled, an opening `[` without a corresponding `]` is
+     /// treated as an error.
+     allow_unclosed_class: bool,
+ }
+ 
+ impl GlobOptions {
+     fn default() -> GlobOptions {
+         GlobOptions {
+             case_insensitive: false,
+             literal_separator: false,
+             backslash_escape: !is_separator('\\'),
+             empty_alternates: false,
+             allow_unclosed_class: false,
+         }
+     }
+ }
+ 
+ #[derive(Clone, Debug, Default, Eq, PartialEq)]
+ #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+ struct Tokens(Vec<Token>);
+ 
+ impl std::ops::Deref for Tokens {
+     type Target = Vec<Token>;
+     fn deref(&self) -> &Vec<Token> {
+         &self.0
+     }
+ }
+ 
+ impl std::ops::DerefMut for Tokens {
+     fn deref_mut(&mut self) -> &mut Vec<Token> {
+         &mut self.0
+     }
+ }
+ 
++/// A POSIX character class like [:space:] or [:digit:].
++#[derive(Clone, Debug, Eq, PartialEq)]
++enum PosixClass {
++    Alnum,
++    Alpha,
++    Blank,
++    Cntrl,
++    Digit,
++    Graph,
++    Lower,
++    Print,
++    Punct,
++    Space,
++    Upper,
++    Xdigit,
++}
++
++impl PosixClass {
++    /// Parse a POSIX class name and return the corresponding enum variant.
++    fn from_name(name: &str) -> Option<PosixClass> {
++        match name {
++            "alnum" => Some(PosixClass::Alnum),
++            "alpha" => Some(PosixClass::Alpha),
++            "blank" => Some(PosixClass::Blank),
++            "cntrl" => Some(PosixClass::Cntrl),
++            "digit" => Some(PosixClass::Digit),
++            "graph" => Some(PosixClass::Graph),
++            "lower" => Some(PosixClass::Lower),
++            "print" => Some(PosixClass::Print),
++            "punct" => Some(PosixClass::Punct),
++            "space" => Some(PosixClass::Space),
++            "upper" => Some(PosixClass::Upper),
++            "xdigit" => Some(PosixClass::Xdigit),
++            _ => None,
++        }
++    }
++
++    /// Convert a POSIX class to its ASCII character set as a regex pattern.
++    /// This uses ASCII-only definitions to avoid locale-dependent behavior.
++    fn to_char_set(&self) -> &'static str {
++        match self {
++            PosixClass::Alnum => "0-9A-Za-z",
++            PosixClass::Alpha => "A-Za-z",
++            PosixClass::Blank => " \\t",
++            PosixClass::Cntrl => "\\x00-\\x1F\\x7F",
++            PosixClass::Digit => "0-9",
++            PosixClass::Graph => "!-~",
++            PosixClass::Lower => "a-z",
++            PosixClass::Print => " -~",
++            PosixClass::Punct => "!-/:-@\\[-`{-~",
++            PosixClass::Space => " \\t\\n\\r\\x0B\\x0C",
++            PosixClass::Upper => "A-Z",
++            PosixClass::Xdigit => "0-9A-Fa-f",
++        }
++    }
++}
++
+ #[derive(Clone, Debug, Eq, PartialEq)]
+ #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+ enum Token {
+     Literal(char),
+     Any,
+     ZeroOrMore,
+     RecursivePrefix,
+     RecursiveSuffix,
+     RecursiveZeroOrMore,
+-    Class { negated: bool, ranges: Vec<(char, char)> },
++    Class {
++        negated: bool,
++        ranges: Vec<(char, char)>,
++        posix_classes: Vec<PosixClass>,
++    },
+     Alternates(Vec<Tokens>),
+ }
+ 
+ impl Glob {
+     /// Builds a new pattern with default options.
+     pub fn new(glob: &str) -> Result<Glob, Error> {
+         GlobBuilder::new(glob).build()
+     }
+ 
+     /// Returns a matcher for this pattern.
+     pub fn compile_matcher(&self) -> GlobMatcher {
+         let re =
+             new_regex(&self.re).expect("regex compilation shouldn't fail");
+         GlobMatcher { pat: self.clone(), re }
+     }
+ 
+     /// Returns a strategic matcher.
+     ///
+     /// This isn't exposed because it's not clear whether it's actually
+     /// faster than just running a regex for a *single* pattern. If it
+     /// is faster, then GlobMatcher should do it automatically.
+     #[cfg(test)]
+     fn compile_strategic_matcher(&self) -> GlobStrategic {
+         let strategy = MatchStrategy::new(self);
+         let re =
+             new_regex(&self.re).expect("regex compilation shouldn't fail");
+         GlobStrategic { strategy, re }
+     }
+ 
+     /// Returns the original glob pattern used to build this pattern.
+     pub fn glob(&self) -> &str {
+         &self.glob
+     }
+ 
+     /// Returns the regular expression string for this glob.
+     ///
+     /// Note that regular expressions for globs are intended to be matched on
+     /// arbitrary bytes (`&[u8]`) instead of Unicode strings (`&str`). In
+     /// particular, globs are frequently used on file paths, where there is no
+     /// general guarantee that file paths are themselves valid UTF-8. As a
+     /// result, callers will need to ensure that they are using a regex API
+     /// that can match on arbitrary bytes. For example, the
+     /// [`regex`](https://crates.io/regex)
+     /// crate's
+     /// [`Regex`](https://docs.rs/regex/*/regex/struct.Regex.html)
+     /// API is not suitable for this since it matches on `&str`, but its
+     /// [`bytes::Regex`](https://docs.rs/regex/*/regex/bytes/struct.Regex.html)
+     /// API is suitable for this.
+     pub fn regex(&self) -> &str {
+         &self.re
+     }
+ 
+     /// Returns the pattern as a literal if and only if the pattern must match
+     /// an entire path exactly.
+     ///
+     /// The basic format of these patterns is `{literal}`.
+     fn literal(&self) -> Option<String> {
+         if self.opts.case_insensitive {
+             return None;
+         }
+         let mut lit = String::new();
+         for t in &*self.tokens {
+             let Token::Literal(c) = *t else { return None };
+             lit.push(c);
+         }
+         if lit.is_empty() { None } else { Some(lit) }
+     }
+ 
+     /// Returns an extension if this pattern matches a file path if and only
+     /// if the file path has the extension returned.
+     ///
+     /// Note that this extension returned differs from the extension that
+     /// std::path::Path::extension returns. Namely, this extension includes
+     /// the '.'. Also, paths like `.rs` are considered to have an extension
+     /// of `.rs`.
+     fn ext(&self) -> Option<String> {
+         if self.opts.case_insensitive {
+             return None;
+         }
+         let start = match *self.tokens.get(0)? {
+@@ -646,175 +707,181 @@ impl<'a> GlobBuilder<'a> {
+     /// By default this is false.
+     pub fn empty_alternates(&mut self, yes: bool) -> &mut GlobBuilder<'a> {
+         self.opts.empty_alternates = yes;
+         self
+     }
+ 
+     /// Toggle whether unclosed character classes are allowed. When allowed,
+     /// a `[` without a matching `]` is treated literally instead of resulting
+     /// in a parse error.
+     ///
+     /// For example, if this is set then the glob `[abc` will be treated as the
+     /// literal string `[abc` instead of returning an error.
+     ///
+     /// By default, this is false. Generally speaking, enabling this leads to
+     /// worse failure modes since the glob parser becomes more permissive. You
+     /// might want to enable this when compatibility (e.g., with POSIX glob
+     /// implementations) is more important than good error messages.
+     pub fn allow_unclosed_class(&mut self, yes: bool) -> &mut GlobBuilder<'a> {
+         self.opts.allow_unclosed_class = yes;
+         self
+     }
+ }
+ 
+ impl Tokens {
+     /// Convert this pattern to a string that is guaranteed to be a valid
+     /// regular expression and will represent the matching semantics of this
+     /// glob pattern and the options given.
+     fn to_regex_with(&self, options: &GlobOptions) -> String {
+         let mut re = String::new();
+         re.push_str("(?-u)");
+         if options.case_insensitive {
+             re.push_str("(?i)");
+         }
+         re.push('^');
+         // Special case. If the entire glob is just `**`, then it should match
+         // everything.
+         if self.len() == 1 && self[0] == Token::RecursivePrefix {
+             re.push_str(".*");
+             re.push('$');
+             return re;
+         }
+         self.tokens_to_regex(options, &self, &mut re);
+         re.push('$');
+         re
+     }
+ 
+     fn tokens_to_regex(
+         &self,
+         options: &GlobOptions,
+         tokens: &[Token],
+         re: &mut String,
+     ) {
+         for tok in tokens.iter() {
+             match *tok {
+                 Token::Literal(c) => {
+                     re.push_str(&char_to_escaped_literal(c));
+                 }
+                 Token::Any => {
+                     if options.literal_separator {
+                         re.push_str("[^/]");
+                     } else {
+                         re.push_str(".");
+                     }
+                 }
+                 Token::ZeroOrMore => {
+                     if options.literal_separator {
+                         re.push_str("[^/]*");
+                     } else {
+                         re.push_str(".*");
+                     }
+                 }
+                 Token::RecursivePrefix => {
+                     re.push_str("(?:/?|.*/)");
+                 }
+                 Token::RecursiveSuffix => {
+                     re.push_str("/.*");
+                 }
+                 Token::RecursiveZeroOrMore => {
+                     re.push_str("(?:/|/.*/)");
+                 }
+-                Token::Class { negated, ref ranges } => {
++                Token::Class { negated, ref ranges, ref posix_classes } => {
+                     re.push('[');
+                     if negated {
+                         re.push('^');
+                     }
+                     for r in ranges {
+                         if r.0 == r.1 {
+                             // Not strictly necessary, but nicer to look at.
+                             re.push_str(&char_to_escaped_literal(r.0));
+                         } else {
+                             re.push_str(&char_to_escaped_literal(r.0));
+                             re.push('-');
+                             re.push_str(&char_to_escaped_literal(r.1));
+                         }
+                     }
++                    // Add POSIX character classes
++                    // Note: We add the character sets directly rather than using
++                    // [:class:] syntax because we want ASCII-only behavior
++                    for posix_class in posix_classes {
++                        re.push_str(posix_class.to_char_set());
++                    }
+                     re.push(']');
+                 }
+                 Token::Alternates(ref patterns) => {
+                     let mut parts = vec![];
+                     for pat in patterns {
+                         let mut altre = String::new();
+                         self.tokens_to_regex(options, &pat, &mut altre);
+                         if !altre.is_empty() || options.empty_alternates {
+                             parts.push(altre);
+                         }
+                     }
+ 
+                     // It is possible to have an empty set in which case the
+                     // resulting alternation '()' would be an error.
+                     if !parts.is_empty() {
+                         re.push_str("(?:");
+                         re.push_str(&parts.join("|"));
+                         re.push(')');
+                     }
+                 }
+             }
+         }
+     }
+ }
+ 
+ /// Convert a Unicode scalar value to an escaped string suitable for use as
+ /// a literal in a non-Unicode regex.
+ fn char_to_escaped_literal(c: char) -> String {
+     let mut buf = [0; 4];
+     let bytes = c.encode_utf8(&mut buf).as_bytes();
+     bytes_to_escaped_literal(bytes)
+ }
+ 
+ /// Converts an arbitrary sequence of bytes to a UTF-8 string. All non-ASCII
+ /// code units are converted to their escaped form.
+ fn bytes_to_escaped_literal(bs: &[u8]) -> String {
+     let mut s = String::with_capacity(bs.len());
+     for &b in bs {
+         if b <= 0x7F {
+             regex_syntax::escape_into(
+                 char::from(b).encode_utf8(&mut [0; 4]),
+                 &mut s,
+             );
+         } else {
+             write!(&mut s, "\\x{:02x}", b).unwrap();
+         }
+     }
+     s
+ }
+ 
+ struct Parser<'a> {
+     /// The glob to parse.
+     glob: &'a str,
+     /// Marks the index in `stack` where the alternation started.
+     alternates_stack: Vec<usize>,
+     /// The set of active alternation branches being parsed.
+     /// Tokens are added to the end of the last one.
+     branches: Vec<Tokens>,
+     /// A character iterator over the glob pattern to parse.
+     chars: std::iter::Peekable<std::str::Chars<'a>>,
+     /// The previous character seen.
+     prev: Option<char>,
+     /// The current character.
+     cur: Option<char>,
+     /// Whether we failed to find a closing `]` for a character
+     /// class. This can only be true when `GlobOptions::allow_unclosed_class`
+     /// is enabled. When enabled, it is impossible to ever parse another
+     /// character class with this glob. That's because classes cannot be
+     /// nested *and* the only way this happens is when there is never a `]`.
+     ///
+     /// We track this state so that we don't end up spending quadratic time
+     /// trying to parse something like `[[[[[[[[[[[[[[[[[[[[[[[...`.
+     found_unclosed_class: bool,
+     /// Glob options, which may influence parsing.
+     opts: &'a GlobOptions,
+ }
+ 
+ impl<'a> Parser<'a> {
+     fn error(&self, kind: ErrorKind) -> Error {
+         Error { glob: Some(self.glob.to_string()), kind }
+@@ -904,528 +971,787 @@ impl<'a> Parser<'a> {
+             self.push_token(Token::ZeroOrMore)?;
+             return Ok(());
+         }
+         assert!(self.bump() == Some('*'));
+         if !self.have_tokens()? {
+             if !self.peek().map_or(true, is_separator) {
+                 self.push_token(Token::ZeroOrMore)?;
+                 self.push_token(Token::ZeroOrMore)?;
+             } else {
+                 self.push_token(Token::RecursivePrefix)?;
+                 assert!(self.bump().map_or(true, is_separator));
+             }
+             return Ok(());
+         }
+ 
+         if !prev.map(is_separator).unwrap_or(false) {
+             if self.branches.len() <= 1
+                 || (prev != Some(',') && prev != Some('{'))
+             {
+                 self.push_token(Token::ZeroOrMore)?;
+                 self.push_token(Token::ZeroOrMore)?;
+                 return Ok(());
+             }
+         }
+         let is_suffix = match self.peek() {
+             None => {
+                 assert!(self.bump().is_none());
+                 true
+             }
+             Some(',') | Some('}') if self.branches.len() >= 2 => true,
+             Some(c) if is_separator(c) => {
+                 assert!(self.bump().map(is_separator).unwrap_or(false));
+                 false
+             }
+             _ => {
+                 self.push_token(Token::ZeroOrMore)?;
+                 self.push_token(Token::ZeroOrMore)?;
+                 return Ok(());
+             }
+         };
+         match self.pop_token()? {
+             Token::RecursivePrefix => {
+                 self.push_token(Token::RecursivePrefix)?;
+             }
+             Token::RecursiveSuffix => {
+                 self.push_token(Token::RecursiveSuffix)?;
+             }
+             _ => {
+                 if is_suffix {
+                     self.push_token(Token::RecursiveSuffix)?;
+                 } else {
+                     self.push_token(Token::RecursiveZeroOrMore)?;
+                 }
+             }
+         }
+         Ok(())
+     }
+ 
+     fn parse_class(&mut self) -> Result<(), Error> {
+         // Save parser state for potential rollback to literal '[' parsing.
+         let saved_chars = self.chars.clone();
+         let saved_prev = self.prev;
+         let saved_cur = self.cur;
+ 
+         fn add_to_last_range(
+             glob: &str,
+             r: &mut (char, char),
+             add: char,
+         ) -> Result<(), Error> {
+             r.1 = add;
+             if r.1 < r.0 {
+                 Err(Error {
+                     glob: Some(glob.to_string()),
+                     kind: ErrorKind::InvalidRange(r.0, r.1),
+                 })
+             } else {
+                 Ok(())
+             }
+         }
+         let mut ranges = vec![];
++        let mut posix_classes = vec![];
+         let negated = match self.chars.peek() {
+             Some(&'!') | Some(&'^') => {
+                 let bump = self.bump();
+                 assert!(bump == Some('!') || bump == Some('^'));
+                 true
+             }
+             _ => false,
+         };
+         let mut first = true;
+         let mut in_range = false;
+         loop {
+             let Some(c) = self.bump() else {
+                 return if self.opts.allow_unclosed_class == true {
+                     self.chars = saved_chars;
+                     self.cur = saved_cur;
+                     self.prev = saved_prev;
+                     self.found_unclosed_class = true;
+ 
+                     self.push_token(Token::Literal('['))
+                 } else {
+                     Err(self.error(ErrorKind::UnclosedClass))
+                 };
+             };
+             match c {
+                 ']' => {
+                     if first {
+                         ranges.push((']', ']'));
+                     } else {
+                         break;
+                     }
+                 }
+                 '-' => {
+                     if first {
+                         ranges.push(('-', '-'));
+                     } else if in_range {
+                         // invariant: in_range is only set when there is
+                         // already at least one character seen.
+                         let r = ranges.last_mut().unwrap();
+                         add_to_last_range(&self.glob, r, '-')?;
+                         in_range = false;
+-                    } else {
+-                        assert!(!ranges.is_empty());
++                    } else if !ranges.is_empty() {
++                        // Start a range from the last character
+                         in_range = true;
++                    } else {
++                        // No ranges yet (e.g., [[:digit:]-]), treat dash as literal
++                        ranges.push(('-', '-'));
++                    }
++                }
++                '[' if !in_range && self.peek() == Some(':') => {
++                    // Attempt to parse POSIX class
++                    match self.parse_posix_class()? {
++                        Some(posix_class) => {
++                            posix_classes.push(posix_class);
++                            in_range = false;
++                        }
++                        None => {
++                            // Not a valid POSIX class, treat '[' as literal
++                            if in_range {
++                                add_to_last_range(
++                                    &self.glob,
++                                    ranges.last_mut().unwrap(),
++                                    '[',
++                                )?;
++                            } else {
++                                ranges.push(('[', '['));
++                            }
++                            in_range = false;
++                        }
+                     }
+                 }
+                 c => {
+                     if in_range {
+                         // invariant: in_range is only set when there is
+                         // already at least one character seen.
+                         add_to_last_range(
+                             &self.glob,
+                             ranges.last_mut().unwrap(),
+                             c,
+                         )?;
+                     } else {
+                         ranges.push((c, c));
+                     }
+                     in_range = false;
+                 }
+             }
+             first = false;
+         }
+         if in_range {
+             // Means that the last character in the class was a '-', so add
+             // it as a literal.
+             ranges.push(('-', '-'));
+         }
+-        self.push_token(Token::Class { negated, ranges })
++        self.push_token(Token::Class { negated, ranges, posix_classes })
++    }
++
++    /// Attempt to parse a POSIX character class like [:space:] or [:digit:].
++    ///
++    /// This should be called when we've just seen '[' and peeked ':'.
++    /// If successful, returns Some(PosixClass) and advances the parser past ':]'.
++    /// If this is not a valid POSIX class (e.g., [:invalid:] or [:space),
++    /// returns None and resets the parser state.
++    fn parse_posix_class(&mut self) -> Result<Option<PosixClass>, Error> {
++        // Save state for potential rollback
++        let saved_chars = self.chars.clone();
++        let saved_prev = self.prev;
++        let saved_cur = self.cur;
++
++        // We should be looking at '[', and next char should be ':'
++        assert_eq!(self.cur, Some('['));
++
++        // Consume the ':'
++        if self.bump() != Some(':') {
++            // This shouldn't happen given our peek check, but be defensive
++            self.chars = saved_chars;
++            self.prev = saved_prev;
++            self.cur = saved_cur;
++            return Ok(None);
++        }
++
++        // Collect characters until we see ':' or ']' or end
++        let mut class_name = String::new();
++        loop {
++            match self.bump() {
++                Some(':') => {
++                    // Check if next char is ']'
++                    if self.peek() == Some(']') {
++                        self.bump(); // Consume the ']'
++
++                        // Try to parse the class name
++                        if let Some(posix_class) =
++                            PosixClass::from_name(&class_name)
++                        {
++                            return Ok(Some(posix_class));
++                        } else {
++                            // Invalid POSIX class name, rollback
++                            self.chars = saved_chars;
++                            self.prev = saved_prev;
++                            self.cur = saved_cur;
++                            return Ok(None);
++                        }
++                    } else {
++                        // ':' not followed by ']', keep collecting
++                        class_name.push(':');
++                    }
++                }
++                Some(']') | None => {
++                    // Hit end of class or pattern without proper ':]' terminator
++                    // This is not a valid POSIX class, rollback
++                    self.chars = saved_chars;
++                    self.prev = saved_prev;
++                    self.cur = saved_cur;
++                    return Ok(None);
++                }
++                Some(c) if c.is_ascii_lowercase() => {
++                    // Valid POSIX class names are lowercase letters
++                    class_name.push(c);
++
++                    // Sanity check: class names are short (max 7 chars: "xdigit")
++                    if class_name.len() > 10 {
++                        // Too long, not a valid POSIX class
++                        self.chars = saved_chars;
++                        self.prev = saved_prev;
++                        self.cur = saved_cur;
++                        return Ok(None);
++                    }
++                }
++                Some(_) => {
++                    // Invalid character in POSIX class name
++                    self.chars = saved_chars;
++                    self.prev = saved_prev;
++                    self.cur = saved_cur;
++                    return Ok(None);
++                }
++            }
++        }
+     }
+ 
+     fn bump(&mut self) -> Option<char> {
+         self.prev = self.cur;
+         self.cur = self.chars.next();
+         self.cur
+     }
+ 
+     fn peek(&mut self) -> Option<char> {
+         self.chars.peek().map(|&ch| ch)
+     }
+ }
+ 
+ #[cfg(test)]
+ fn starts_with(needle: &[u8], haystack: &[u8]) -> bool {
+     needle.len() <= haystack.len() && needle == &haystack[..needle.len()]
+ }
+ 
+ #[cfg(test)]
+ fn ends_with(needle: &[u8], haystack: &[u8]) -> bool {
+     if needle.len() > haystack.len() {
+         return false;
+     }
+     needle == &haystack[haystack.len() - needle.len()..]
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::Token::*;
+     use super::{Glob, GlobBuilder, Token};
+     use crate::{ErrorKind, GlobSetBuilder};
+ 
+     #[derive(Clone, Copy, Debug, Default)]
+     struct Options {
+         casei: Option<bool>,
+         litsep: Option<bool>,
+         bsesc: Option<bool>,
+         ealtre: Option<bool>,
+         unccls: Option<bool>,
+     }
+ 
+     macro_rules! syntax {
+         ($name:ident, $pat:expr, $tokens:expr) => {
+             #[test]
+             fn $name() {
+                 let pat = Glob::new($pat).unwrap();
+                 assert_eq!($tokens, pat.tokens.0);
+             }
+         };
+     }
+ 
+     macro_rules! syntaxerr {
+         ($name:ident, $pat:expr, $err:expr) => {
+             #[test]
+             fn $name() {
+                 let err = Glob::new($pat).unwrap_err();
+                 assert_eq!(&$err, err.kind());
+             }
+         };
+     }
+ 
+     macro_rules! toregex {
+         ($name:ident, $pat:expr, $re:expr) => {
+             toregex!($name, $pat, $re, Options::default());
+         };
+         ($name:ident, $pat:expr, $re:expr, $options:expr) => {
+             #[test]
+             fn $name() {
+                 let mut builder = GlobBuilder::new($pat);
+                 if let Some(casei) = $options.casei {
+                     builder.case_insensitive(casei);
+                 }
+                 if let Some(litsep) = $options.litsep {
+                     builder.literal_separator(litsep);
+                 }
+                 if let Some(bsesc) = $options.bsesc {
+                     builder.backslash_escape(bsesc);
+                 }
+                 if let Some(ealtre) = $options.ealtre {
+                     builder.empty_alternates(ealtre);
+                 }
+                 if let Some(unccls) = $options.unccls {
+                     builder.allow_unclosed_class(unccls);
+                 }
+ 
+                 let pat = builder.build().unwrap();
+                 assert_eq!(format!("(?-u){}", $re), pat.regex());
+             }
+         };
+     }
+ 
+     macro_rules! matches {
+         ($name:ident, $pat:expr, $path:expr) => {
+             matches!($name, $pat, $path, Options::default());
+         };
+         ($name:ident, $pat:expr, $path:expr, $options:expr) => {
+             #[test]
+             fn $name() {
+                 let mut builder = GlobBuilder::new($pat);
+                 if let Some(casei) = $options.casei {
+                     builder.case_insensitive(casei);
+                 }
+                 if let Some(litsep) = $options.litsep {
+                     builder.literal_separator(litsep);
+                 }
+                 if let Some(bsesc) = $options.bsesc {
+                     builder.backslash_escape(bsesc);
+                 }
+                 if let Some(ealtre) = $options.ealtre {
+                     builder.empty_alternates(ealtre);
+                 }
+                 let pat = builder.build().unwrap();
+                 let matcher = pat.compile_matcher();
+                 let strategic = pat.compile_strategic_matcher();
+                 let set = GlobSetBuilder::new().add(pat).build().unwrap();
+                 assert!(matcher.is_match($path));
+                 assert!(strategic.is_match($path));
+                 assert!(set.is_match($path));
+             }
+         };
+     }
+ 
+     macro_rules! nmatches {
+         ($name:ident, $pat:expr, $path:expr) => {
+             nmatches!($name, $pat, $path, Options::default());
+         };
+         ($name:ident, $pat:expr, $path:expr, $options:expr) => {
+             #[test]
+             fn $name() {
+                 let mut builder = GlobBuilder::new($pat);
+                 if let Some(casei) = $options.casei {
+                     builder.case_insensitive(casei);
+                 }
+                 if let Some(litsep) = $options.litsep {
+                     builder.literal_separator(litsep);
+                 }
+                 if let Some(bsesc) = $options.bsesc {
+                     builder.backslash_escape(bsesc);
+                 }
+                 if let Some(ealtre) = $options.ealtre {
+                     builder.empty_alternates(ealtre);
+                 }
+                 let pat = builder.build().unwrap();
+                 let matcher = pat.compile_matcher();
+                 let strategic = pat.compile_strategic_matcher();
+                 let set = GlobSetBuilder::new().add(pat).build().unwrap();
+                 assert!(!matcher.is_match($path));
+                 assert!(!strategic.is_match($path));
+                 assert!(!set.is_match($path));
+             }
+         };
+     }
+ 
+     fn s(string: &str) -> String {
+         string.to_string()
+     }
+ 
+     fn class(s: char, e: char) -> Token {
+-        Class { negated: false, ranges: vec![(s, e)] }
++        Class { negated: false, ranges: vec![(s, e)], posix_classes: vec![] }
+     }
+ 
+     fn classn(s: char, e: char) -> Token {
+-        Class { negated: true, ranges: vec![(s, e)] }
++        Class { negated: true, ranges: vec![(s, e)], posix_classes: vec![] }
+     }
+ 
+     fn rclass(ranges: &[(char, char)]) -> Token {
+-        Class { negated: false, ranges: ranges.to_vec() }
++        Class {
++            negated: false,
++            ranges: ranges.to_vec(),
++            posix_classes: vec![],
++        }
+     }
+ 
+     fn rclassn(ranges: &[(char, char)]) -> Token {
+-        Class { negated: true, ranges: ranges.to_vec() }
++        Class { negated: true, ranges: ranges.to_vec(), posix_classes: vec![] }
++    }
++
++    fn pclass(class: super::PosixClass) -> Token {
++        Class { negated: false, ranges: vec![], posix_classes: vec![class] }
++    }
++
++    fn pclassn(class: super::PosixClass) -> Token {
++        Class { negated: true, ranges: vec![], posix_classes: vec![class] }
++    }
++
++    fn mixed_class(
++        ranges: &[(char, char)],
++        classes: &[super::PosixClass],
++    ) -> Token {
++        Class {
++            negated: false,
++            ranges: ranges.to_vec(),
++            posix_classes: classes.to_vec(),
++        }
+     }
+ 
+     syntax!(literal1, "a", vec![Literal('a')]);
+     syntax!(literal2, "ab", vec![Literal('a'), Literal('b')]);
+     syntax!(any1, "?", vec![Any]);
+     syntax!(any2, "a?b", vec![Literal('a'), Any, Literal('b')]);
+     syntax!(seq1, "*", vec![ZeroOrMore]);
+     syntax!(seq2, "a*b", vec![Literal('a'), ZeroOrMore, Literal('b')]);
+     syntax!(
+         seq3,
+         "*a*b*",
+         vec![ZeroOrMore, Literal('a'), ZeroOrMore, Literal('b'), ZeroOrMore,]
+     );
+     syntax!(rseq1, "**", vec![RecursivePrefix]);
+     syntax!(rseq2, "**/", vec![RecursivePrefix]);
+     syntax!(rseq3, "/**", vec![RecursiveSuffix]);
+     syntax!(rseq4, "/**/", vec![RecursiveZeroOrMore]);
+     syntax!(
+         rseq5,
+         "a/**/b",
+         vec![Literal('a'), RecursiveZeroOrMore, Literal('b'),]
+     );
+     syntax!(cls1, "[a]", vec![class('a', 'a')]);
+     syntax!(cls2, "[!a]", vec![classn('a', 'a')]);
+     syntax!(cls3, "[a-z]", vec![class('a', 'z')]);
+     syntax!(cls4, "[!a-z]", vec![classn('a', 'z')]);
+     syntax!(cls5, "[-]", vec![class('-', '-')]);
+     syntax!(cls6, "[]]", vec![class(']', ']')]);
+     syntax!(cls7, "[*]", vec![class('*', '*')]);
+     syntax!(cls8, "[!!]", vec![classn('!', '!')]);
+     syntax!(cls9, "[a-]", vec![rclass(&[('a', 'a'), ('-', '-')])]);
+     syntax!(cls10, "[-a-z]", vec![rclass(&[('-', '-'), ('a', 'z')])]);
+     syntax!(cls11, "[a-z-]", vec![rclass(&[('a', 'z'), ('-', '-')])]);
+     syntax!(
+         cls12,
+         "[-a-z-]",
+         vec![rclass(&[('-', '-'), ('a', 'z'), ('-', '-')]),]
+     );
+     syntax!(cls13, "[]-z]", vec![class(']', 'z')]);
+     syntax!(cls14, "[--z]", vec![class('-', 'z')]);
+     syntax!(cls15, "[ --]", vec![class(' ', '-')]);
+     syntax!(cls16, "[0-9a-z]", vec![rclass(&[('0', '9'), ('a', 'z')])]);
+     syntax!(cls17, "[a-z0-9]", vec![rclass(&[('a', 'z'), ('0', '9')])]);
+     syntax!(cls18, "[!0-9a-z]", vec![rclassn(&[('0', '9'), ('a', 'z')])]);
+     syntax!(cls19, "[!a-z0-9]", vec![rclassn(&[('a', 'z'), ('0', '9')])]);
+     syntax!(cls20, "[^a]", vec![classn('a', 'a')]);
+     syntax!(cls21, "[^a-z]", vec![classn('a', 'z')]);
+ 
++    // POSIX character class tests
++    syntax!(posix_cls1, "[[:space:]]", vec![pclass(super::PosixClass::Space)]);
++    syntax!(posix_cls2, "[[:digit:]]", vec![pclass(super::PosixClass::Digit)]);
++    syntax!(posix_cls3, "[[:alpha:]]", vec![pclass(super::PosixClass::Alpha)]);
++    syntax!(posix_cls4, "[[:alnum:]]", vec![pclass(super::PosixClass::Alnum)]);
++    syntax!(posix_cls5, "[[:lower:]]", vec![pclass(super::PosixClass::Lower)]);
++    syntax!(posix_cls6, "[[:upper:]]", vec![pclass(super::PosixClass::Upper)]);
++    syntax!(
++        posix_cls7,
++        "[[:xdigit:]]",
++        vec![pclass(super::PosixClass::Xdigit)]
++    );
++    syntax!(posix_cls8, "[[:blank:]]", vec![pclass(super::PosixClass::Blank)]);
++    syntax!(posix_cls9, "[[:cntrl:]]", vec![pclass(super::PosixClass::Cntrl)]);
++    syntax!(
++        posix_cls10,
++        "[[:graph:]]",
++        vec![pclass(super::PosixClass::Graph)]
++    );
++    syntax!(
++        posix_cls11,
++        "[[:print:]]",
++        vec![pclass(super::PosixClass::Print)]
++    );
++    syntax!(
++        posix_cls12,
++        "[[:punct:]]",
++        vec![pclass(super::PosixClass::Punct)]
++    );
++
++    // Negated POSIX classes
++    syntax!(
++        posix_cls13,
++        "[^[:space:]]",
++        vec![pclassn(super::PosixClass::Space)]
++    );
++    syntax!(
++        posix_cls14,
++        "[![:digit:]]",
++        vec![pclassn(super::PosixClass::Digit)]
++    );
++
++    // Mixed POSIX classes and ranges
++    syntax!(
++        posix_cls15,
++        "[a[:digit:]z]",
++        vec![mixed_class(
++            &[('a', 'a'), ('z', 'z')],
++            &[super::PosixClass::Digit]
++        )]
++    );
++    syntax!(
++        posix_cls16,
++        "[[:digit:]a-f]",
++        vec![mixed_class(&[('a', 'f')], &[super::PosixClass::Digit])]
++    );
++    syntax!(
++        posix_cls17,
++        "[0-9[:space:]]",
++        vec![mixed_class(&[('0', '9')], &[super::PosixClass::Space])]
++    );
++
++    // Invalid POSIX class names should be treated as literals
++    syntax!(
++        posix_cls18,
++        "[[:invalid:]]",
++        vec![
++            rclass(&[
++                ('[', '['),
++                (':', ':'),
++                ('i', 'i'),
++                ('n', 'n'),
++                ('v', 'v'),
++                ('a', 'a'),
++                ('l', 'l'),
++                ('i', 'i'),
++                ('d', 'd'),
++                (':', ':')
++            ]),
++            Literal(']')
++        ]
++    );
++
++    // Edge case: Multiple POSIX classes in one bracket expression
++    syntax!(
++        posix_edge1,
++        "[[:space:][:digit:]]",
++        vec![mixed_class(
++            &[],
++            &[super::PosixClass::Space, super::PosixClass::Digit]
++        )]
++    );
++
++    // Edge case: POSIX class at different positions
++    syntax!(
++        posix_edge2,
++        "[a[:digit:]]",
++        vec![mixed_class(&[('a', 'a')], &[super::PosixClass::Digit])]
++    );
++    syntax!(
++        posix_edge3,
++        "[[:digit:]z]",
++        vec![mixed_class(&[('z', 'z')], &[super::PosixClass::Digit])]
++    );
++
++    // Edge case: Dash with POSIX class
++    syntax!(
++        posix_edge4,
++        "[-[:digit:]]",
++        vec![mixed_class(&[('-', '-')], &[super::PosixClass::Digit])]
++    );
++    syntax!(
++        posix_edge5,
++        "[[:digit:]-]",
++        vec![mixed_class(&[('-', '-')], &[super::PosixClass::Digit])]
++    );
++
+     syntaxerr!(err_unclosed1, "[", ErrorKind::UnclosedClass);
+     syntaxerr!(err_unclosed2, "[]", ErrorKind::UnclosedClass);
+     syntaxerr!(err_unclosed3, "[!", ErrorKind::UnclosedClass);
+     syntaxerr!(err_unclosed4, "[!]", ErrorKind::UnclosedClass);
+     syntaxerr!(err_range1, "[z-a]", ErrorKind::InvalidRange('z', 'a'));
+     syntaxerr!(err_range2, "[z--]", ErrorKind::InvalidRange('z', '-'));
+     syntaxerr!(err_alt1, "{a,b", ErrorKind::UnclosedAlternates);
+     syntaxerr!(err_alt2, "{a,{b,c}", ErrorKind::UnclosedAlternates);
+     syntaxerr!(err_alt3, "a,b}", ErrorKind::UnopenedAlternates);
+     syntaxerr!(err_alt4, "{a,b}}", ErrorKind::UnopenedAlternates);
+ 
+     const CASEI: Options = Options {
+         casei: Some(true),
+         litsep: None,
+         bsesc: None,
+         ealtre: None,
+         unccls: None,
+     };
+     const SLASHLIT: Options = Options {
+         casei: None,
+         litsep: Some(true),
+         bsesc: None,
+         ealtre: None,
+         unccls: None,
+     };
+     const NOBSESC: Options = Options {
+         casei: None,
+         litsep: None,
+         bsesc: Some(false),
+         ealtre: None,
+         unccls: None,
+     };
+     const BSESC: Options = Options {
+         casei: None,
+         litsep: None,
+         bsesc: Some(true),
+         ealtre: None,
+         unccls: None,
+     };
+     const EALTRE: Options = Options {
+         casei: None,
+         litsep: None,
+         bsesc: Some(true),
+         ealtre: Some(true),
+         unccls: None,
+     };
+     const UNCCLS: Options = Options {
+         casei: None,
+         litsep: None,
+         bsesc: None,
+         ealtre: None,
+         unccls: Some(true),
+     };
+ 
+     toregex!(allow_unclosed_class_single, r"[", r"^\[$", &UNCCLS);
+     toregex!(allow_unclosed_class_many, r"[abc", r"^\[abc$", &UNCCLS);
+     toregex!(allow_unclosed_class_empty1, r"[]", r"^\[\]$", &UNCCLS);
+     toregex!(allow_unclosed_class_empty2, r"[][", r"^\[\]\[$", &UNCCLS);
+     toregex!(allow_unclosed_class_negated_unclosed, r"[!", r"^\[!$", &UNCCLS);
+     toregex!(allow_unclosed_class_negated_empty, r"[!]", r"^\[!\]$", &UNCCLS);
+     toregex!(
+         allow_unclosed_class_brace1,
+         r"{[abc,xyz}",
+         r"^(?:\[abc|xyz)$",
+         &UNCCLS
+     );
+     toregex!(
+         allow_unclosed_class_brace2,
+         r"{[abc,[xyz}",
+         r"^(?:\[abc|\[xyz)$",
+         &UNCCLS
+     );
+     toregex!(
+         allow_unclosed_class_brace3,
+         r"{[abc],[xyz}",
+         r"^(?:[abc]|\[xyz)$",
+         &UNCCLS
+     );
+ 
+     toregex!(re_empty, "", "^$");
+ 
++    // POSIX character class regex conversion tests
++    toregex!(posix_re1, "[[:space:]]", r"^[ \t\n\r\x0B\x0C]$");
++    toregex!(posix_re2, "[[:digit:]]", r"^[0-9]$");
++    toregex!(posix_re3, "[[:alpha:]]", r"^[A-Za-z]$");
++    toregex!(posix_re4, "[[:alnum:]]", r"^[0-9A-Za-z]$");
++    toregex!(posix_re5, "[[:xdigit:]]", r"^[0-9A-Fa-f]$");
++    toregex!(posix_re6, "[^[:space:]]", r"^[^ \t\n\r\x0B\x0C]$");
++    toregex!(posix_re7, "[![:digit:]]", r"^[^0-9]$");
++    toregex!(posix_re8, "[a[:digit:]z]", r"^[az0-9]$");
++    toregex!(posix_re9, "[[:digit:]a-f]", r"^[a-f0-9]$");
++
+     toregex!(re_casei, "a", "(?i)^a$", &CASEI);
+ 
+     toregex!(re_slash1, "?", r"^[^/]$", SLASHLIT);
+     toregex!(re_slash2, "*", r"^[^/]*$", SLASHLIT);
+ 
+     toregex!(re1, "a", "^a$");
+     toregex!(re2, "?", "^.$");
+     toregex!(re3, "*", "^.*$");
+     toregex!(re4, "a?", "^a.$");
+     toregex!(re5, "?a", "^.a$");
+     toregex!(re6, "a*", "^a.*$");
+     toregex!(re7, "*a", "^.*a$");
+     toregex!(re8, "[*]", r"^[\*]$");
+     toregex!(re9, "[+]", r"^[\+]$");
+     toregex!(re10, "+", r"^\+$");
+     toregex!(re11, "☃", r"^\xe2\x98\x83$");
+     toregex!(re12, "**", r"^.*$");
+     toregex!(re13, "**/", r"^.*$");
+     toregex!(re14, "**/*", r"^(?:/?|.*/).*$");
+     toregex!(re15, "**/**", r"^.*$");
+     toregex!(re16, "**/**/*", r"^(?:/?|.*/).*$");
+     toregex!(re17, "**/**/**", r"^.*$");
+     toregex!(re18, "**/**/**/*", r"^(?:/?|.*/).*$");
+     toregex!(re19, "a/**", r"^a/.*$");
+     toregex!(re20, "a/**/**", r"^a/.*$");
+     toregex!(re21, "a/**/**/**", r"^a/.*$");
+     toregex!(re22, "a/**/b", r"^a(?:/|/.*/)b$");
+     toregex!(re23, "a/**/**/b", r"^a(?:/|/.*/)b$");
+     toregex!(re24, "a/**/**/**/b", r"^a(?:/|/.*/)b$");
+     toregex!(re25, "**/b", r"^(?:/?|.*/)b$");
+     toregex!(re26, "**/**/b", r"^(?:/?|.*/)b$");
+     toregex!(re27, "**/**/**/b", r"^(?:/?|.*/)b$");
+     toregex!(re28, "a**", r"^a.*.*$");
+     toregex!(re29, "**a", r"^.*.*a$");
+     toregex!(re30, "a**b", r"^a.*.*b$");
+     toregex!(re31, "***", r"^.*.*.*$");
+     toregex!(re32, "/a**", r"^/a.*.*$");
+     toregex!(re33, "/**a", r"^/.*.*a$");
+     toregex!(re34, "/a**b", r"^/a.*.*b$");
+     toregex!(re35, "{a,b}", r"^(?:a|b)$");
+     toregex!(re36, "{a,{b,c}}", r"^(?:a|(?:b|c))$");
+     toregex!(re37, "{{a,b},{c,d}}", r"^(?:(?:a|b)|(?:c|d))$");
+ 
+     matches!(match1, "a", "a");
+     matches!(match2, "a*b", "a_b");
+     matches!(match3, "a*b*c", "abc");
+     matches!(match4, "a*b*c", "a_b_c");
+     matches!(match5, "a*b*c", "a___b___c");
+     matches!(match6, "abc*abc*abc", "abcabcabcabcabcabcabc");
+     matches!(match7, "a*a*a*a*a*a*a*a*a", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+     matches!(match8, "a*b[xyz]c*d", "abxcdbxcddd");
+     matches!(match9, "*.rs", ".rs");
+     matches!(match10, "☃", "☃");
+ 
+     matches!(matchrec1, "some/**/needle.txt", "some/needle.txt");
+     matches!(matchrec2, "some/**/needle.txt", "some/one/needle.txt");
+     matches!(matchrec3, "some/**/needle.txt", "some/one/two/needle.txt");
+     matches!(matchrec4, "some/**/needle.txt", "some/other/needle.txt");
+     matches!(matchrec5, "**", "abcde");
+     matches!(matchrec6, "**", "");
+     matches!(matchrec7, "**", ".asdf");
+     matches!(matchrec8, "**", "/x/.asdf");
+     matches!(matchrec9, "some/**/**/needle.txt", "some/needle.txt");
+     matches!(matchrec10, "some/**/**/needle.txt", "some/one/needle.txt");
+     matches!(matchrec11, "some/**/**/needle.txt", "some/one/two/needle.txt");
+     matches!(matchrec12, "some/**/**/needle.txt", "some/other/needle.txt");
+     matches!(matchrec13, "**/test", "one/two/test");
+     matches!(matchrec14, "**/test", "one/test");
+     matches!(matchrec15, "**/test", "test");
+     matches!(matchrec16, "/**/test", "/one/two/test");
+     matches!(matchrec17, "/**/test", "/one/test");
+     matches!(matchrec18, "/**/test", "/test");
+     matches!(matchrec19, "**/.*", ".abc");
+     matches!(matchrec20, "**/.*", "abc/.abc");
+     matches!(matchrec21, "**/foo/bar", "foo/bar");
+     matches!(matchrec22, ".*/**", ".abc/abc");
+     matches!(matchrec23, "test/**", "test/");
+     matches!(matchrec24, "test/**", "test/one");
+     matches!(matchrec25, "test/**", "test/one/two");
+     matches!(matchrec26, "some/*/needle.txt", "some/one/needle.txt");
+@@ -1486,160 +1812,214 @@ mod tests {
+     #[cfg(unix)]
+     nmatches!(matchslash2, "abc?def", "abc/def", SLASHLIT);
+     #[cfg(not(unix))]
+     nmatches!(matchslash2, "abc?def", "abc\\def", SLASHLIT);
+     nmatches!(matchslash3, "abc*def", "abc/def", SLASHLIT);
+     matches!(matchslash4, "abc[/]def", "abc/def", SLASHLIT); // differs
+     #[cfg(unix)]
+     nmatches!(matchslash5, "abc\\def", "abc/def", SLASHLIT);
+     #[cfg(not(unix))]
+     matches!(matchslash5, "abc\\def", "abc/def", SLASHLIT);
+ 
+     matches!(matchbackslash1, "\\[", "[", BSESC);
+     matches!(matchbackslash2, "\\?", "?", BSESC);
+     matches!(matchbackslash3, "\\*", "*", BSESC);
+     matches!(matchbackslash4, "\\[a-z]", "\\a", NOBSESC);
+     matches!(matchbackslash5, "\\?", "\\a", NOBSESC);
+     matches!(matchbackslash6, "\\*", "\\\\", NOBSESC);
+     #[cfg(unix)]
+     matches!(matchbackslash7, "\\a", "a");
+     #[cfg(not(unix))]
+     matches!(matchbackslash8, "\\a", "/a");
+ 
+     nmatches!(matchnot1, "a*b*c", "abcd");
+     nmatches!(matchnot2, "abc*abc*abc", "abcabcabcabcabcabcabca");
+     nmatches!(matchnot3, "some/**/needle.txt", "some/other/notthis.txt");
+     nmatches!(matchnot4, "some/**/**/needle.txt", "some/other/notthis.txt");
+     nmatches!(matchnot5, "/**/test", "test");
+     nmatches!(matchnot6, "/**/test", "/one/notthis");
+     nmatches!(matchnot7, "/**/test", "/notthis");
+     nmatches!(matchnot8, "**/.*", "ab.c");
+     nmatches!(matchnot9, "**/.*", "abc/ab.c");
+     nmatches!(matchnot10, ".*/**", "a.bc");
+     nmatches!(matchnot11, ".*/**", "abc/a.bc");
+     nmatches!(matchnot12, "a[0-9]b", "a_b");
+     nmatches!(matchnot13, "a[!0-9]b", "a0b");
+     nmatches!(matchnot14, "a[!0-9]b", "a9b");
+     nmatches!(matchnot15, "[!-]", "-");
+     nmatches!(matchnot16, "*hello.txt", "hello.txt-and-then-some");
+     nmatches!(matchnot17, "*hello.txt", "goodbye.txt");
+     nmatches!(
+         matchnot18,
+         "*some/path/to/hello.txt",
+         "some/path/to/hello.txt-and-then-some"
+     );
+     nmatches!(
+         matchnot19,
+         "*some/path/to/hello.txt",
+         "some/other/path/to/hello.txt"
+     );
+     nmatches!(matchnot20, "a", "foo/a");
+     nmatches!(matchnot21, "./foo", "foo");
+     nmatches!(matchnot22, "**/foo", "foofoo");
+     nmatches!(matchnot23, "**/foo/bar", "foofoo/bar");
+     nmatches!(matchnot24, "/*.c", "mozilla-sha1/sha1.c");
+     nmatches!(matchnot25, "*.c", "mozilla-sha1/sha1.c", SLASHLIT);
+     nmatches!(
+         matchnot26,
+         "**/m4/ltoptions.m4",
+         "csharp/src/packages/repositories.config",
+         SLASHLIT
+     );
+     nmatches!(matchnot27, "a[^0-9]b", "a0b");
+     nmatches!(matchnot28, "a[^0-9]b", "a9b");
+     nmatches!(matchnot29, "[^-]", "-");
+     nmatches!(matchnot30, "some/*/needle.txt", "some/needle.txt");
+     nmatches!(
+         matchrec31,
+         "some/*/needle.txt",
+         "some/one/two/needle.txt",
+         SLASHLIT
+     );
+     nmatches!(
+         matchrec32,
+         "some/*/needle.txt",
+         "some/one/two/three/needle.txt",
+         SLASHLIT
+     );
+     nmatches!(matchrec33, ".*/**", ".abc");
+     nmatches!(matchrec34, "foo/**", "foo");
+ 
++    // POSIX character class matching tests
++    matches!(posix_match1, "[[:space:]]", " ");
++    matches!(posix_match2, "[[:space:]]", "\t");
++    matches!(posix_match3, "[[:space:]]", "\n");
++    matches!(posix_match4, "[[:digit:]]", "0");
++    matches!(posix_match5, "[[:digit:]]", "9");
++    matches!(posix_match6, "[[:alpha:]]", "a");
++    matches!(posix_match7, "[[:alpha:]]", "Z");
++    matches!(posix_match8, "[[:lower:]]", "a");
++    matches!(posix_match9, "[[:upper:]]", "Z");
++    matches!(posix_match10, "[[:xdigit:]]", "a");
++    matches!(posix_match11, "[[:xdigit:]]", "F");
++
++    // POSIX classes in filenames
++    matches!(posix_match12, "foo[[:space:]]bar.txt", "foo bar.txt");
++    matches!(posix_match13, "foo[[:space:]]bar.txt", "foo\tbar.txt");
++    matches!(posix_match14, "test[[:digit:]].txt", "test0.txt");
++    matches!(posix_match15, "test[[:digit:]].txt", "test9.txt");
++
++    // Negated POSIX classes
++    matches!(posix_match16, "[^[:space:]]", "a");
++    matches!(posix_match17, "[^[:digit:]]", "x");
++    matches!(posix_match18, "[![:space:]]", "a");
++
++    // Mixed ranges and POSIX classes
++    matches!(posix_match19, "[[:digit:]a-f]", "5");
++    matches!(posix_match20, "[[:digit:]a-f]", "c");
++    matches!(posix_match21, "[0-9[:space:]]", "5");
++    matches!(posix_match22, "[0-9[:space:]]", " ");
++
++    // Negative POSIX tests
++    nmatches!(posix_nomatch1, "[[:space:]]", "a");
++    nmatches!(posix_nomatch2, "[[:digit:]]", "a");
++    nmatches!(posix_nomatch3, "[[:alpha:]]", "0");
++    nmatches!(posix_nomatch4, "[[:lower:]]", "Z");
++    nmatches!(posix_nomatch5, "[[:upper:]]", "a");
++    nmatches!(posix_nomatch6, "[^[:space:]]", " ");
++    nmatches!(posix_nomatch7, "[^[:digit:]]", "5");
++    nmatches!(posix_nomatch8, "foo[[:space:]]bar.txt", "foobar.txt");
++    nmatches!(posix_nomatch9, "foo[[:space:]]bar.txt", "foo  bar.txt");
++
++    // Edge case matching tests
++    matches!(posix_edge_match1, "[[:space:][:digit:]]", " ");
++    matches!(posix_edge_match2, "[[:space:][:digit:]]", "5");
++    nmatches!(posix_edge_match3, "[[:space:][:digit:]]", "a");
++    matches!(posix_edge_match4, "[a[:digit:]]", "a");
++    matches!(posix_edge_match5, "[a[:digit:]]", "5");
++    matches!(posix_edge_match6, "[[:digit:]z]", "0");
++    matches!(posix_edge_match7, "[[:digit:]z]", "z");
++    matches!(posix_edge_match8, "[-[:digit:]]", "-");
++    matches!(posix_edge_match9, "[-[:digit:]]", "3");
++    matches!(posix_edge_match10, "[[:digit:]-]", "8");
++    matches!(posix_edge_match11, "[[:digit:]-]", "-");
++
+     macro_rules! extract {
+         ($which:ident, $name:ident, $pat:expr, $expect:expr) => {
+             extract!($which, $name, $pat, $expect, Options::default());
+         };
+         ($which:ident, $name:ident, $pat:expr, $expect:expr, $options:expr) => {
+             #[test]
+             fn $name() {
+                 let mut builder = GlobBuilder::new($pat);
+                 if let Some(casei) = $options.casei {
+                     builder.case_insensitive(casei);
+                 }
+                 if let Some(litsep) = $options.litsep {
+                     builder.literal_separator(litsep);
+                 }
+                 if let Some(bsesc) = $options.bsesc {
+                     builder.backslash_escape(bsesc);
+                 }
+                 if let Some(ealtre) = $options.ealtre {
+                     builder.empty_alternates(ealtre);
+                 }
+                 let pat = builder.build().unwrap();
+                 assert_eq!($expect, pat.$which());
+             }
+         };
+     }
+ 
+     macro_rules! literal {
+         ($($tt:tt)*) => { extract!(literal, $($tt)*); }
+     }
+ 
+     macro_rules! basetokens {
+         ($($tt:tt)*) => { extract!(basename_tokens, $($tt)*); }
+     }
+ 
+     macro_rules! ext {
+         ($($tt:tt)*) => { extract!(ext, $($tt)*); }
+     }
+ 
+     macro_rules! required_ext {
+         ($($tt:tt)*) => { extract!(required_ext, $($tt)*); }
+     }
+ 
+     macro_rules! prefix {
+         ($($tt:tt)*) => { extract!(prefix, $($tt)*); }
+     }
+ 
+     macro_rules! suffix {
+         ($($tt:tt)*) => { extract!(suffix, $($tt)*); }
+     }
+ 
+     macro_rules! baseliteral {
+         ($($tt:tt)*) => { extract!(basename_literal, $($tt)*); }
+     }
+ 
+     literal!(extract_lit1, "foo", Some(s("foo")));
+     literal!(extract_lit2, "foo", None, CASEI);
+     literal!(extract_lit3, "/foo", Some(s("/foo")));
+     literal!(extract_lit4, "/foo/", Some(s("/foo/")));
+     literal!(extract_lit5, "/foo/bar", Some(s("/foo/bar")));
+     literal!(extract_lit6, "*.foo", None);
+     literal!(extract_lit7, "foo/bar", Some(s("foo/bar")));
+     literal!(extract_lit8, "**/foo/bar", None);
+ 
+     basetokens!(
+         extract_basetoks1,
+         "**/foo",
+         Some(&*vec![Literal('f'), Literal('o'), Literal('o'),])
+     );
+     basetokens!(extract_basetoks2, "**/foo", None, CASEI);
+     basetokens!(
+         extract_basetoks3,
+         "**/foo",
+         Some(&*vec![Literal('f'), Literal('o'), Literal('o'),]),
+         SLASHLIT
+     );
+     basetokens!(extract_basetoks4, "*foo", None, SLASHLIT);
+     basetokens!(extract_basetoks5, "*foo", None);
+     basetokens!(extract_basetoks6, "**/fo*o", None);
+     basetokens!(
+         extract_basetoks7,
+diff --git a/crates/globset/src/lib.rs b/crates/globset/src/lib.rs
+index 27076ea..3df464d 100644
+--- a/crates/globset/src/lib.rs
++++ b/crates/globset/src/lib.rs
+@@ -7,160 +7,166 @@ matched. For example, given this set of globs:
+ 
+ * `*.rs`
+ * `src/lib.rs`
+ * `src/**/foo.rs`
+ 
+ and a path `src/bar/baz/foo.rs`, then the set would report the first and third
+ globs as matching.
+ 
+ # Example: one glob
+ 
+ This example shows how to match a single glob against a single file path.
+ 
+ ```
+ use globset::Glob;
+ 
+ let glob = Glob::new("*.rs")?.compile_matcher();
+ 
+ assert!(glob.is_match("foo.rs"));
+ assert!(glob.is_match("foo/bar.rs"));
+ assert!(!glob.is_match("Cargo.toml"));
+ # Ok::<(), Box<dyn std::error::Error>>(())
+ ```
+ 
+ # Example: configuring a glob matcher
+ 
+ This example shows how to use a `GlobBuilder` to configure aspects of match
+ semantics. In this example, we prevent wildcards from matching path separators.
+ 
+ ```
+ use globset::GlobBuilder;
+ 
+ let glob = GlobBuilder::new("*.rs")
+     .literal_separator(true).build()?.compile_matcher();
+ 
+ assert!(glob.is_match("foo.rs"));
+ assert!(!glob.is_match("foo/bar.rs")); // no longer matches
+ assert!(!glob.is_match("Cargo.toml"));
+ # Ok::<(), Box<dyn std::error::Error>>(())
+ ```
+ 
+ # Example: match multiple globs at once
+ 
+ This example shows how to match multiple glob patterns at once.
+ 
+ ```
+ use globset::{Glob, GlobSetBuilder};
+ 
+ let mut builder = GlobSetBuilder::new();
+ // A GlobBuilder can be used to configure each glob's match semantics
+ // independently.
+ builder.add(Glob::new("*.rs")?);
+ builder.add(Glob::new("src/lib.rs")?);
+ builder.add(Glob::new("src/**/foo.rs")?);
+ let set = builder.build()?;
+ 
+ assert_eq!(set.matches("src/bar/baz/foo.rs"), vec![0, 2]);
+ # Ok::<(), Box<dyn std::error::Error>>(())
+ ```
+ 
+ # Syntax
+ 
+ Standard Unix-style glob syntax is supported:
+ 
+ * `?` matches any single character. (If the `literal_separator` option is
+   enabled, then `?` can never match a path separator.)
+ * `*` matches zero or more characters. (If the `literal_separator` option is
+   enabled, then `*` can never match a path separator.)
+ * `**` recursively matches directories but are only legal in three situations.
+   First, if the glob starts with <code>\*\*&#x2F;</code>, then it matches
+   all directories. For example, <code>\*\*&#x2F;foo</code> matches `foo`
+   and `bar/foo` but not `foo/bar`. Secondly, if the glob ends with
+   <code>&#x2F;\*\*</code>, then it matches all sub-entries. For example,
+   <code>foo&#x2F;\*\*</code> matches `foo/a` and `foo/a/b`, but not `foo`.
+   Thirdly, if the glob contains <code>&#x2F;\*\*&#x2F;</code> anywhere within
+   the pattern, then it matches zero or more directories. Using `**` anywhere
+   else is illegal (N.B. the glob `**` is allowed and means "match everything").
+ * `{a,b}` matches `a` or `b` where `a` and `b` are arbitrary glob patterns.
+   (N.B. Nesting `{...}` is not currently allowed.)
+ * `[ab]` matches `a` or `b` where `a` and `b` are characters. Use
+   `[!ab]` to match any character except for `a` and `b`.
++* `[[:alpha:]]`, `[[:digit:]]`, etc. are POSIX character classes that match
++  specific character sets. Supported classes include `alnum`, `alpha`, `blank`,
++  `cntrl`, `digit`, `graph`, `lower`, `print`, `punct`, `space`, `upper`, and
++  `xdigit`. These use ASCII-only definitions (not locale-dependent). POSIX
++  classes can be combined with regular character ranges, e.g., `[[:digit:]a-f]`
++  matches hexadecimal digits.
+ * Metacharacters such as `*` and `?` can be escaped with character class
+   notation. e.g., `[*]` matches `*`.
+ * When backslash escapes are enabled, a backslash (`\`) will escape all meta
+   characters in a glob. If it precedes a non-meta character, then the slash is
+   ignored. A `\\` will match a literal `\\`. Note that this mode is only
+   enabled on Unix platforms by default, but can be enabled on any platform
+   via the `backslash_escape` setting on `Glob`.
+ 
+ A `GlobBuilder` can be used to prevent wildcards from matching path separators,
+ or to enable case insensitive matching.
+ 
+ # Crate Features
+ 
+ This crate includes optional features that can be enabled if necessary.
+ These features are not required but may be useful depending on the use case.
+ 
+ The following features are available:
+ 
+ * **arbitrary** -
+   Enabling this feature introduces a public dependency on the
+   [`arbitrary`](https://crates.io/crates/arbitrary)
+   crate. Namely, it implements the `Arbitrary` trait from that crate for the
+   [`Glob`] type. This feature is disabled by default.
+ */
+ 
+ #![deny(missing_docs)]
+ 
+ use std::{
+     borrow::Cow,
+     panic::{RefUnwindSafe, UnwindSafe},
+     path::Path,
+     sync::Arc,
+ };
+ 
+ use {
+     aho_corasick::AhoCorasick,
+     bstr::{B, ByteSlice, ByteVec},
+     regex_automata::{
+         PatternSet,
+         meta::Regex,
+         util::pool::{Pool, PoolGuard},
+     },
+ };
+ 
+ use crate::{
+     glob::MatchStrategy,
+     pathutil::{file_name, file_name_ext, normalize_path},
+ };
+ 
+ pub use crate::glob::{Glob, GlobBuilder, GlobMatcher};
+ 
+ mod fnv;
+ mod glob;
+ mod pathutil;
+ 
+ #[cfg(feature = "serde1")]
+ mod serde_impl;
+ 
+ #[cfg(feature = "log")]
+ macro_rules! debug {
+     ($($token:tt)*) => (::log::debug!($($token)*);)
+ }
+ 
+ #[cfg(not(feature = "log"))]
+ macro_rules! debug {
+     ($($token:tt)*) => {};
+ }
+ 
+ /// Represents an error that can occur when parsing a glob pattern.
+ #[derive(Clone, Debug, Eq, PartialEq)]
+ pub struct Error {
+     /// The original glob provided by the caller.
+     glob: Option<String>,
+     /// The kind of error.
+     kind: ErrorKind,
+ }
+ 
+ /// The kind of error that can occur when parsing a glob pattern.
+ #[derive(Clone, Debug, Eq, PartialEq)]
+ #[non_exhaustive]

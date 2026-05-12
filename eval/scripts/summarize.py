@@ -35,7 +35,10 @@ def parse_metrics(path: Path) -> dict:
     match = re.search(r"```toml\n(.*?)```", text, flags=re.DOTALL)
     if not match:
         return {}
-    return tomllib.loads(match.group(1))
+    metrics = tomllib.loads(match.group(1))
+    if metrics.get("judgement_status") != "complete":
+        return {}
+    return metrics
 
 
 def new_case_rows() -> list[dict]:
@@ -110,6 +113,7 @@ def apply_legacy_metrics(row: dict, judgement: dict) -> dict:
                 top3_useful += 1
     missed = len(judgement.get("missed", []))
     return {
+        "judgement_status": "complete",
         "top3_total": top3_total,
         "top3_useful": top3_useful,
         "actionable": useful > 0,

@@ -1,0 +1,8 @@
+case_id = "ripgrep-3219"
+repo = "BurntSushi/ripgrep"
+pr = 3219
+kind = "negative"
+status = "candidate"
+base_sha = "57c190d56eedac90c061a238b63dbfed434fee50"
+head_sha = "e261286788556fa62243e5bf1d8cad6be8ae874e"
+diff_exit = 0

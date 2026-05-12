@@ -1,0 +1,269 @@
+[[candidates]]
+id = "tokio-8125"
+repo = "tokio-rs/tokio"
+pr = 8125
+score = 3
+title = "clippy: fix manual_clear lint"
+url = "https://github.com/tokio-rs/tokio/pull/8125"
+reasons = ["title_or_label:fix", "merged"]
+
+[[candidates]]
+id = "tokio-8106"
+repo = "tokio-rs/tokio"
+pr = 8106
+score = 3
+title = "Merge CI fixes into master"
+url = "https://github.com/tokio-rs/tokio/pull/8106"
+reasons = ["title_or_label:fix", "merged"]
+
+[[candidates]]
+id = "tokio-8105"
+repo = "tokio-rs/tokio"
+pr = 8105
+score = 3
+title = "Merge CI fixes from tokio-1.47.x into tokio-1.51.x"
+url = "https://github.com/tokio-rs/tokio/pull/8105"
+reasons = ["title_or_label:fix", "merged"]
+
+[[candidates]]
+id = "tokio-8101"
+repo = "tokio-rs/tokio"
+pr = 8101
+score = 3
+title = "Fix CI on tokio-1.47.x"
+url = "https://github.com/tokio-rs/tokio/pull/8101"
+reasons = ["title_or_label:fix", "merged"]
+
+[[candidates]]
+id = "tokio-8077"
+repo = "tokio-rs/tokio"
+pr = 8077
+score = 3
+title = "Add `#[track_caller]` and panic docs to `timeout_at()`"
+url = "https://github.com/tokio-rs/tokio/pull/8077"
+reasons = ["title_or_label:panic", "merged"]
+
+[[candidates]]
+id = "tokio-8134"
+repo = "tokio-rs/tokio"
+pr = 8134
+score = 1
+title = "fs(tests): improve io_uring tests"
+url = "https://github.com/tokio-rs/tokio/pull/8134"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8131"
+repo = "tokio-rs/tokio"
+pr = 8131
+score = 1
+title = "Merge 1.52.3"
+url = "https://github.com/tokio-rs/tokio/pull/8131"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8130"
+repo = "tokio-rs/tokio"
+pr = 8130
+score = 1
+title = "chore: prepare Tokio v1.52.3"
+url = "https://github.com/tokio-rs/tokio/pull/8130"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8129"
+repo = "tokio-rs/tokio"
+pr = 8129
+score = 1
+title = "Merge 'tokio-1.51.3' into 'tokio-1.52.x'"
+url = "https://github.com/tokio-rs/tokio/pull/8129"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8127"
+repo = "tokio-rs/tokio"
+pr = 8127
+score = 1
+title = "chore: prepare Tokio v1.51.3"
+url = "https://github.com/tokio-rs/tokio/pull/8127"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8124"
+repo = "tokio-rs/tokio"
+pr = 8124
+score = 1
+title = "time: consolidate mutex locks on spurious poll"
+url = "https://github.com/tokio-rs/tokio/pull/8124"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8123"
+repo = "tokio-rs/tokio"
+pr = 8123
+score = 1
+title = "Merge 'tokio-1.47.5' into 'tokio-1.51.x'"
+url = "https://github.com/tokio-rs/tokio/pull/8123"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8122"
+repo = "tokio-rs/tokio"
+pr = 8122
+score = 1
+title = "Prepare Tokio v1.47.5"
+url = "https://github.com/tokio-rs/tokio/pull/8122"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8117"
+repo = "tokio-rs/tokio"
+pr = 8117
+score = 1
+title = "Merge 'tokio-1.52.2' into 'master'"
+url = "https://github.com/tokio-rs/tokio/pull/8117"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8115"
+repo = "tokio-rs/tokio"
+pr = 8115
+score = 1
+title = "chore: prepare Tokio v1.52.2"
+url = "https://github.com/tokio-rs/tokio/pull/8115"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8114"
+repo = "tokio-rs/tokio"
+pr = 8114
+score = 1
+title = "Merge 'tokio-1.51.2' into 'tokio-1.52.x'"
+url = "https://github.com/tokio-rs/tokio/pull/8114"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8113"
+repo = "tokio-rs/tokio"
+pr = 8113
+score = 1
+title = "chore: prepare Tokio v1.51.2"
+url = "https://github.com/tokio-rs/tokio/pull/8113"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8110"
+repo = "tokio-rs/tokio"
+pr = 8110
+score = 1
+title = "sync: implement `PartialEq` and `Eq` for `CancellationToken`"
+url = "https://github.com/tokio-rs/tokio/pull/8110"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8107"
+repo = "tokio-rs/tokio"
+pr = 8107
+score = 1
+title = "time: defer waker clone on spurious poll"
+url = "https://github.com/tokio-rs/tokio/pull/8107"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8102"
+repo = "tokio-rs/tokio"
+pr = 8102
+score = 1
+title = "ci: minor improvements for freeBSD jobs"
+url = "https://github.com/tokio-rs/tokio/pull/8102"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8100"
+repo = "tokio-rs/tokio"
+pr = 8100
+score = 1
+title = "Revert stealing of tasks from the LIFO slot"
+url = "https://github.com/tokio-rs/tokio/pull/8100"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8098"
+repo = "tokio-rs/tokio"
+pr = 8098
+score = 1
+title = "test(fs): rename Windows symlink dir test"
+url = "https://github.com/tokio-rs/tokio/pull/8098"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8097"
+repo = "tokio-rs/tokio"
+pr = 8097
+score = 1
+title = "[chore] functional slice building"
+url = "https://github.com/tokio-rs/tokio/pull/8097"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8096"
+repo = "tokio-rs/tokio"
+pr = 8096
+score = 1
+title = "tokio-stream: implement FusedStream for stream adaptors"
+url = "https://github.com/tokio-rs/tokio/pull/8096"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8093"
+repo = "tokio-rs/tokio"
+pr = 8093
+score = 1
+title = "time: avoid stack overflow in runtime constructor"
+url = "https://github.com/tokio-rs/tokio/pull/8093"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8090"
+repo = "tokio-rs/tokio"
+pr = 8090
+score = 1
+title = "tokio-stream: Implement FusedStream for Fuse"
+url = "https://github.com/tokio-rs/tokio/pull/8090"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8088"
+repo = "tokio-rs/tokio"
+pr = 8088
+score = 1
+title = "miri tests: fstat is supported now"
+url = "https://github.com/tokio-rs/tokio/pull/8088"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8086"
+repo = "tokio-rs/tokio"
+pr = 8086
+score = 1
+title = "net: implement UCred::pid on FreeBSD"
+url = "https://github.com/tokio-rs/tokio/pull/8086"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8078"
+repo = "tokio-rs/tokio"
+pr = 8078
+score = 1
+title = "Avoid illegal state in `FastRand`"
+url = "https://github.com/tokio-rs/tokio/pull/8078"
+reasons = ["merged"]
+
+[[candidates]]
+id = "tokio-8076"
+repo = "tokio-rs/tokio"
+pr = 8076
+score = 1
+title = "Require that an `RwLock` has `max_readers != 0`"
+url = "https://github.com/tokio-rs/tokio/pull/8076"
+reasons = ["merged"]

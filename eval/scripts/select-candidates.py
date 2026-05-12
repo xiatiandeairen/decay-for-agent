@@ -46,7 +46,7 @@ def score(pr: dict) -> tuple[int, list[str]]:
     if comments >= 5:
         total += 2
         reasons.append("review_discussion")
-    if pr.get("mergedAt"):
+    if pr.get("closedAt"):
         total += 1
         reasons.append("merged")
     return total, reasons
@@ -92,17 +92,18 @@ def main() -> int:
     parser.add_argument("--state", default="merged")
     args = parser.parse_args()
 
-    query = f"repo:{args.repo} is:pr is:{args.state}"
     prs = gh_json(
         [
             "gh",
             "search",
             "prs",
-            query,
+            f"repo:{args.repo}",
+            "is:pr",
+            f"is:{args.state}",
             "--limit",
             str(args.limit),
             "--json",
-            "number,title,url,labels,commentsCount,mergedAt",
+            "number,title,url,labels,commentsCount,closedAt",
         ]
     )
     ranked = sorted(prs, key=lambda pr: score(pr)[0], reverse=True)

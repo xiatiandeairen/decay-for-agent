@@ -1,0 +1,269 @@
+[[candidates]]
+id = "serde-2970"
+repo = "serde-rs/serde"
+pr = 2970
+score = 5
+title = "Fix serde_core doc tests"
+url = "https://github.com/serde-rs/serde/pull/2970"
+reasons = ["title_or_label:fix", "title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-3038"
+repo = "serde-rs/serde"
+pr = 3038
+score = 3
+title = "serde_derive: reduce llvm-lines in ser.rs, reuse fn field_i"
+url = "https://github.com/serde-rs/serde/pull/3038"
+reasons = ["title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-3037"
+repo = "serde-rs/serde"
+pr = 3037
+score = 3
+title = "serde_derive: rewrite fields_from_ast with less llvm-lines"
+url = "https://github.com/serde-rs/serde/pull/3037"
+reasons = ["title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-3035"
+repo = "serde-rs/serde"
+pr = 3035
+score = 3
+title = "serde_derive: rewrite with_bound without filter/chain/vec allocation"
+url = "https://github.com/serde-rs/serde/pull/3035"
+reasons = ["title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-3034"
+repo = "serde-rs/serde"
+pr = 3034
+score = 3
+title = "serde_derive: rewrite .iter().filter_map() with less llvm-lines"
+url = "https://github.com/serde-rs/serde/pull/3034"
+reasons = ["title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-2991"
+repo = "serde-rs/serde"
+pr = 2991
+score = 3
+title = "Inline serde_core into serde in docsrs mode"
+url = "https://github.com/serde-rs/serde/pull/2991"
+reasons = ["title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-2983"
+repo = "serde-rs/serde"
+pr = 2983
+score = 3
+title = "Fix instructions for testing contributions"
+url = "https://github.com/serde-rs/serde/pull/2983"
+reasons = ["title_or_label:fix", "merged"]
+
+[[candidates]]
+id = "serde-2980"
+repo = "serde-rs/serde"
+pr = 2980
+score = 3
+title = "Use differently named __private module per patch release"
+url = "https://github.com/serde-rs/serde/pull/2980"
+reasons = ["review_discussion", "merged"]
+
+[[candidates]]
+id = "serde-2979"
+repo = "serde-rs/serde"
+pr = 2979
+score = 3
+title = "Mark every trait impl for a private type with do_not_recommend"
+url = "https://github.com/serde-rs/serde/pull/2979"
+reasons = ["review_discussion", "merged"]
+
+[[candidates]]
+id = "serde-2978"
+repo = "serde-rs/serde"
+pr = 2978
+score = 3
+title = "Change serde_core's html_root_url to docs.rs/serde_core"
+url = "https://github.com/serde-rs/serde/pull/2978"
+reasons = ["title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-2976"
+repo = "serde-rs/serde"
+pr = 2976
+score = 3
+title = "Move Content's Deserialize impl from serde_core to serde"
+url = "https://github.com/serde-rs/serde/pull/2976"
+reasons = ["title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-2975"
+repo = "serde-rs/serde"
+pr = 2975
+score = 3
+title = "Deprecate serde_if_integer128 macro"
+url = "https://github.com/serde-rs/serde/pull/2975"
+reasons = ["title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-2974"
+repo = "serde-rs/serde"
+pr = 2974
+score = 3
+title = "Patch serde_core at workspace level"
+url = "https://github.com/serde-rs/serde/pull/2974"
+reasons = ["title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-2973"
+repo = "serde-rs/serde"
+pr = 2973
+score = 3
+title = "Illustrate build timings in serde_core readme"
+url = "https://github.com/serde-rs/serde/pull/2973"
+reasons = ["title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-2971"
+repo = "serde-rs/serde"
+pr = 2971
+score = 3
+title = "Add CI coverage of serde_core"
+url = "https://github.com/serde-rs/serde/pull/2971"
+reasons = ["title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-2969"
+repo = "serde-rs/serde"
+pr = 2969
+score = 3
+title = "Reduce visibility of serde_core implementation details"
+url = "https://github.com/serde-rs/serde/pull/2969"
+reasons = ["title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-2966"
+repo = "serde-rs/serde"
+pr = 2966
+score = 3
+title = "Enforce derive cannot be used against serde_core"
+url = "https://github.com/serde-rs/serde/pull/2966"
+reasons = ["title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-2965"
+repo = "serde-rs/serde"
+pr = 2965
+score = 3
+title = "Forcibly enable serde_core/result when using serde"
+url = "https://github.com/serde-rs/serde/pull/2965"
+reasons = ["title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-2964"
+repo = "serde-rs/serde"
+pr = 2964
+score = 3
+title = "Update documentation of serde_core"
+url = "https://github.com/serde-rs/serde/pull/2964"
+reasons = ["title_or_label:serde", "merged"]
+
+[[candidates]]
+id = "serde-3039"
+repo = "serde-rs/serde"
+pr = 3039
+score = 1
+title = "typo: tokenenizable to tokenizable"
+url = "https://github.com/serde-rs/serde/pull/3039"
+reasons = ["merged"]
+
+[[candidates]]
+id = "serde-3019"
+repo = "serde-rs/serde"
+pr = 3019
+score = 1
+title = "chore: improve code comments clarity"
+url = "https://github.com/serde-rs/serde/pull/3019"
+reasons = ["merged"]
+
+[[candidates]]
+id = "serde-3001"
+repo = "serde-rs/serde"
+pr = 3001
+score = 1
+title = "refactor: remove 1 level of nesting"
+url = "https://github.com/serde-rs/serde/pull/3001"
+reasons = ["merged"]
+
+[[candidates]]
+id = "serde-2995"
+repo = "serde-rs/serde"
+pr = 2995
+score = 1
+title = "Workaround for RUSTDOCFLAGS='--cfg=docsrs'"
+url = "https://github.com/serde-rs/serde/pull/2995"
+reasons = ["merged"]
+
+[[candidates]]
+id = "serde-2992"
+repo = "serde-rs/serde"
+pr = 2992
+score = 1
+title = "Remove InPlaceSeed public re-export"
+url = "https://github.com/serde-rs/serde/pull/2992"
+reasons = ["merged"]
+
+[[candidates]]
+id = "serde-2990"
+repo = "serde-rs/serde"
+pr = 2990
+score = 1
+title = "No longer macro_use integer128 module"
+url = "https://github.com/serde-rs/serde/pull/2990"
+reasons = ["merged"]
+
+[[candidates]]
+id = "serde-2989"
+repo = "serde-rs/serde"
+pr = 2989
+score = 1
+title = "PR 2987 followup"
+url = "https://github.com/serde-rs/serde/pull/2989"
+reasons = ["merged"]
+
+[[candidates]]
+id = "serde-2987"
+repo = "serde-rs/serde"
+pr = 2987
+score = 1
+title = "Refactor: split de generator over multiple files"
+url = "https://github.com/serde-rs/serde/pull/2987"
+reasons = ["merged"]
+
+[[candidates]]
+id = "serde-2986"
+repo = "serde-rs/serde"
+pr = 2986
+score = 1
+title = "Remove \"did not work\" comment from test suite"
+url = "https://github.com/serde-rs/serde/pull/2986"
+reasons = ["merged"]
+
+[[candidates]]
+id = "serde-2968"
+repo = "serde-rs/serde"
+pr = 2968
+score = 1
+title = "Restore `__deserialize_content` optimization"
+url = "https://github.com/serde-rs/serde/pull/2968"
+reasons = ["merged"]
+
+[[candidates]]
+id = "serde-2967"
+repo = "serde-rs/serde"
+pr = 2967
+score = 1
+title = "Specify the cfg in which `tri!` is used"
+url = "https://github.com/serde-rs/serde/pull/2967"
+reasons = ["merged"]

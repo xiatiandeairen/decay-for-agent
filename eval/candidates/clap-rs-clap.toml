@@ -1,0 +1,269 @@
+[[candidates]]
+id = "clap-6368"
+repo = "clap-rs/clap"
+pr = 6368
+score = 5
+title = "fix(complete): Escape fish env-completer for source and eval passes"
+url = "https://github.com/clap-rs/clap/pull/6368"
+reasons = ["title_or_label:fix", "review_discussion", "merged"]
+
+[[candidates]]
+id = "clap-6369"
+repo = "clap-rs/clap"
+pr = 6369
+score = 3
+title = "fix(complete): preserve candidate order in zsh completions"
+url = "https://github.com/clap-rs/clap/pull/6369"
+reasons = ["title_or_label:fix", "merged"]
+
+[[candidates]]
+id = "clap-6346"
+repo = "clap-rs/clap"
+pr = 6346
+score = 3
+title = "fix(derive): Track Cargo env vars for incremental rebuilds"
+url = "https://github.com/clap-rs/clap/pull/6346"
+reasons = ["title_or_label:fix", "merged"]
+
+[[candidates]]
+id = "clap-6341"
+repo = "clap-rs/clap"
+pr = 6341
+score = 3
+title = "fix(complete): Reduce risk of conflict with actual subcommands"
+url = "https://github.com/clap-rs/clap/pull/6341"
+reasons = ["title_or_label:fix", "merged"]
+
+[[candidates]]
+id = "clap-6340"
+repo = "clap-rs/clap"
+pr = 6340
+score = 3
+title = "fix(complete): Do not suggest options after \"--\""
+url = "https://github.com/clap-rs/clap/pull/6340"
+reasons = ["title_or_label:fix", "merged"]
+
+[[candidates]]
+id = "clap-6319"
+repo = "clap-rs/clap"
+pr = 6319
+score = 3
+title = "fix(man)!: Put env support behind the env feature"
+url = "https://github.com/clap-rs/clap/pull/6319"
+reasons = ["title_or_label:fix", "merged"]
+
+[[candidates]]
+id = "clap-6318"
+repo = "clap-rs/clap"
+pr = 6318
+score = 3
+title = "fix: Make ui_tests test conditional on env feature"
+url = "https://github.com/clap-rs/clap/pull/6318"
+reasons = ["title_or_label:fix", "merged"]
+
+[[candidates]]
+id = "clap-6276"
+repo = "clap-rs/clap"
+pr = 6276
+score = 3
+title = " fix(parser): Allow --help to propagate up through subcommands with ignore_erros"
+url = "https://github.com/clap-rs/clap/pull/6276"
+reasons = ["title_or_label:fix", "merged"]
+
+[[candidates]]
+id = "clap-6244"
+repo = "clap-rs/clap"
+pr = 6244
+score = 3
+title = "docs: Fix a typo"
+url = "https://github.com/clap-rs/clap/pull/6244"
+reasons = ["title_or_label:fix", "merged"]
+
+[[candidates]]
+id = "clap-6243"
+repo = "clap-rs/clap"
+pr = 6243
+score = 3
+title = "fix(parser): Resolve regression with value_terminator/last"
+url = "https://github.com/clap-rs/clap/pull/6243"
+reasons = ["title_or_label:fix", "merged"]
+
+[[candidates]]
+id = "clap-6360"
+repo = "clap-rs/clap"
+pr = 6360
+score = 1
+title = "style: Prefer explicit string operations"
+url = "https://github.com/clap-rs/clap/pull/6360"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6359"
+repo = "clap-rs/clap"
+pr = 6359
+score = 1
+title = "chore(man):Remove unused required-features"
+url = "https://github.com/clap-rs/clap/pull/6359"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6358"
+repo = "clap-rs/clap"
+pr = 6358
+score = 1
+title = "chore(deps): Update pre-commit hook crate-ci/typos to v1.46.0"
+url = "https://github.com/clap-rs/clap/pull/6358"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6357"
+repo = "clap-rs/clap"
+pr = 6357
+score = 1
+title = "chore(deps): Update compatible (dev)"
+url = "https://github.com/clap-rs/clap/pull/6357"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6353"
+repo = "clap-rs/clap"
+pr = 6353
+score = 1
+title = "feat(complete): Add ValueCompleter::complete_at for indexed multi-value completion"
+url = "https://github.com/clap-rs/clap/pull/6353"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6350"
+repo = "clap-rs/clap"
+pr = 6350
+score = 1
+title = "docs: hint at clippy::missing_docs_in_private_items lint"
+url = "https://github.com/clap-rs/clap/pull/6350"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6347"
+repo = "clap-rs/clap"
+pr = 6347
+score = 1
+title = "chore(deps): Update Rust Stable to v1.95"
+url = "https://github.com/clap-rs/clap/pull/6347"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6332"
+repo = "clap-rs/clap"
+pr = 6332
+score = 1
+title = "chore: Update compatible dependencies"
+url = "https://github.com/clap-rs/clap/pull/6332"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6331"
+repo = "clap-rs/clap"
+pr = 6331
+score = 1
+title = "chore(deps): Update j178/prek-action action to v2"
+url = "https://github.com/clap-rs/clap/pull/6331"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6306"
+repo = "clap-rs/clap"
+pr = 6306
+score = 1
+title = "chore: Upgrade compatible"
+url = "https://github.com/clap-rs/clap/pull/6306"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6305"
+repo = "clap-rs/clap"
+pr = 6305
+score = 1
+title = "chore: Upgrade to 2025 edition"
+url = "https://github.com/clap-rs/clap/pull/6305"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6304"
+repo = "clap-rs/clap"
+pr = 6304
+score = 1
+title = "chore: Upgrade compatible"
+url = "https://github.com/clap-rs/clap/pull/6304"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6303"
+repo = "clap-rs/clap"
+pr = 6303
+score = 1
+title = "chore: Update dependencies"
+url = "https://github.com/clap-rs/clap/pull/6303"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6297"
+repo = "clap-rs/clap"
+pr = 6297
+score = 1
+title = "chore(deps): Update Rust Stable to v1.94"
+url = "https://github.com/clap-rs/clap/pull/6297"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6292"
+repo = "clap-rs/clap"
+pr = 6292
+score = 1
+title = "test(complete): Update snapshots"
+url = "https://github.com/clap-rs/clap/pull/6292"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6288"
+repo = "clap-rs/clap"
+pr = 6288
+score = 1
+title = "chore(deps): Update pre-commit hook crate-ci/typos to v1.44.0"
+url = "https://github.com/clap-rs/clap/pull/6288"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6287"
+repo = "clap-rs/clap"
+pr = 6287
+score = 1
+title = "chore(deps): Update pre-commit hook crate-ci/committed to v1.1.11"
+url = "https://github.com/clap-rs/clap/pull/6287"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6274"
+repo = "clap-rs/clap"
+pr = 6274
+score = 1
+title = "[docs] Typo and Clippy warning in example"
+url = "https://github.com/clap-rs/clap/pull/6274"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6245"
+repo = "clap-rs/clap"
+pr = 6245
+score = 1
+title = "test(complete): Update for new versions"
+url = "https://github.com/clap-rs/clap/pull/6245"
+reasons = ["merged"]
+
+[[candidates]]
+id = "clap-6242"
+repo = "clap-rs/clap"
+pr = 6242
+score = 1
+title = "docs: Recommend lazy-loading fish completions"
+url = "https://github.com/clap-rs/clap/pull/6242"
+reasons = ["merged"]

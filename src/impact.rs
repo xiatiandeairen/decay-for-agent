@@ -304,6 +304,7 @@ fn detect_semantic(diff: &GitDiff) -> Vec<EvidenceRecord> {
         };
         records.extend(detect_default_value_changes(path, file));
         records.extend(detect_dependency_feature_changes(path, file));
+        records.extend(detect_config_value_changes(path, file));
     }
     records
 }
@@ -378,6 +379,45 @@ fn detect_dependency_feature_changes(
             format!("{dependency} feature {feature}"),
             "semantic_diff",
         ));
+    }
+    records
+}
+
+fn detect_config_value_changes(
+    path: &str,
+    file: &crate::git_diff::GitFileDiff,
+) -> Vec<EvidenceRecord> {
+    if !is_config_value_path(path) {
+        return Vec::new();
+    }
+
+    let mut records = Vec::new();
+    for hunk in &file.hunks {
+        let deleted: Vec<_> = hunk
+            .lines
+            .iter()
+            .filter(|line| matches!(line.kind, HunkLineKind::Deletion))
+            .filter_map(|line| parse_config_value(&line.content))
+            .collect();
+        let added: Vec<_> = hunk
+            .lines
+            .iter()
+            .filter(|line| matches!(line.kind, HunkLineKind::Addition))
+            .filter_map(|line| parse_config_value(&line.content))
+            .collect();
+
+        for before in &deleted {
+            for after in &added {
+                if before.name == after.name && before.value != after.value {
+                    records.push(EvidenceRecord::new(
+                        "config_value_changed",
+                        path,
+                        format!("{}: {} -> {}", before.name, before.value, after.value),
+                        "semantic_diff",
+                    ));
+                }
+            }
+        }
     }
     records
 }
@@ -462,6 +502,46 @@ fn dependency_name(line: &str) -> Option<&str> {
     } else {
         Some(name)
     }
+}
+
+fn is_config_value_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    if lower.ends_with("cargo.toml") || lower.ends_with("cargo.lock") {
+        return false;
+    }
+    lower.contains("config")
+        && (lower.ends_with(".toml")
+            || lower.ends_with(".yaml")
+            || lower.ends_with(".yml")
+            || lower.ends_with(".json")
+            || lower.ends_with(".env"))
+}
+
+fn parse_config_value(line: &str) -> Option<NamedValue> {
+    let trimmed = line.trim().trim_end_matches(',').trim();
+    if trimmed.is_empty()
+        || trimmed.starts_with('#')
+        || trimmed.starts_with("//")
+        || trimmed.starts_with('[')
+    {
+        return None;
+    }
+
+    let (key, value) = trimmed
+        .split_once('=')
+        .or_else(|| trimmed.split_once(':'))?;
+    let key = key.trim().trim_matches('"').trim_matches('\'');
+    if !is_default_like_name(key) {
+        return None;
+    }
+    let value = value.trim().trim_matches('"').trim_matches('\'');
+    if key.is_empty() || value.is_empty() || value == "{" || value == "[" {
+        return None;
+    }
+    Some(NamedValue {
+        name: key.to_string(),
+        value: value.to_string(),
+    })
 }
 
 fn record_from_evidence(category: &str, evidence: &EvidenceRecord) -> DiffEvidenceRecord {

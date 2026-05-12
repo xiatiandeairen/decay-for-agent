@@ -400,8 +400,24 @@ fn risk_findings(report: &impact::ImpactReport) -> Vec<RiskFinding> {
             .iter()
             .filter(|kind| **kind == "ffi_boundary_touched")
             .count();
-        let score = if unsafe_count > 0 || panic_count > 0 {
+        let public_api_count = kinds
+            .iter()
+            .filter(|kind| **kind == "public_api_signature_changed")
+            .count();
+        let migration_count = kinds
+            .iter()
+            .filter(|kind| **kind == "storage_migration_touched")
+            .count();
+        let protocol_count = kinds
+            .iter()
+            .filter(|kind| **kind == "protocol_shape_changed")
+            .count();
+        let score = if migration_count > 0 {
+            87
+        } else if unsafe_count > 0 || panic_count > 0 {
             85
+        } else if protocol_count > 0 || public_api_count > 0 {
+            83
         } else if ffi_count > 0 {
             70
         } else {
@@ -416,6 +432,15 @@ fn risk_findings(report: &impact::ImpactReport) -> Vec<RiskFinding> {
         }
         if ffi_count > 0 {
             parts.push("FFI boundary touched".to_string());
+        }
+        if public_api_count > 0 {
+            parts.push(format!("{public_api_count} public API signature changed"));
+        }
+        if migration_count > 0 {
+            parts.push(format!("{migration_count} storage migration touched"));
+        }
+        if protocol_count > 0 {
+            parts.push(format!("{protocol_count} protocol shape changed"));
         }
         findings.push(RiskFinding {
             severity: if score >= 80 { "high" } else { "medium" },
@@ -468,6 +493,11 @@ fn risk_findings(report: &impact::ImpactReport) -> Vec<RiskFinding> {
                 "high",
                 86,
                 "review dependency feature semantics and require targeted compatibility/security checks",
+            ),
+            "config_value_changed" => (
+                "high",
+                84,
+                "review production configuration boundary change and add rollout/regression checks",
             ),
             "default_value_changed" => (
                 "high",

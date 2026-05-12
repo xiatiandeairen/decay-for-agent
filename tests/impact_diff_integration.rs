@@ -637,6 +637,73 @@ fn diff_reports_sensitive_dependency_feature_as_semantic_risk() {
 }
 
 #[test]
+fn diff_reports_config_value_delta_as_semantic_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::create_dir_all(project.join("config")).expect("create config");
+    fs::write(project.join("src/lib.rs"), "pub fn ok() -> bool { true }\n").expect("write lib");
+    fs::write(
+        project.join("config/default.toml"),
+        "connect_timeout_ms = 1000\nmax_inflight_requests = 64\n",
+    )
+    .expect("write base config");
+    commit_all(&project, "feat: seed default config");
+
+    fs::write(
+        project.join("config/default.toml"),
+        "connect_timeout_ms = 30000\nmax_inflight_requests = 64\n",
+    )
+    .expect("write changed config");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Top risk findings:"))
+        .stdout(predicate::str::contains("[high] config/default.toml"))
+        .stdout(predicate::str::contains("Semantic impact:"))
+        .stdout(predicate::str::contains("kind=config_value_changed"))
+        .stdout(predicate::str::contains(
+            "connect_timeout_ms: 1000 -> 30000",
+        ))
+        .stdout(predicate::str::contains("kind=test_gap").not());
+}
+
+#[test]
+fn diff_promotes_public_api_signature_change_to_top_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub fn send_message(message: String) -> bool { !message.is_empty() }\n",
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed public api");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub fn send_message(message: String, retry: bool) -> bool { retry || !message.is_empty() }\n",
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Top risk findings:"))
+        .stdout(predicate::str::contains("[high] src/lib.rs"))
+        .stdout(predicate::str::contains("public API signature changed"))
+        .stdout(predicate::str::contains("Stability impact:"))
+        .stdout(predicate::str::contains(
+            "kind=public_api_signature_changed",
+        ));
+}
+
+#[test]
 fn diff_does_not_treat_docs_only_changes_as_test_gap_or_stability_evidence() {
     let (_tmp, project, db) = base_project();
     fs::create_dir_all(project.join("docs")).expect("create docs");

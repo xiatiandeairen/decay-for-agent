@@ -13,21 +13,45 @@
 ## 目录
 
 - `corpus/pr-cases.toml`：预注册 PR 样本。先固定样本，再运行工具，避免事后挑选好看的结果。
-- `results/`：runner 生成的原始输出和 metadata。
-- `judgements/`：人工判定。每个 PR 一个 TOML 文件。
+- `cases/<case-id>/`：runner 生成的可复盘 case，包括 raw context、ground truth、decay evidence 和 comparison。
+- `results/`：旧 runner 输出目录，仅作兼容读取；新 case 不再写这里。
+- `judgements/`：旧人工判定 TOML，仅作兼容读取；新 case 使用 `comparison.md`。
 - `reports/`：汇总报告输出。
 - `scripts/run-pr-case.sh`：运行单个 PR case。
+- `scripts/select-candidates.py`：从 GitHub PR 搜索生成候选，不直接进入 50 case 分母。
 - `scripts/summarize.py`：汇总 results + judgements。
 
 ## 样本规则
 
-第一轮只做 20 个 PR：
+目标是 50 个高价值 diff，但分三批执行：
 
-- 2 个仓库，每个 10 个 PR。
-- 每个仓库包含 3 个 bug fix、3 个 feature、2 个 refactor、2 个 negative control。
-- negative control 包括 docs-only、test-only、dependency-only、CI-only 等低风险变更。
+- Batch 1：10 个 case，验证脚本、模板、指标和 judgement 流程。
+- Batch 2：20 个 case，扩大仓库和风险类型。
+- Batch 3：20 个 case，补齐到 50 并输出最终报告。
 
 样本必须先写入 `corpus/pr-cases.toml`，再运行 `decay`。
+
+每个进入 50 的 case 至少满足一项：
+
+- linked issue / bug report。
+- review risk discussion。
+- CI/test failure。
+- follow-up fix。
+- public API / protocol / storage / security / config / dependency sensitive change。
+- negative control，用来验证应该安静时是否安静。
+
+`select-candidates.py` 只产生候选，不算入 50；必须人工审核 `context.md` 后才算入。
+
+## Case 产物
+
+每个新 case 固定生成：
+
+- `metadata.toml`：base/head、repo、PR、运行 exit code。
+- `context.md`：选择理由和 high-value gate。
+- `ground-truth.md`：只看外部事实写，禁止参考 decay 输出。
+- `decay-evidence.md`：从 decay stdout 自动摘录，只记录不评价。
+- `comparison.md`：最后填写 matched/noise/missed/actionable 和指标。
+- `raw/pr.json`、`raw/files.txt`、`raw/stat.txt`、`raw/diff.patch`、`raw/decay.stdout`、`raw/decay.stderr`。
 
 ## Judgement Rubric
 
@@ -52,9 +76,9 @@
 - `noise_rate`：`noise / (useful + plausible + noise)`。
 - `missed_high_risk_rate`：存在 `missed` 的 PR 占比。
 
-## 第一轮通过门槛
+## 50 Case 通过门槛
 
-20 个 PR 跑完后再判断：
+50 个 case 跑完后再判断：
 
 - `negative_control_silence_rate >= 80%`
 - `precision@top3 >= 50%`
@@ -91,4 +115,10 @@ decay diff <base-sha>
 
 ```bash
 python3 eval/scripts/summarize.py
+```
+
+生成候选：
+
+```bash
+python3 eval/scripts/select-candidates.py hyperium/hyper --limit 30
 ```

@@ -52,7 +52,7 @@
 |---------|----------------|-------------------|--------|--------|------------|
 | v0.1.0 | 跑通 Rust 函数扫描、baseline、diff、doctor 的本地闭环 | ↑ active metrics 0→6（measured: `src/metric/mod.rs`）；↑ integration tests 0→16（measured: `cargo test` 2026-05-06）；↓ product certainty no data→unproven（no data: 尚无 fixed case） | released | TBD - 2026.05.05 | M1-M1 |
 | v0.1.x | 用 dogfood 验证 `diff` 是否改变 commit 决策，并修复 baseline identity / moved function 噪音 | ↑ dogfood classified cases 0→TBD（target value, pending validation）；↑ fixed cases 0→≥1（target value, pending validation）；↓ path-move identity noise initial fix（measured: local mxcore dogfood 2026-05-11） | in development | 2026.05.05 - TBD | M2-M2 |
-| v0.2.0 | 建设可信 evidence layer，服务 `diff` 影响证据和 `doctor` hot debt 两个场景 | ↑ diff evidence sources local AST→AST+diff hunk+stability/quality detectors+git history+local evidence DB（implemented vertical slice, pending dogfood）；↑ useful evidence no data→≥2/5-10 PR（target value, pending validation）；↑ accepted hot debt top3 no data→≥2（target value, pending validation） | in development | 2026.05.11 - TBD | M3-M3 |
+| v0.2.0 | 在事实证据层之上建设语义筛选层，把静态扫描事实收敛成高价值 review 证据 | ↑ semantic-filtered top risk baseline 65% precision@top3→≥75%（target，基于 10-case 外部 PR benchmark）；↑ actionable_pr_rate 60%→≥70%（target）；↓ missed_high_risk_count 2/10→≤1/20（target）；↓ weak-only top risk 3/10→≤2/20（target） | planning | 2026.05.13 - TBD | M3-M3 |
 
 ### Version Details
 
@@ -92,25 +92,25 @@
 | Noise share | no data | no target yet（先分类再判断） | no data |
 | Manual baseline friction | identified qualitatively | TBD（pending dogfood evidence） | no data |
 
-#### v0.2.0 — trusted evidence layer
+#### v0.2.0 — semantic-filtered evidence layer
 
-- **Strategic intent**: 把 `decay` 从“函数复杂度问题指示计”推进到“PR diff 影响证据 + 项目复杂度债务地图”的可信证据层；暂不做合入风险评分或 merge recommendation。
-- **Input/output**: input 是 baseline/current snapshots、git diff hunks、git history、本地 docs/decision records、可选 issue/PR/CI metadata 和 human feedback；output 是可追溯的 complexity / stability / quality evidence。
-- **Priority rationale**: 当前 `diff` 能发现部分函数级退化，但还不能稳定说明任意 PR 对项目复杂度、稳定性和质量的真实影响；`doctor` 能列复杂函数，但还不能指出复杂度债务优先级。
-- **Risks and dependencies**: 风险是多数据源引入后输出变噪；依赖 diff hunk -> function mapping、function identity、SQLite evidence schema、git history 摘要和真实 dogfood。
-- **Success metric**: `diff` 场景至少 2 条人工初看遗漏的 useful evidence，且至少 1 次改变 review / 测试 / 拆分 / 返工动作；`doctor` 场景 top 3 hot debt 中至少 2 个被用户认可，且至少 1 次产生实际治理动作。
-- **Core value**: `diff` 回答“这次改动影响了什么”；`doctor` 回答“当前复杂度债务优先看哪里”。
+- **Strategic intent**: 把 `decay` 从“静态扫描事实列表”推进到“语义筛选后的 PR review 证据”。0.1.1 已验证纯扫描能发现默认值/配置/显式危险构造/机械 refactor 静默等场景，也暴露出 `mixed_concerns`、`blast_radius`、`touched_existing_risky` 单独出现时价值弱；0.2.0 的重点不是继续堆事实 detector，而是在事实层之上建立语义层，筛掉弱证据、组合强证据、识别高价值漏报。
+- **Input/output**: input 是 0.1.1 已有事实证据（complexity / stability / quality / semantic pattern / history / local DB）加可选 PR/issue/review/CI/decision docs 上下文；output 是语义筛选后的 top review evidence，包含 claim、supporting facts、confidence、known limitation 和 reviewer action。
+- **Priority rationale**: 当前 10-case 外部 PR benchmark 显示 `precision_at_top3=65%`、`actionable_pr_rate=60%`、`missed_high_risk_count=2`、`noise_top3_count=3`。这说明事实层已能产生价值，但 top risk 仍会被弱扫描信号污染，也会漏掉 API/protocol 行为类高价值风险。0.2.0 需要让 Top risk 从“扫描命中排序”变成“语义价值排序”。
+- **Risks and dependencies**: 风险是语义层变成不可复查的主观判断或 AI 自评；依赖 fact schema 稳定、evidence source 可追溯、外部 PR benchmark、bad-case regression tests、local evidence DB 记录语义裁决过程。
+- **Success metric**: 第一轮以 20 个高质量 PR case 为验证集：`precision_at_top3 >= 75%`、`actionable_pr_rate >= 70%`、`negative_control_silence_rate >= 90%`、`missed_high_risk_count <= 1`、`weak_only_top_risk <= 2`；每个语义结论必须能回链到事实 evidence 或外部上下文。
+- **Core value**: `diff` 不再只回答“扫描到了什么”，而是回答“哪些扫描事实组合后真的值得 reviewer 先看、为什么可信、下一步该检查什么”；`doctor` 暂时降级为后续场景，不阻塞 0.2.0 diff 价值验证。
 - **User coverage**: 作者本人 dogfood；外部数据源默认 opt-in。
 - **Core metric** (v0.1.x → v0.2.0):
 
 | Metric | v0.1.x | v0.2.0 | Delta |
 |--------|--------|--------|-------|
-| Diff evidence sources | AST snapshot + baseline diff | AST snapshot + diff hunk + stability/quality detectors + git history + local evidence DB（implemented vertical slice 2026-05-11） | ↑ 多源证据 |
-| Useful diff evidence | no data | ≥2 / 5-10 real PR sessions（target value, pending validation） | ↑ ≥2 |
-| Diff action changes | no data | ≥1 review / test / split / refactor action change（target value, pending validation） | ↑ ≥1 |
-| Doctor output shape | function-level current findings | hot complexity debt by file/module/crate with history and boundary tags（planned） | pending |
-| Accepted doctor top debt | no data | top 3 中 ≥2 个被用户认可（target value, pending validation） | ↑ ≥2 |
-| Evidence feedback coverage | no data | useful / noise / ignored / action_changed 分类完整（target 100%, pending validation） | ↑ 100% |
+| Fact evidence baseline | 10-case benchmark: precision@top3 65%, actionable 60%, missed high risk 2, noise top3 3 | 20-case benchmark: precision@top3 ≥75%, actionable ≥70%, missed high risk ≤1, weak-only top risk ≤2（target） | ↑ top value, ↓ weak noise |
+| Semantic claim traceability | no dedicated layer | every semantic top finding links to supporting facts and source context（target 100%） | ↑ explainability |
+| Weak signal handling | weak signals can enter Top risk directly | `mixed_concerns` / `blast_radius` / history / touched old debt default to supporting context unless paired with direct evidence | ↓ misleading top risk |
+| High-value missed risk | API/protocol behavior cases can be missed | add bad-case driven semantic scenarios for API surface, protocol behavior, behavior gate/config boundary | ↓ missed risk |
+| Negative controls | 100% silence on current 10-case judged set | keep ≥90% silence while adding semantic layer | maintain trust |
+| Doctor output shape | function-level current findings | deferred until diff semantic layer passes first benchmark | scope reduction |
 
 ## 3. Milestones
 
@@ -118,4 +118,4 @@
 |---|----------------|------------------|--------|-----------------|
 | [M1](milestones/m1.md) | 交付 v0.1.0 本地功能闭环 | 功能闭环完成，`cargo test` 和 clippy 通过；产品 fixed case 仍无数据，因此不声明产品成功 | done | 2026-05-05 |
 | [M2](milestones/m2.md) | 验证 `diff` 是否改变 commit 决策 | 尚未开始；需要按 `docs/ops.md` 记录 fixed / reviewed / ignored / noise | not started | — |
-| [M3](milestones/m3.md) | v0.2.0 可信证据层 | in progress；`diff` evidence vertical slice、git history evidence、local evidence DB 已完成；`doctor` hot debt 和真实 dogfood 未完成 | in progress | — |
+| [M3](milestones/m3.md) | v0.2.0 语义筛选证据层 | planning；0.1.1 已完成事实层和 10-case benchmark，下一步建设 semantic-filtered top review evidence | planning | — |

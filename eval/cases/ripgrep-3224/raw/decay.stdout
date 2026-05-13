@@ -37,17 +37,21 @@ Top risk findings:
 
 Complexity impact:
   changed_functions=1 evidence=0 partial=false diagnostics=0
+  value_note=direct for worsened/new_high_risk; touched_existing_risky is supporting context, not proof of current-diff risk
 
 Stability impact:
   evidence=0
+  value_note=direct for newly introduced unsafe/panic/public-api evidence; move/refactor diffs can weaken this signal
 
 Quality impact:
   evidence=1 prod_files_changed=1 test_files_changed=0 docs_files_changed=0
+  value_note=missing-test signals are supporting evidence; broad scope signals are weak unless paired with direct diff evidence
 - id=1 category=quality kind=test_gap subject=production change without tests source=quality
   file=crates/cli/src/decompress.rs
 
 Semantic impact:
   evidence=8
+  value_note=high confidence only for explicit scanned patterns; this is not general semantic understanding
 - id=2 category=semantic kind=default_value_changed subject=ARGS_GZIP: &["gzip", "-d", "-c"] -> &["gzip", "-d", "-c", "--"] source=semantic_diff
   file=crates/cli/src/decompress.rs
 - id=3 category=semantic kind=default_value_changed subject=ARGS_BZIP: &["bzip2", "-d", "-c"] -> &["bzip2", "-d", "-c", "--"] source=semantic_diff
@@ -67,4 +71,5 @@ Semantic impact:
 
 History impact:
   evidence=0
+  value_note=context only; excluded from top risk unless direct diff evidence exists
 recorded=true changeset=1 evidence_saved=9

@@ -230,6 +230,9 @@ fn print_impact_report(
         !report.diagnostics.is_empty(),
         report.diagnostics.len()
     );
+    println!(
+        "  value_note=direct for worsened/new_high_risk; touched_existing_risky is supporting context, not proof of current-diff risk"
+    );
     for (idx, evidence) in report.evidences.iter().enumerate() {
         println!(
             "- id={} category=complexity kind={} subject=function source={}",
@@ -253,6 +256,9 @@ fn print_impact_report(
     println!();
     println!("Stability impact:");
     println!("  evidence={}", report.stability_evidence.len());
+    println!(
+        "  value_note=direct for newly introduced unsafe/panic/public-api evidence; move/refactor diffs can weaken this signal"
+    );
     for (idx, evidence) in report.stability_evidence.iter().enumerate() {
         println!(
             "- id={} category=stability kind={} subject={} source={}",
@@ -272,6 +278,9 @@ fn print_impact_report(
         report.quality.test_files_changed,
         report.quality.docs_files_changed
     );
+    println!(
+        "  value_note=missing-test signals are supporting evidence; broad scope signals are weak unless paired with direct diff evidence"
+    );
     for (idx, evidence) in report.quality.records.iter().enumerate() {
         println!(
             "- id={} category=quality kind={} subject={} source={}",
@@ -285,6 +294,9 @@ fn print_impact_report(
     println!();
     println!("Semantic impact:");
     println!("  evidence={}", report.semantic_evidence.len());
+    println!(
+        "  value_note=high confidence only for explicit scanned patterns; this is not general semantic understanding"
+    );
     for (idx, evidence) in report.semantic_evidence.iter().enumerate() {
         println!(
             "- id={} category=semantic kind={} subject={} source={}",
@@ -302,6 +314,9 @@ fn print_impact_report(
     println!();
     println!("History impact:");
     println!("  evidence={}", report.history.records.len());
+    println!(
+        "  value_note=context only; excluded from top risk unless direct diff evidence exists"
+    );
     for (idx, evidence) in report.history.records.iter().enumerate() {
         println!(
             "- id={} category=history kind={} subject={} source={}",

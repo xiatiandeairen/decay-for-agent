@@ -38,6 +38,7 @@
 
 ```text
 changed_functions=36 evidence=7 partial=false diagnostics=0
+  value_note=direct for worsened/new_high_risk; touched_existing_risky is supporting context, not proof of current-diff risk
 - id=1 category=complexity kind=touched_existing_risky subject=function source=diff_hunk+ast_snapshot
   function=src/body/incoming.rs:poll_frame
   metrics=cognitive:19->19, cyclomatic:12->12, statements:20->20
@@ -64,12 +65,14 @@ changed_functions=36 evidence=7 partial=false diagnostics=0
 
 ```text
 evidence=0
+  value_note=direct for newly introduced unsafe/panic/public-api evidence; move/refactor diffs can weaken this signal
 ```
 
 ## Quality impact
 
 ```text
 evidence=3 prod_files_changed=40 test_files_changed=12 docs_files_changed=0
+  value_note=missing-test signals are supporting evidence; broad scope signals are weak unless paired with direct diff evidence
 - id=8 category=quality kind=build_or_ci_changed subject=build or ci source=quality
   file=build.rs
 - id=9 category=quality kind=blast_radius subject=multiple crates or domains source=quality
@@ -82,11 +85,13 @@ evidence=3 prod_files_changed=40 test_files_changed=12 docs_files_changed=0
 
 ```text
 evidence=0
+  value_note=high confidence only for explicit scanned patterns; this is not general semantic understanding
 ```
 
 ## History impact
 
 ```text
 evidence=0
+  value_note=context only; excluded from top risk unless direct diff evidence exists
 recorded=true changeset=1 evidence_saved=10
 ```

@@ -94,15 +94,12 @@
 | Missed high-value risks | no data | 2 / 10（measured） | establishes v0.2.0 target |
 | Weak/noise Top risk | no data | 3 / 10（measured） | establishes v0.2.0 target |
 
-#### v0.2.0 — semantic-filtered evidence layer
+#### v0.2.0 — semantic evidence
 
-- **Strategic intent**: 把 `decay` 从“静态扫描事实列表”推进到“语义筛选后的 PR review 证据”。0.1.1 已验证纯扫描能发现默认值/配置/显式危险构造/机械 refactor 静默等场景，也暴露出 `mixed_concerns`、`blast_radius`、`touched_existing_risky` 单独出现时价值弱；0.2.0 的重点不是继续堆事实 detector，而是在事实层之上建立语义层，筛掉弱证据、组合强证据、识别高价值漏报。
-- **Input/output**: input 是 0.1.1 已有事实证据（complexity / stability / quality / semantic pattern / history / local DB）加可选 PR/issue/review/CI/decision docs 上下文；output 是语义筛选后的 top review evidence，包含 claim、supporting facts、confidence、known limitation 和 reviewer action。
-- **Priority rationale**: 当前 10-case 外部 PR benchmark 显示 `precision_at_top3=65%`、`actionable_pr_rate=60%`、`missed_high_risk_count=2`、`noise_top3_count=3`。这说明事实层已能产生价值，但 top risk 仍会被弱扫描信号污染，也会漏掉 API/protocol 行为类高价值风险。0.2.0 需要让 Top risk 从“扫描命中排序”变成“语义价值排序”。
-- **Risks and dependencies**: 风险是语义层变成不可复查的主观判断或 AI 自评；依赖 fact schema 稳定、evidence source 可追溯、外部 PR benchmark、bad-case regression tests、local evidence DB 记录语义裁决过程。
-- **Success metric**: 第一轮以 20 个高质量 PR case 为验证集：`precision_at_top3 >= 75%`、`actionable_pr_rate >= 70%`、`negative_control_silence_rate >= 90%`、`missed_high_risk_count <= 1`、`weak_only_top_risk <= 2`；每个语义结论必须能回链到事实 evidence 或外部上下文。
-- **Core value**: `diff` 不再只回答“扫描到了什么”，而是回答“哪些扫描事实组合后真的值得 reviewer 先看、为什么可信、下一步该检查什么”；`doctor` 暂时降级为后续场景，不阻塞 0.2.0 diff 价值验证。
-- **User coverage**: 作者本人 dogfood；外部数据源默认 opt-in。
+- **Strategic intent**: 在 fact evidence 上增加 semantic selection，降低 weak-only Top risk，补 API/protocol/behavior 类漏报。
+- **Input/output**: input 是 fact evidence、diff context、本地 DB 和 opt-in 外部上下文；output 是 semantic findings。
+- **Success metric**: `precision_at_top3 >= 75%`、`actionable_pr_rate >= 70%`、`negative_control_silence_rate >= 90%`、`missed_high_risk_count <= 1`、`weak_only_top_risk <= 2`。
+- **Constraints**: Top risk 必须有 source refs；不输出 merge recommendation；不声明 bug；`doctor` deferred。
 - **Core metric** (v0.1.1 → v0.2.0):
 
 | Metric | v0.1.1 | v0.2.0 | Delta |

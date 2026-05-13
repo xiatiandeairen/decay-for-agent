@@ -244,12 +244,46 @@ fn normalize_mechanical_line(line: &str) -> String {
 }
 
 fn is_map_clone_to_cloned(before: &str, after: &str) -> bool {
-    before.contains(".map(|")
-        && before.contains(".clone())")
-        && after.contains(".cloned()")
-        && (before.replace(".map(|value|value.clone())", ".cloned()") == after
-            || before.replace(".map(|x|x.clone())", ".cloned()") == after
-            || before.replace(".map(|item|item.clone())", ".cloned()") == after)
+    if before.contains(".map(|") && before.contains(".clone())") && after.contains(".cloned()") {
+        let Some((_prefix, rest)) = before.split_once(".map(|") else {
+            return false;
+        };
+        let Some((param, _suffix)) = rest.split_once('|') else {
+            return false;
+        };
+        let closure = format!(".map(|{0}|{0}.clone())", param.trim());
+        return before.replace(&closure, ".cloned()") == after;
+    }
+
+    if after.contains(".copied()") {
+        return map_deref_to_copied(before, after) || map_identity_ref_to_copied(before, after);
+    }
+
+    false
+}
+
+fn map_deref_to_copied(before: &str, after: &str) -> bool {
+    let Some((_prefix, rest)) = before.split_once(".map(|") else {
+        return false;
+    };
+    let Some((param, _suffix)) = rest.split_once('|') else {
+        return false;
+    };
+    let param = param.trim();
+    let closure = format!(".map(|{param}|*{param})");
+    before.replace(&closure, ".copied()") == after
+}
+
+fn map_identity_ref_to_copied(before: &str, after: &str) -> bool {
+    let Some((_prefix, rest)) = before.split_once(".map(|&") else {
+        return false;
+    };
+    let Some((param, _suffix)) = rest.split_once('|') else {
+        return false;
+    };
+    let param = param.trim();
+    let closure = format!(".map(|&{param}|{param})");
+    before.replace(&closure, ".copied()") == after
 }
 
 fn has_executable_code_change(file: &crate::git_diff::GitFileDiff) -> bool {
@@ -558,32 +592,26 @@ fn detect_protocol_header_changes(
         return Vec::new();
     }
 
-    let mut records = Vec::new();
-    for hunk in &file.hunks {
-        let deleted = hunk
-            .lines
-            .iter()
-            .filter(|line| matches!(line.kind, HunkLineKind::Deletion))
-            .map(|line| line.content.as_str())
-            .collect::<Vec<_>>();
-        let added = hunk
-            .lines
-            .iter()
-            .filter(|line| matches!(line.kind, HunkLineKind::Addition))
-            .map(|line| line.content.as_str())
-            .collect::<Vec<_>>();
+    let authority_removed = file.hunks.iter().flat_map(|hunk| &hunk.lines).any(|line| {
+        matches!(line.kind, HunkLineKind::Deletion) && line.content.contains(".authority()")
+    });
+    let host_header_rebuilt = file.hunks.iter().flat_map(|hunk| &hunk.lines).any(|line| {
+        matches!(line.kind, HunkLineKind::Addition)
+            && line.content.contains("header(")
+            && line.content.contains("HOST")
+            && line.content.contains("format!(")
+            && line.content.contains("host")
+            && line.content.contains("port")
+    });
 
-        if deleted.iter().any(|line| line.contains(".authority()"))
-            && added.iter().any(|line| line.contains(".host()"))
-            && added.iter().any(|line| line.contains(".port_u16()"))
-        {
-            records.push(EvidenceRecord::new(
-                "protocol_header_authority_changed",
-                path,
-                "Host header authority -> host/port",
-                "semantic_diff",
-            ));
-        }
+    let mut records = Vec::new();
+    if authority_removed && host_header_rebuilt {
+        records.push(EvidenceRecord::new(
+            "protocol_header_authority_changed",
+            path,
+            "Host header authority -> host/port",
+            "semantic_diff",
+        ));
     }
     records
 }

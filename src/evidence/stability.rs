@@ -87,6 +87,7 @@ fn detect_public_api_changes(
 ) {
     let before_functions = public_function_signatures(before);
     let before_items = public_item_names(before);
+    let can_classify_item_additions = !before.trim().is_empty();
 
     for (line_no, line) in after.lines().enumerate() {
         let line_no = line_no as u32 + 1;
@@ -94,10 +95,12 @@ fn detect_public_api_changes(
             continue;
         }
 
-        if let Some(name) = public_item_name(line) {
-            if !before_items.contains(&name) {
-                records.push(EvidenceRecord::new("public_api_added", path, name, SOURCE));
-                continue;
+        if can_classify_item_additions {
+            if let Some(name) = public_item_name(line) {
+                if !before_items.contains(&name) {
+                    records.push(EvidenceRecord::new("public_api_added", path, name, SOURCE));
+                    continue;
+                }
             }
         }
 

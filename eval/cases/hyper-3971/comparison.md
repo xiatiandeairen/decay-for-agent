@@ -16,7 +16,7 @@ useful_evidence_count = 1
 plausible_evidence_count = 4
 noise_evidence_count = 3
 noise_top3_count = 1
-history_only_false_positive_count = 2
+history_only_false_positive_count = 0
 ```
 
 ## Matched Useful Evidence

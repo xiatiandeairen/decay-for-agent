@@ -751,7 +751,14 @@ fn diff_reports_host_header_authority_change_as_protocol_risk() {
         project.join("src/lib.rs"),
         r#"
 pub fn host_header(url: &hyper::Uri) -> String {
-    url.authority().unwrap().to_string()
+    let host = url.host().expect("uri has no host");
+    let port = url.port_u16().unwrap_or(80);
+    let authority = url.authority().unwrap().clone();
+    Request::builder()
+        .header(hyper::header::HOST, authority.as_str())
+        .body(())
+        .unwrap();
+    format!("{}:{}", host, port)
 }
 "#,
     )
@@ -764,6 +771,10 @@ pub fn host_header(url: &hyper::Uri) -> String {
 pub fn host_header(url: &hyper::Uri) -> String {
     let host = url.host().expect("uri has no host");
     let port = url.port_u16().unwrap_or(80);
+    Request::builder()
+        .header(hyper::header::HOST, format!("{}:{}", host, port))
+        .body(())
+        .unwrap();
     format!("{}:{}", host, port)
 }
 "#,
@@ -783,6 +794,31 @@ pub fn host_header(url: &hyper::Uri) -> String {
         .stdout(predicate::str::contains(
             "kind=protocol_header_authority_changed",
         ));
+}
+
+#[test]
+fn diff_does_not_flag_public_api_moved_into_new_file_as_added() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(project.join("src/lib.rs"), "pub struct Incoming;\n").expect("write base lib");
+    commit_all(&project, "feat: seed moved public api");
+
+    fs::create_dir_all(project.join("src/body/incoming")).expect("create nested module");
+    fs::write(project.join("src/lib.rs"), "pub mod body;\n").expect("write changed lib");
+    fs::write(project.join("src/body.rs"), "pub mod incoming;\n").expect("write body");
+    fs::write(
+        project.join("src/body/incoming.rs"),
+        "pub struct Incoming;\n",
+    )
+    .expect("write incoming");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kind=public_api_added").not());
 }
 
 #[test]
@@ -824,12 +860,12 @@ fn diff_keeps_mechanical_clippy_changes_quiet() {
     .expect("write lib");
     fs::write(
         project.join("src/alpha.rs"),
-        "pub fn alpha(values: &[String]) -> Vec<String> { values.iter().map(|value| value.clone()).collect() }\n",
+        "pub fn alpha(values: &[String]) -> Vec<String> { values.iter().map(|s| s.clone()).collect() }\n",
     )
     .expect("write alpha");
     fs::write(
         project.join("src/beta.rs"),
-        "pub fn beta(values: &[String]) -> Vec<String> { values.iter().map(|value| value.clone()).collect() }\n",
+        "pub fn beta(values: &[String]) -> Vec<String> { values.iter().map(|&ch| ch).collect() }\n",
     )
     .expect("write beta");
     commit_all(&project, "feat: seed clippy fixture");
@@ -841,7 +877,7 @@ fn diff_keeps_mechanical_clippy_changes_quiet() {
     .expect("write alpha changed");
     fs::write(
         project.join("src/beta.rs"),
-        "pub fn beta(values: &[String]) -> Vec<String> { values.iter().cloned().collect() }\n",
+        "pub fn beta(values: &[String]) -> Vec<String> { values.iter().copied().collect() }\n",
     )
     .expect("write beta changed");
 

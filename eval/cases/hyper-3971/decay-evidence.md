@@ -20,12 +20,6 @@
 5. [medium] src/proto/h1/role.rs:parse
    complexity touched_existing_risky
    action: review function complexity and add focused regression tests
-6. [low] src/proto/h1/role.rs
-   history 0 commits in 90d, 85 lines changed in 180d
-   action: use as supporting context, not as a standalone blocker
-7. [low] src/proto/h1/role.rs
-   history fix(http1): use httparse config for Servers (#4002)
-   action: use as supporting context, not as a standalone blocker
 ```
 
 ## Complexity impact

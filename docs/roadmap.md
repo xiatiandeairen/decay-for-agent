@@ -51,7 +51,7 @@
 | Version | Core Direction | Core-Metric Delta | Status | Period | Milestones |
 |---------|----------------|-------------------|--------|--------|------------|
 | v0.1.0 | 跑通 Rust 函数扫描、baseline、diff、doctor 的本地闭环 | ↑ active metrics 0→6（measured: `src/metric/mod.rs`）；↑ integration tests 0→16（measured: `cargo test` 2026-05-06）；↓ product certainty no data→unproven（no data: 尚无 fixed case） | released | TBD - 2026.05.05 | M1-M1 |
-| v0.1.x | 用 dogfood 验证 `diff` 是否改变 commit 决策，并修复 baseline identity / moved function 噪音 | ↑ dogfood classified cases 0→TBD（target value, pending validation）；↑ fixed cases 0→≥1（target value, pending validation）；↓ path-move identity noise initial fix（measured: local mxcore dogfood 2026-05-11） | in development | 2026.05.05 - TBD | M2-M2 |
+| v0.1.1 | 建立 fact evidence baseline，验证纯静态扫描的真实价值边界 | ↑ external judged cases 0→10（measured: 2026-05-13）；↑ precision@top3 no data→65%（measured）；↑ actionable_pr_rate no data→60%（measured）；↑ negative_control_silence_rate no data→100%（measured）；↓ product scope: semantic risks deferred to v0.2.0 | released | 2026.05.05 - 2026.05.13 | M2-M2 |
 | v0.2.0 | 在事实证据层之上建设语义筛选层，把静态扫描事实收敛成高价值 review 证据 | ↑ semantic-filtered top risk baseline 65% precision@top3→≥75%（target，基于 10-case 外部 PR benchmark）；↑ actionable_pr_rate 60%→≥70%（target）；↓ missed_high_risk_count 2/10→≤1/20（target）；↓ weak-only top risk 3/10→≤2/20（target） | planning | 2026.05.13 - TBD | M3-M3 |
 
 ### Version Details
@@ -74,23 +74,25 @@
 | Current doctor findings in this repo | N/A | 8（measured: `decay doctor` 2026-05-05） | N/A |
 | Real fixed cases from `decay diff` | 0 | no data（尚未形成 dogfood 记录） | no data |
 
-#### v0.1.x — dogfood validation
+#### v0.1.1 — fact evidence baseline
 
-- **Strategic intent**: 验证 `decay diff` 是否真的能改变作者的 commit 决策。
-- **Input/output**: input 是作者持续在真实 AI 编程任务中运行 baseline/diff；output 是 classified dogfood cases。
-- **Priority rationale**: 在没有 fixed case 前，新增 metric、JSON/agent protocol 或更多语言都会放大未验证假设；基础 CI 只作为工程质量门禁保留。
-- **Risks and dependencies**: 风险是命中主要来自旧债或噪音；依赖作者按 `docs/ops.md` 记录 fixed / reviewed / ignored / noise。
-- **Success metric**: 至少 1 个 `fixed` case（target value, pending validation），且噪音没有导致作者停止运行 `decay diff`。
-- **Core value**: 把 `diff` 从“功能可用”推进到“对 commit 决策有证据价值”。
-- **User coverage**: 作者本人 dogfood。
-- **Core metric** (v0.1.0 → v0.1.x):
+- **Strategic intent**: 建立可复跑的 fact evidence baseline，验证纯静态扫描在真实 PR 场景中的有效边界，为 v0.2.0 语义层提供对照组。
+- **Input/output**: input 是 git diff、AST/function metrics、stability/quality detectors、history 和本地 evidence DB；output 是 fact evidence sections、10-case ground truth/comparison 和 summary 指标。
+- **Priority rationale**: 直接进入语义层之前，必须先知道静态扫描到底哪些场景有效，哪些只是无效堆砌；否则语义层会建立在未经验证的噪声之上。
+- **Risks and dependencies**: 风险是 10-case 样本仍小，不能夸大为普遍产品成功；依赖外部 PR harness、人工 judgement 和可复跑 evidence 输出。
+- **Success metric**: 完成 10-case judged baseline，并明确 fact-only 有效场景、弱信号和高价值漏报。
+- **Core value**: 把 `diff` 从“函数复杂度退化裁决”推进到“可复查事实证据扫描器”，同时诚实标注当前指标的真实价值边界。
+- **User coverage**: 作者本人 + 外部开源 PR benchmark。
+- **Core metric** (v0.1.0 → v0.1.1):
 
-| Metric | v0.1.0 | v0.1.x | Delta |
+| Metric | v0.1.0 | v0.1.1 | Delta |
 |--------|--------|--------|-------|
-| Real fixed cases from `decay diff` | no data | ≥1（target value, pending validation） | ↑ ≥1 |
-| Classified dogfood cases | 0 | TBD（pending dogfood） | no data |
-| Noise share | no data | no target yet（先分类再判断） | no data |
-| Manual baseline friction | identified qualitatively | TBD（pending dogfood evidence） | no data |
+| External judged cases | 0 | 10（measured: `eval/reports/50-case-summary.md` 2026-05-13） | ↑ 10 |
+| Precision@top3 | no data | 65%（measured） | ↑ baseline |
+| Actionable PR rate | no data | 60%（measured） | ↑ baseline |
+| Negative control silence | no data | 100%（measured） | ↑ baseline |
+| Missed high-value risks | no data | 2 / 10（measured） | establishes v0.2.0 target |
+| Weak/noise Top risk | no data | 3 / 10（measured） | establishes v0.2.0 target |
 
 #### v0.2.0 — semantic-filtered evidence layer
 
@@ -101,9 +103,9 @@
 - **Success metric**: 第一轮以 20 个高质量 PR case 为验证集：`precision_at_top3 >= 75%`、`actionable_pr_rate >= 70%`、`negative_control_silence_rate >= 90%`、`missed_high_risk_count <= 1`、`weak_only_top_risk <= 2`；每个语义结论必须能回链到事实 evidence 或外部上下文。
 - **Core value**: `diff` 不再只回答“扫描到了什么”，而是回答“哪些扫描事实组合后真的值得 reviewer 先看、为什么可信、下一步该检查什么”；`doctor` 暂时降级为后续场景，不阻塞 0.2.0 diff 价值验证。
 - **User coverage**: 作者本人 dogfood；外部数据源默认 opt-in。
-- **Core metric** (v0.1.x → v0.2.0):
+- **Core metric** (v0.1.1 → v0.2.0):
 
-| Metric | v0.1.x | v0.2.0 | Delta |
+| Metric | v0.1.1 | v0.2.0 | Delta |
 |--------|--------|--------|-------|
 | Fact evidence baseline | 10-case benchmark: precision@top3 65%, actionable 60%, missed high risk 2, noise top3 3 | 20-case benchmark: precision@top3 ≥75%, actionable ≥70%, missed high risk ≤1, weak-only top risk ≤2（target） | ↑ top value, ↓ weak noise |
 | Semantic claim traceability | no dedicated layer | every semantic top finding links to supporting facts and source context（target 100%） | ↑ explainability |
@@ -117,5 +119,5 @@
 | # | Core Direction | Goal Achievement | Status | Completion Date |
 |---|----------------|------------------|--------|-----------------|
 | [M1](milestones/m1.md) | 交付 v0.1.0 本地功能闭环 | 功能闭环完成，`cargo test` 和 clippy 通过；产品 fixed case 仍无数据，因此不声明产品成功 | done | 2026-05-05 |
-| [M2](milestones/m2.md) | 验证 `diff` 是否改变 commit 决策 | 尚未开始；需要按 `docs/ops.md` 记录 fixed / reviewed / ignored / noise | not started | — |
+| [M2](milestones/m2.md) | v0.1.1 fact evidence baseline | 已完成 10-case 外部 PR benchmark，明确静态扫描有效边界和 v0.2.0 语义层目标 | done | 2026-05-13 |
 | [M3](milestones/m3.md) | v0.2.0 语义筛选证据层 | planning；0.1.1 已完成事实层和 10-case benchmark，下一步建设 semantic-filtered top review evidence | planning | — |

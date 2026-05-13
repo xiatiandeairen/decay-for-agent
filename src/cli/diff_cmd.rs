@@ -404,6 +404,10 @@ fn risk_findings(report: &impact::ImpactReport) -> Vec<RiskFinding> {
             .iter()
             .filter(|kind| **kind == "public_api_signature_changed")
             .count();
+        let public_api_added_count = kinds
+            .iter()
+            .filter(|kind| **kind == "public_api_added")
+            .count();
         let migration_count = kinds
             .iter()
             .filter(|kind| **kind == "storage_migration_touched")
@@ -416,7 +420,7 @@ fn risk_findings(report: &impact::ImpactReport) -> Vec<RiskFinding> {
             87
         } else if unsafe_count > 0 || panic_count > 0 {
             85
-        } else if protocol_count > 0 || public_api_count > 0 {
+        } else if protocol_count > 0 || public_api_count > 0 || public_api_added_count > 0 {
             83
         } else if ffi_count > 0 {
             70
@@ -435,6 +439,9 @@ fn risk_findings(report: &impact::ImpactReport) -> Vec<RiskFinding> {
         }
         if public_api_count > 0 {
             parts.push(format!("{public_api_count} public API signature changed"));
+        }
+        if public_api_added_count > 0 {
+            parts.push(format!("{public_api_added_count} public API added"));
         }
         if migration_count > 0 {
             parts.push(format!("{migration_count} storage migration touched"));
@@ -488,52 +495,51 @@ fn risk_findings(report: &impact::ImpactReport) -> Vec<RiskFinding> {
     }
 
     for evidence in &report.semantic_evidence {
-        let (severity, score, action) = match evidence.kind.as_str() {
+        let (severity, score, action, detail) = match evidence.kind.as_str() {
+            "protocol_header_authority_changed" => (
+                "high",
+                92,
+                "review protocol header semantics, credential leakage, and compatibility tests",
+                format!("protocol host header authority changed {}", evidence.subject),
+            ),
             "security_sensitive_dependency_changed" => (
                 "high",
                 86,
                 "review dependency feature semantics and require targeted compatibility/security checks",
+                format!("semantic {} {}", evidence.kind, evidence.subject),
             ),
             "config_value_changed" => (
                 "high",
                 84,
                 "review production configuration boundary change and add rollout/regression checks",
+                format!("semantic {} {}", evidence.kind, evidence.subject),
             ),
             "env_default_changed" => (
                 "high",
                 84,
                 "review runtime environment default change and add compatibility checks",
+                format!("semantic {} {}", evidence.kind, evidence.subject),
             ),
             "default_value_changed" => (
                 "high",
                 82,
                 "review behavior boundary change and add regression coverage for old and new defaults",
+                format!("semantic {} {}", evidence.kind, evidence.subject),
             ),
             _ => (
                 "medium",
                 60,
                 "review semantic behavior impact before merge",
+                format!("semantic {} {}", evidence.kind, evidence.subject),
             ),
         };
         findings.push(RiskFinding {
             severity,
             title: evidence.file.clone(),
-            detail: format!("semantic {} {}", evidence.kind, evidence.subject),
+            detail,
             action,
             score,
         });
-    }
-
-    for evidence in &report.history.records {
-        if evidence.kind == "churn_hotspot" || evidence.kind == "recently_bugfixed_area" {
-            findings.push(RiskFinding {
-                severity: "low",
-                title: evidence.file.clone(),
-                detail: format!("history {}", evidence.subject),
-                action: "use as supporting context, not as a standalone blocker",
-                score: 25,
-            });
-        }
     }
 
     findings

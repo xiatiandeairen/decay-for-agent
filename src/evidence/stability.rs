@@ -86,11 +86,19 @@ fn detect_public_api_changes(
     records: &mut Vec<EvidenceRecord>,
 ) {
     let before_functions = public_function_signatures(before);
+    let before_items = public_item_names(before);
 
     for (line_no, line) in after.lines().enumerate() {
         let line_no = line_no as u32 + 1;
         if !touched_lines.contains(&line_no) {
             continue;
+        }
+
+        if let Some(name) = public_item_name(line) {
+            if !before_items.contains(&name) {
+                records.push(EvidenceRecord::new("public_api_added", path, name, SOURCE));
+                continue;
+            }
         }
 
         let Some((name, signature)) = public_function_signature(line) else {
@@ -204,6 +212,26 @@ fn public_function_signatures(text: &str) -> std::collections::BTreeMap<String, 
     text.lines()
         .filter_map(public_function_signature)
         .collect::<std::collections::BTreeMap<_, _>>()
+}
+
+fn public_item_names(text: &str) -> std::collections::BTreeSet<String> {
+    text.lines().filter_map(public_item_name).collect()
+}
+
+fn public_item_name(line: &str) -> Option<String> {
+    let signature = line.split('{').next()?.trim();
+    let rest = signature
+        .strip_prefix("pub struct ")
+        .or_else(|| signature.strip_prefix("pub enum "))
+        .or_else(|| signature.strip_prefix("pub trait "))
+        .or_else(|| signature.strip_prefix("pub type "))?;
+    let name = rest
+        .split(|ch: char| ch == '(' || ch == '<' || ch == '=' || ch.is_whitespace())
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .trim_end_matches(';');
+    (!name.is_empty()).then(|| name.to_string())
 }
 
 fn public_function_signature(line: &str) -> Option<(String, String)> {

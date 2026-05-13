@@ -742,6 +742,121 @@ fn diff_promotes_public_api_signature_change_to_top_risk() {
 }
 
 #[test]
+fn diff_reports_host_header_authority_change_as_protocol_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn host_header(url: &hyper::Uri) -> String {
+    url.authority().unwrap().to_string()
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed host header");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn host_header(url: &hyper::Uri) -> String {
+    let host = url.host().expect("uri has no host");
+    let port = url.port_u16().unwrap_or(80);
+    format!("{}:{}", host, port)
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Top risk findings:"))
+        .stdout(predicate::str::contains("[high] src/lib.rs"))
+        .stdout(predicate::str::contains(
+            "protocol host header authority changed",
+        ))
+        .stdout(predicate::str::contains("Semantic impact:"))
+        .stdout(predicate::str::contains(
+            "kind=protocol_header_authority_changed",
+        ));
+}
+
+#[test]
+fn diff_promotes_public_api_addition_to_top_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(project.join("src/lib.rs"), "pub struct Existing;\n").expect("write base lib");
+    commit_all(&project, "feat: seed public api");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub struct Existing;\npub struct HeaderCaseMap;\n",
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Top risk findings:"))
+        .stdout(predicate::str::contains("[high] src/lib.rs"))
+        .stdout(predicate::str::contains("public API added"))
+        .stdout(predicate::str::contains("Stability impact:"))
+        .stdout(predicate::str::contains("kind=public_api_added"));
+}
+
+#[test]
+fn diff_keeps_mechanical_clippy_changes_quiet() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub mod alpha;\npub mod beta;\n",
+    )
+    .expect("write lib");
+    fs::write(
+        project.join("src/alpha.rs"),
+        "pub fn alpha(values: &[String]) -> Vec<String> { values.iter().map(|value| value.clone()).collect() }\n",
+    )
+    .expect("write alpha");
+    fs::write(
+        project.join("src/beta.rs"),
+        "pub fn beta(values: &[String]) -> Vec<String> { values.iter().map(|value| value.clone()).collect() }\n",
+    )
+    .expect("write beta");
+    commit_all(&project, "feat: seed clippy fixture");
+
+    fs::write(
+        project.join("src/alpha.rs"),
+        "pub fn alpha(values: &[String]) -> Vec<String> { values.iter().cloned().collect() }\n",
+    )
+    .expect("write alpha changed");
+    fs::write(
+        project.join("src/beta.rs"),
+        "pub fn beta(values: &[String]) -> Vec<String> { values.iter().cloned().collect() }\n",
+    )
+    .expect("write beta changed");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Top risk findings:"))
+        .stdout(predicate::str::contains("none"))
+        .stdout(predicate::str::contains("kind=blast_radius").not())
+        .stdout(predicate::str::contains("kind=mixed_concerns").not())
+        .stdout(predicate::str::contains("kind=test_gap").not());
+}
+
+#[test]
 fn diff_does_not_treat_docs_only_changes_as_test_gap_or_stability_evidence() {
     let (_tmp, project, db) = base_project();
     fs::create_dir_all(project.join("docs")).expect("create docs");

@@ -196,17 +196,60 @@ fn quality_file_changes(diff: &GitDiff, stability: &[EvidenceRecord]) -> Vec<Qua
                     .iter()
                     .any(|evidence| evidence.file == path && !evidence.kind.is_empty())
             });
+            let mechanical = is_mechanical_lint_change(file);
             QualityFileChange {
                 old_path: file.old_path.clone(),
                 new_path: file.new_path.clone(),
                 added_lines: file.added_lines.unwrap_or(0),
                 deleted_lines: file.deleted_lines.unwrap_or(0),
                 sensitive: stability_sensitive || path.is_some_and(is_sensitive_path),
-                executable_code_changed: has_executable_code_change(file),
+                executable_code_changed: has_executable_code_change(file) && !mechanical,
                 test_code_changed: has_test_code_change(file),
             }
         })
         .collect()
+}
+
+fn is_mechanical_lint_change(file: &crate::git_diff::GitFileDiff) -> bool {
+    let mut changed_pairs = 0;
+    for hunk in &file.hunks {
+        let deleted = hunk
+            .lines
+            .iter()
+            .filter(|line| matches!(line.kind, HunkLineKind::Deletion))
+            .map(|line| normalize_mechanical_line(&line.content))
+            .collect::<Vec<_>>();
+        let added = hunk
+            .lines
+            .iter()
+            .filter(|line| matches!(line.kind, HunkLineKind::Addition))
+            .map(|line| normalize_mechanical_line(&line.content))
+            .collect::<Vec<_>>();
+
+        if deleted.len() != added.len() || deleted.is_empty() {
+            return false;
+        }
+        for (before, after) in deleted.iter().zip(added.iter()) {
+            if !is_map_clone_to_cloned(before, after) {
+                return false;
+            }
+            changed_pairs += 1;
+        }
+    }
+    changed_pairs > 0
+}
+
+fn normalize_mechanical_line(line: &str) -> String {
+    line.split_whitespace().collect::<String>()
+}
+
+fn is_map_clone_to_cloned(before: &str, after: &str) -> bool {
+    before.contains(".map(|")
+        && before.contains(".clone())")
+        && after.contains(".cloned()")
+        && (before.replace(".map(|value|value.clone())", ".cloned()") == after
+            || before.replace(".map(|x|x.clone())", ".cloned()") == after
+            || before.replace(".map(|item|item.clone())", ".cloned()") == after)
 }
 
 fn has_executable_code_change(file: &crate::git_diff::GitFileDiff) -> bool {
@@ -306,6 +349,7 @@ fn detect_semantic(diff: &GitDiff) -> Vec<EvidenceRecord> {
         records.extend(detect_env_default_changes(path, file));
         records.extend(detect_dependency_feature_changes(path, file));
         records.extend(detect_config_value_changes(path, file));
+        records.extend(detect_protocol_header_changes(path, file));
     }
     records
 }
@@ -501,6 +545,44 @@ fn detect_config_value_changes(
                     ));
                 }
             }
+        }
+    }
+    records
+}
+
+fn detect_protocol_header_changes(
+    path: &str,
+    file: &crate::git_diff::GitFileDiff,
+) -> Vec<EvidenceRecord> {
+    if !path.ends_with(".rs") {
+        return Vec::new();
+    }
+
+    let mut records = Vec::new();
+    for hunk in &file.hunks {
+        let deleted = hunk
+            .lines
+            .iter()
+            .filter(|line| matches!(line.kind, HunkLineKind::Deletion))
+            .map(|line| line.content.as_str())
+            .collect::<Vec<_>>();
+        let added = hunk
+            .lines
+            .iter()
+            .filter(|line| matches!(line.kind, HunkLineKind::Addition))
+            .map(|line| line.content.as_str())
+            .collect::<Vec<_>>();
+
+        if deleted.iter().any(|line| line.contains(".authority()"))
+            && added.iter().any(|line| line.contains(".host()"))
+            && added.iter().any(|line| line.contains(".port_u16()"))
+        {
+            records.push(EvidenceRecord::new(
+                "protocol_header_authority_changed",
+                path,
+                "Host header authority -> host/port",
+                "semantic_diff",
+            ));
         }
     }
     records

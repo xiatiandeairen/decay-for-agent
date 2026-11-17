@@ -1,0 +1,157 @@
+# Extra context needed before needs_more_context cases can be reconsidered.
+
+version = "risk-signal-follow-up-targets.v1"
+
+[[cases]]
+id = "tokio-rs-tokio-8001"
+refs = [
+  { type = "issue", repo = "tokio-rs/tokio", number = 8000, reason = "Skeptic requires issue reproduction and platform/readiness context." },
+]
+
+[[cases]]
+id = "hyper-3977"
+refs = [
+  { type = "pr", repo = "hyperium/hyper", number = 3952, reason = "Original missed-wakeup fix mechanism." },
+  { type = "issue", repo = "hyperium/hyper", number = 3976, reason = "CPU report that triggered revert." },
+]
+
+[[cases]]
+id = "hyper-4038"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 4033, reason = "FFI NULL pointer report or reproduction." },
+]
+
+[[cases]]
+id = "hyperium-hyper-3365"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 2997, reason = "Pool idle timeout zero panic report and reproduction." },
+]
+
+[[cases]]
+id = "hyperium-hyper-3261"
+refs = [
+  { type = "pr", repo = "hyperium/hyper", number = 3233, reason = "Original graceful shutdown fix and failing test context." },
+  { type = "issue", repo = "hyperium/hyper", number = 2730, reason = "HTTP/1 graceful shutdown hang report." },
+]
+
+[[cases]]
+id = "BurntSushi-ripgrep-827"
+refs = [
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 705, reason = "Original ignore/walkdir change that introduced Windows performance regression." },
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 820, reason = "Windows performance regression report." },
+  { type = "pr", repo = "BurntSushi/walkdir", number = 96, reason = "Companion walkdir fix for the same stat-call regression." },
+]
+
+[[cases]]
+id = "hyper-3185"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 3178, reason = "Original user report and timeout expectation." },
+]
+
+[[cases]]
+id = "serde-rs-json-265"
+refs = [
+  { type = "issue", repo = "serde-rs/json", number = 256, reason = "Original arbitrary-bytes feature request that the follow-up regression references." },
+]
+
+[[cases]]
+id = "hyper-3988"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 3976, reason = "Production CPU report related to prior wakeup fix and v2 follow-up." },
+  { type = "pr", repo = "hyperium/hyper", number = 3977, reason = "Revert of original #3952 fix before v2." },
+]
+
+[[cases]]
+id = "hyper-3952"
+refs = [
+  { type = "pr", repo = "hyperium/hyper", number = 3977, reason = "Follow-up revert of the original missed-wakeup fix." },
+  { type = "issue", repo = "hyperium/hyper", number = 3976, reason = "CPU report that made the original wakeup fix risky." },
+]
+
+[[cases]]
+id = "hyper-4056"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 4055, reason = "32-bit large-body reproduction or boundary report." },
+]
+
+[[cases]]
+id = "hyper-4061"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 4003, reason = "HTTP/2 body capacity reservation memory behavior report." },
+  { type = "pr", repo = "hyperium/hyper", number = 4051, reason = "Previous related PR continued by this fix." },
+]
+
+[[cases]]
+id = "serde-rs-json-757"
+refs = [
+  { type = "issue", repo = "serde-rs/json", number = 755, reason = "Invalid UTF-8 RawValue panic reproduction." },
+]
+
+[[cases]]
+id = "ripgrep-3154"
+refs = [
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 2528, reason = "Underlying PCRE2 multiline look-around issue." },
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 3139, reason = "Concrete files-with-matches regression report." },
+]
+
+[[cases]]
+id = "ripgrep-2885"
+refs = [
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 2884, reason = "False-negative regex literal extraction report." },
+]
+
+[[cases]]
+id = "ripgrep-2692"
+refs = [
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 2690, reason = "Reference-cycle memory growth report and reproduction context." },
+]
+
+[[cases]]
+id = "hyperium-hyper-3394"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 3393, reason = "Missing Timer runtime configuration report." },
+]
+
+[[cases]]
+id = "hyperium-hyper-310"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 197, reason = "Original drain/drop request lifecycle issue." },
+  { type = "issue", repo = "hyperium/hyper", number = 309, reason = "Related drain/drop request lifecycle issue." },
+]
+
+[[cases]]
+id = "hyperium-hyper-518"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 495, reason = "SSL verifier connector preservation report." },
+]
+
+[[cases]]
+id = "hyperium-hyper-3967"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 3966, reason = "HTTP/2 CONNECT upgrade failure report." },
+]
+
+[[cases]]
+id = "tokio-rs-tokio-7638"
+refs = [
+  { type = "issue", repo = "tokio-rs/tokio", number = 7637, reason = "Macro hygiene regression report." },
+]
+
+[[cases]]
+id = "tokio-rs-tokio-8057"
+refs = [
+  { type = "pr", repo = "tokio-rs/tokio", number = 7757, reason = "Original spawn_blocking regression-introducing change." },
+  { type = "issue", repo = "tokio-rs/tokio", number = 8056, reason = "spawn_blocking hang report fixed by revert." },
+]
+
+[[cases]]
+id = "hyperium-hyper-3290"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 3289, reason = "Double-poll Select panic report." },
+]
+
+[[cases]]
+id = "hyperium-hyper-3812"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 3811, reason = "Partial header intermittent panic report." },
+]

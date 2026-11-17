@@ -1,0 +1,91 @@
+{
+  "case_id": "BurntSushi-ripgrep-3189",
+  "refs": [
+    {
+      "detail": {
+        "body": "This bug was originally reported in the helix repository: https://github.com/helix-editor/helix/issues/12604\n\nI was doing a bit of a research in that issue, and I found that helix [is using the package `ignore`](https://github.com/helix-editor/helix/blob/5b0563419eeeaf0595c848865c46be4abad246a7/helix-term/Cargo.toml#L73), and we can see instances of `WalkBuilder` in the file picker function [here](https://github.com/helix-editor/helix/blob/5b0563419eeeaf0595c848865c46be4abad246a7/helix-term/src/ui/mod.rs#L234).\n\nThe full explanation of the bug can be read there, but the TLDR is: if the global `.gitignore`, specified in git's config `core.excludesfile` option contains a rooted pattern, for example `/.venv`, it is **not** ignored as expected.\n\nI looked for similar issues to see if anyone have reported it already, but I was unable to find any.",
+        "closedAt": "2025-10-15T23:44:25Z",
+        "comments": [
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "Please provide an MRE.",
+            "createdAt": "2025-10-12T10:56:24Z",
+            "id": "IC_kwDOAzJbyc7KTs3G",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/3179#issuecomment-3394162118",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Yutsuten"
+            },
+            "authorAssociation": "NONE",
+            "body": "I was able to reproduce the issue with the code bellow:\n\n```rust\nuse ignore::WalkBuilder;\nuse std::env;\n\nfn main() {\n    let root = env::current_dir().unwrap();\n    println!(\"Root is {:?}\", root);\n    let mut walk_builder = WalkBuilder::new(root);\n    let walk = walk_builder\n        .hidden(false)\n        .git_ignore(true)\n        .git_global(true)\n        .build();\n    for dir_entry in walk {\n        println!(\"{:?}\", dir_entry.unwrap().path());\n    }\n}\n```\n\nAnd created a dummy `.venv` folder with two files:\n\n```shell\nmkdir .venv\ntouch .venv/foo\ntouch .venv/bar\n```\n\nWith `/.venv` ignored in the global ignore file, `.venv` entries are printed:\n\n```txt\n\"/home/mateus/Projects/ripgrep-issue/.venv\"\n\"/home/mateus/Projects/ripgrep-issue/.venv/bar\"\n\"/home/mateus/Projects/ripgrep-issue/.venv/foo\"\n```\n\nIf I copy/move the `/.venv` entry from the global ignore to my project's `.gitignore` (in my case, `~/Projects/ripgrep-issue/.gitignore`) and run again, `.venv` is properly ignored and not printed.\n\nAt the beginning I was using `let root = \".\";` and was unable to reproduce the issue. I think this is an important clue, because it seems that the bug is only triggered when using a full path as a root.\n\nNow, if this behavior is intended or not in `ripgrep`, why Helix needs to use the full path as root, I don't know.\nIf this is intended, could you tell me if there is any function/option we could enable to make global gitignore work even when using full path root?",
+            "createdAt": "2025-10-12T14:22:24Z",
+            "id": "IC_kwDOAzJbyc7KVH5Y",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/3179#issuecomment-3394535000",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "Thanks for reporting this! This was gnarly to fix. And this bug appeared in ripgrep as well. Moreover, the bug occurs with `WalkBuilder::add_ignore`. I have a fix in #3189.",
+            "createdAt": "2025-10-15T22:17:12Z",
+            "id": "IC_kwDOAzJbyc7LKbSs",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "HOORAY",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/3179#issuecomment-3408508076",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2025-10-12T10:44:13Z",
+        "labels": [
+          {
+            "color": "fc2929",
+            "description": "A bug.",
+            "id": "MDU6TGFiZWwzMzk3MjE2Nzg=",
+            "name": "bug"
+          }
+        ],
+        "number": 3179,
+        "state": "CLOSED",
+        "title": "ignore::WalkBuilder.git_global(true) does not behave correctly with rooted files",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/3179"
+      },
+      "target": {
+        "number": 3179,
+        "reason": "Global gitignore absolute path bug report.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    }
+  ]
+}

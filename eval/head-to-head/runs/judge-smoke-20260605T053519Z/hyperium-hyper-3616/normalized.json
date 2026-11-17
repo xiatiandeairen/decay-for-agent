@@ -1,0 +1,43 @@
+{
+  "case_id": "hyperium-hyper-3616",
+  "ground_truth_draft": {
+    "expected_behavior": "UpgradeableConnection::graceful_shutdown must be a no-op when the connection has already been upgraded (inner = None). Previously it unconditionally called self.inner.as_mut().unwrap(), causing a panic if graceful_shutdown was invoked after the upgrade transition.",
+    "high_value": true,
+    "primary_signal_ids": [
+      "lifecycle_ordering",
+      "assumption_boundary"
+    ],
+    "rationale_from_pr_metadata": "PR title 'fix: avoid panic when calling `graceful_shutdown` if H1 connection was upgraded' and body 'Closes #3615 / Added test which fails without these changes' directly identify the panic-on-upgrade bug. The diff guards the unwrap with `if let Some(conn) = self.inner.as_mut()` and adds http1_graceful_shutdown_after_upgrade asserting 'graceful shutdown doesn't cause issues or panic. It should be ignored after upgrade'.",
+    "subject_files": [
+      "src/server/conn/http1.rs"
+    ]
+  },
+  "judgement_drafts": {
+    "ai_baseline": {
+      "actionable": true,
+      "missed_high_risk_count": 1,
+      "notes": "Rank 2 nails assumption_boundary on graceful_shutdown. Rank 1 (state_transition on poll's unwrap) is a plausible adjacent risk the PR did not fix but is not the ground-truth mechanism. Rank 3 is supporting. Missed the lifecycle_ordering framing of shutdown-after-upgrade.",
+      "top3_total": 3,
+      "top3_useful": 1,
+      "weak_only_top_risk_count": 0
+    },
+    "fact_only": {
+      "actionable": true,
+      "missed_high_risk_count": 1,
+      "notes": "Top finding is semantic_diff lifecycle_ordering_changed on Pin::new(conn).graceful_shutdown() \u2014 direct hit on the fix site. Missed the assumption_boundary (unwrap-on-None) mechanism. #2 prod_change_with_tests is supporting context only.",
+      "top3_total": 2,
+      "top3_useful": 1,
+      "weak_only_top_risk_count": 0
+    },
+    "semantic_filtered": {
+      "actionable": true,
+      "missed_high_risk_count": 1,
+      "notes": "Single high-confidence lifecycle_ordering claim correctly anchored on graceful_shutdown. Limitation noted honestly. Does not articulate the unwrap/assumption_boundary mechanism explicitly.",
+      "top3_total": 1,
+      "top3_useful": 1,
+      "weak_only_top_risk_count": 0
+    }
+  },
+  "manifest_hash": "06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208",
+  "model": "claude-opus-4-7"
+}

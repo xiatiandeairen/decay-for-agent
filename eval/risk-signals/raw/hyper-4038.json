@@ -1,0 +1,66 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Previously accepted large-scale candidate; merged fix at FFI safety boundary.",
+    "id": "hyper-4038",
+    "limitations": "Exact FFI files should be confirmed by enrichment.",
+    "production_files": [
+      "src/ffi/mod.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "FFI request/response paths needed null pointer validation before dereference.",
+    "signal_ids": [
+      "assumption_boundary",
+      "non_happy_path",
+      "external_contract"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/4038",
+      "eval/large-scale-50/candidates/open-source.toml"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/hyperium/hyper/pull/4038",
+    "why_high_value": "FFI pointer validation is a crash/safety boundary for external callers.",
+    "why_not_noise": "Specific null-deref boundary, not generic unsafe churn."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "e13e783927d429fc03038fe512eeb4d379cf1a70",
+    "body": "Three FFI functions dereference raw pointers before NULL validation, leading to UB when called with NULL handles. Added  `non_null!` checks.\r\n\r\n  Functions fixed:\r\n  - `hyper_request_set_uri_parts`\r\n  - `hyper_request_headers`\r\n  - `hyper_response_headers`\r\n\r\n  Closes #4033",
+    "comments": [],
+    "files": [
+      {
+        "additions": 6,
+        "changeType": "MODIFIED",
+        "deletions": 3,
+        "path": "src/ffi/http_types.rs"
+      }
+    ],
+    "headRefName": "fix/ffi-null-check",
+    "headRefOid": "e1e6f57461c970e152044b5e27f70132aeccaf6e",
+    "labels": [],
+    "mergedAt": "2026-03-16T14:03:36Z",
+    "number": 4038,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks!",
+        "commit": {
+          "oid": "e1e6f57461c970e152044b5e27f70132aeccaf6e"
+        },
+        "id": "PRR_kwDOAWaYQc7rrsTn",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2026-03-16T14:03:21Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix(ffi): validate null pointers before dereferencing in request/resp…",
+    "url": "https://github.com/hyperium/hyper/pull/4038"
+  }
+}

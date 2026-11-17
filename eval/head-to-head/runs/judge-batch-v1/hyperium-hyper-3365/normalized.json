@@ -1,0 +1,42 @@
+{
+  "case_id": "hyperium-hyper-3365",
+  "ground_truth_draft": {
+    "expected_behavior": "Pool::new now filters Some(Duration::ZERO) out of config.idle_timeout, preventing a downstream panic when an idle interval timer would be created with a zero duration. After the fix, idle_timeout=Some(ZERO) is treated as 'no idle timeout' rather than crashing the client.",
+    "high_value": true,
+    "primary_signal_ids": [
+      "assumption_boundary"
+    ],
+    "rationale_from_pr_metadata": "PR title 'fix(client): panic when pool idle timeout set to zero' and the body reproducer (pool_idle_timeout(Some(Duration::ZERO))) explicitly identify a panic-on-boundary bug tied to issue #2997. The one-line change `config.idle_timeout.filter(|&t| t > Duration::ZERO)` hardens the precondition for the timeout field \u2014 a classic assumption_boundary fix at a public-config entry point.",
+    "subject_files": [
+      "src/client/pool.rs"
+    ]
+  },
+  "judgement_drafts": {
+    "ai_baseline": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "Rank 1 names assumption_boundary with the Some(ZERO)\u2192None coercion mechanism; rank 2 (external_contract) is also direct on config semantics; rank 3 is supporting test_gap.",
+      "top3_total": 3,
+      "top3_useful": 2,
+      "weak_only_top_risk_count": 0
+    },
+    "fact_only": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "High-confidence direct boundary_expression_changed pins the exact filter line; test_gap is supporting. Mechanism (zero-duration boundary) is surfaced without naming the panic, but reviewer would catch it.",
+      "top3_total": 2,
+      "top3_useful": 1,
+      "weak_only_top_risk_count": 0
+    },
+    "semantic_filtered": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "Single high-confidence finding explicitly calls out zero-duration idle-timeout behavior on the changed boundary expression and prescribes focused edge-case tests.",
+      "top3_total": 1,
+      "top3_useful": 1,
+      "weak_only_top_risk_count": 0
+    }
+  },
+  "manifest_hash": "06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208",
+  "model": "claude-opus-4-7"
+}

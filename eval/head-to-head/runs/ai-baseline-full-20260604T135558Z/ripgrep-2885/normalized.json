@@ -1,0 +1,40 @@
+{
+  "case_id": "ripgrep-2885",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "seq1.prefix = seq1.prefix && seq2.prefix;"
+      ],
+      "rank": 1,
+      "rationale": "union now propagates prefix=false when either operand is non-prefix; downstream cross_forward asserts other.prefix, so a unioned sequence later used as suffix could trip the assertion.",
+      "risk_signal": "assumption_boundary",
+      "subject": "crates/regex/src/literal.rs:union",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "seq1.make_inexact();\n+        seq2.make_inexact();"
+      ],
+      "rank": 2,
+      "rationale": "choose now forces both candidates inexact before returning; tests show previously exact results like seq([E(\"123\")]) become I(\"123\"), changing exactness contract for callers relying on exact matches.",
+      "risk_signal": "state_transition",
+      "subject": "crates/regex/src/literal.rs:choose",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "String::from_utf8_lossy(&o.stdout).into_owned()"
+      ],
+      "rank": 3,
+      "rationale": "Removes .parse() round-trip on stdout; any test previously relying on parse-based validation or trimming silently changes output shape, potentially masking newline/whitespace differences.",
+      "risk_signal": "error_propagation",
+      "subject": "tests/util.rs:stdout",
+      "value": "supporting"
+    }
+  ]
+}

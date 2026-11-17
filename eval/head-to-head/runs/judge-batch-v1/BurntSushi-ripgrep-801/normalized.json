@@ -1,0 +1,5 @@
+{
+  "case_id": "BurntSushi-ripgrep-801",
+  "reason": "judgement_drafts.ai_baseline: 'notes' length 382 exceeds max 300",
+  "status": "judge-failed"
+}

@@ -1,0 +1,77 @@
+{
+  "case_id": "BurntSushi-ripgrep-801",
+  "refs": [
+    {
+      "detail": {
+        "body": "#### What version of the ignore crate are you using?\r\n\r\nignore-0.4.0\r\n\r\n#### Describe your question, feature request, or bug.\r\n\r\nIt would be great if the custom ignore files (that are available since ignore-0.4.0) could be used exclusively without having to enable `.ignore` or `.gitignore` files as well.\r\n\r\n#### If this is a bug, what are the steps to reproduce the behavior?\r\n\r\nRun the following test case:\r\n``` rust\r\n#[test]\r\nfn custom_ignore() {\r\n    let td = TempDir::new(\"walk-test-\").unwrap();\r\n    let custom_ignore = \".customignore\";\r\n    mkdirp(td.path().join(\"a\"));\r\n    wfile(td.path().join(custom_ignore), \"foo\");\r\n    wfile(td.path().join(\"foo\"), \"\");\r\n    wfile(td.path().join(\"a/foo\"), \"\");\r\n    wfile(td.path().join(\"bar\"), \"\");\r\n    wfile(td.path().join(\"a/bar\"), \"\");\r\n\r\n    let mut builder = WalkBuilder::new(td.path());\r\n\r\n    // THE FOLLOWING FOUR LINES HAVE BEEN\r\n    // ADDED W.R.T. AN EXISTING TEST CASE\r\n    builder.ignore(false);\r\n    builder.git_ignore(false);\r\n    builder.git_global(false);\r\n    builder.git_exclude(false);\r\n\r\n    builder.add_custom_ignore_filename(&custom_ignore);\r\n    assert_paths(td.path(), &builder, &[\"bar\", \"a\", \"a/bar\"]);\r\n}\r\n```\r\n\r\n#### If this is a bug, what is the actual behavior?\r\n\r\nThe test case fails because the `foo` files are not ignored:\r\n```\r\n---- walk::tests::custom_ignore stdout ----\r\n\tthread 'walk::tests::custom_ignore' panicked at 'assertion failed: `(left == right)`\r\n  left: `[\"a\", \"a/bar\", \"a/foo\", \"bar\", \"foo\"]`,\r\n right: `[\"a\", \"a/bar\", \"bar\"]`', src/walk.rs:1554:8\r\n```\r\n\r\n#### If this is a bug, what is the expected behavior?\r\n\r\nThe test case succeeds.\r\n\r\n#### Analysis\r\n\r\nThe cause for this behavior is the following function in `ignore/src/dir.rs`:\r\n``` rust\r\n    fn has_any_ignore_options(&self) -> bool {\r\n        self.ignore || self.git_global || self.git_ignore || self.git_exclude\r\n    }\r\n```\r\n.. which returns `false` if all of these are disabled. This, in turn, causes `Ignore::matched` to skip ignore files alltogether:\r\n``` rust\r\n        if self.0.opts.has_any_ignore_options() {\r\n            let mat = self.matched_ignore(path, is_dir);\r\n            if mat.is_ignore() {\r\n                return mat;\r\n            } else if mat.is_whitelist() {\r\n                whitelisted = mat;\r\n            }\r\n        }\r\n```\r\n\r\nIf the above behavior is actually intended, a simple bugfix would be to add the following:\r\n``` rust\r\n        if self.0.opts.has_any_ignore_options() || !self.0.custom_ignore_filenames.is_empty() {\r\n            // ...\r\n        }\r\n```",
+        "closedAt": "2018-02-14T11:53:29Z",
+        "comments": [
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "Thanks for the clear bug report! This definitely sounds like a bug, and `has_any_ignore_options` should probably be removed in favor of a predicate that covers all of the cases.",
+            "createdAt": "2018-02-13T22:00:27Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM2NTQxOTQxNA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/800#issuecomment-365419414",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "sharkdp"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "By the way, ripgrep itself is not \"affected\" (I think) because the custom ignore file (`.rgignore`) is always enabled together with `.ignore`. Therefore, `IgnoreOptions::ignore` will be enabled if `.rgignore` files should be used and `has_any_ignore_options()` returns `true`.",
+            "createdAt": "2018-02-13T22:23:56Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM2NTQyNTg2Mg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/800#issuecomment-365425862",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "@sharkdp Yup I believe you're right. Thanks for noticing this and filing a bug. :)",
+            "createdAt": "2018-02-13T23:21:15Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM2NTQzOTY5Ng==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/800#issuecomment-365439696",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2018-02-13T21:57:05Z",
+        "labels": [
+          {
+            "color": "fc2929",
+            "description": "A bug.",
+            "id": "MDU6TGFiZWwzMzk3MjE2Nzg=",
+            "name": "bug"
+          }
+        ],
+        "number": 800,
+        "state": "CLOSED",
+        "title": "Custom ignore files can not be used exclusively",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/800"
+      },
+      "target": {
+        "number": 800,
+        "reason": "Custom ignore file exclusive mode report.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+Diff context:
+  repo_root=/private/tmp/decay-pr-eval/hyperium-hyper-228/repo
+  mode=git_ref
+  base_input=92b836dc0367f67d9e4502fc90eee0f53337b93a
+  base=92b836dc0367f67d9e4502fc90eee0f53337b93a
+  head=f327a7e737e0a8528f4239e5a57db88ce47a0fa7
+  changed_files=3
+
+Top risk findings:
+1. [medium] src/client/response.rs
+   quality blast_radius
+   action: split the diff or document the shared review rationale
+2. [medium] src/client/response.rs
+   quality mixed_concerns
+   action: split the diff or document the shared review rationale
+3. [medium] src/client/response.rs
+   coverage parse_coverage_gap
+   action: treat decay output as partial and inspect this diff manually or update parser coverage
+4. [medium] src/http.rs
+   coverage parse_coverage_gap
+   action: treat decay output as partial and inspect this diff manually or update parser coverage
+5. [medium] src/server/request.rs
+   coverage parse_coverage_gap
+   action: treat decay output as partial and inspect this diff manually or update parser coverage
+6. [medium] src/client/response.rs
+   quality prod_change_with_tests
+   action: review changed behavior invariants and confirm regression tests cover the risky path
+
+Complexity impact:
+  changed_functions=0 evidence=0 partial=true diagnostics=6
+  value_note=direct for worsened/new_high_risk; touched_existing_risky is supporting context, not proof of current-diff risk
+
+Coverage impact:
+  evidence=3
+  value_note=scan coverage gaps limit decay confidence; this is tool coverage evidence, not proof of product code risk
+- id=1 category=coverage kind=parse_coverage_gap subject=decay scan coverage is partial source=scan confidence=high value=coverage_limit
+  file=src/client/response.rs
+- id=2 category=coverage kind=parse_coverage_gap subject=decay scan coverage is partial source=scan confidence=high value=coverage_limit
+  file=src/http.rs
+- id=3 category=coverage kind=parse_coverage_gap subject=decay scan coverage is partial source=scan confidence=high value=coverage_limit
+  file=src/server/request.rs
+
+Stability impact:
+  evidence=0
+  value_note=direct for newly introduced unsafe/panic/public-api evidence; move/refactor diffs can weaken this signal
+
+Quality impact:
+  evidence=3 prod_files_changed=3 test_files_changed=3 docs_files_changed=0
+  value_note=missing-test signals are supporting evidence; broad scope signals are weak unless paired with direct diff evidence
+- id=4 category=quality kind=prod_change_with_tests subject=production code changed with test changes source=quality confidence=low value=supporting
+  file=src/client/response.rs
+- id=5 category=quality kind=blast_radius subject=multiple crates or domains source=quality confidence=low value=context
+  file=src/client/response.rs
+- id=6 category=quality kind=mixed_concerns subject=multiple production domains source=quality confidence=low value=context
+  file=src/client/response.rs
+
+Semantic impact:
+  evidence=0
+  value_note=high confidence only for explicit scanned patterns; this is not general semantic understanding
+
+History impact:
+  evidence=0
+  value_note=context only; excluded from top risk unless direct diff evidence exists
+diagnostic=parse error in src/client/response.rs: source contains syntax errors
+diagnostic=parse error in src/client/response.rs: source contains syntax errors
+diagnostic=parse error in src/http.rs: source contains syntax errors
+diagnostic=parse error in src/http.rs: source contains syntax errors
+diagnostic=parse error in src/server/request.rs: source contains syntax errors
+diagnostic=parse error in src/server/request.rs: source contains syntax errors
+recorded=true changeset=1 evidence_saved=6

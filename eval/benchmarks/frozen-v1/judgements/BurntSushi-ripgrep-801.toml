@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "BurntSushi-ripgrep-801"
+repo = "BurntSushi/ripgrep"
+pr = 801
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Custom ignore file API disabled by global ignore switches."
+
+[fact_only]
+top3_total = 3
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 3
+notes = "True risk is custom ignore file API disabled by global ignore switches. Fact output points to ignore/src/dir.rs:matched and prod/test, useful adjacent evidence, but misses custom-ignore/global-switch semantics."
+
+[semantic_filtered]
+top3_total = 1
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "Semantic combines matched with prod/test into a focused path review but still misses the custom ignore API contract."
+
+[comparison]
+semantic_improved_ranking = true
+semantic_reduced_noise = true
+semantic_introduced_noise = false
+notes = "Semantic reduces broad mixed-concerns noise but does not recover the exact semantics."

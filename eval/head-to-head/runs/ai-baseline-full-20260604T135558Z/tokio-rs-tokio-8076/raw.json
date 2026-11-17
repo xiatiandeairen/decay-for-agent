@@ -1,0 +1,12 @@
+{
+  "case_id": "tokio-rs-tokio-8076",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"tokio-rs-tokio-8076\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"assumption_boundary\",\"subject\":\"tokio/src/sync/rwlock.rs:with_max_readers\",\"evidence_refs\":[\"assert_ne!(max_reads, 0, \\\"a RwLock may not be created with 0 readers\\\");\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"New precondition rejects max_reads=0; write()/try_write() acquire self.mr permits, so mr=0 would mean write acquires 0 permits and grants exclusive access while readers hold permits.\"},{\"rank\":2,\"risk_signal\":\"external_contract\",\"subject\":\"tokio/src/sync/rwlock.rs:const_with_max_readers\",\"evidence_refs\":[\"assert!(max_reads != 0, \\\"a RwLock may not be created with 0 readers\\\");\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Public const constructor adds new panic condition on max_reads=0; existing callers passing 0 (previously silently broken) will now panic at construction, a behavior change.\"},{\"rank\":3,\"risk_signal\":\"test_gap_for_risk_path\",\"subject\":\"tokio/src/sync/rwlock.rs:write\",\"evidence_refs\":[\"debug_assert_ne!(self.mr, 0);\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"debug_assert guards write/write_owned/try_write paths against mr=0, but no test exercises the write path with the new invariant; assertion is compiled out in release builds.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

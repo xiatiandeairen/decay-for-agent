@@ -1,0 +1,225 @@
+{
+  "case_id": "hyperium-hyper-4002",
+  "refs": [
+    {
+      "detail": {
+        "body": "**Is your feature request related to a problem? Please describe.**\n\nWe have a situation that we want to allow request to have multi spaces as a request line delimiter.\n\nHowever, I found that the parser config for server is not exposed to the server builder unlike client.\n\nBecause of this, there is no way to use Hyper server to support those use case even though httparse crate has a flag for that feature.\n\n**Describe the solution you'd like**\n\nExpose the parser config in the similar way as Hyper Client.\n\nAs it will be configurable in the builder, it will not break other existing server behavior.\n\nClient side example code: https://code.amazon.com/packages/S3DataEngineHyper/blobs/62a7a6badaba2858361fdc633727a97aed4c8853/--/src/client/conn/http1.rs#L350\n\n**Describe alternatives you've considered**\n\n1. Update the httparse crate default configuration, but this will break the backward compatibility\n2. Expose ParserConfig itself to the Builder. However, this will make Hyper user to have coupling with httparse config\n\n**Additional context**\nAdd any other context or screenshots about the feature request here.\n",
+        "closedAt": "2026-01-05T14:13:01Z",
+        "comments": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Assuming you mean add configuration methods to the server `http1::Builder` for those options, definitely!",
+            "createdAt": "2025-08-01T18:58:03Z",
+            "id": "IC_kwDOAWaYQc67fFIY",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3923#issuecomment-3145486872",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "magurotuna"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "This was resolved by #3929 so I presume we can close it?",
+            "createdAt": "2025-12-07T05:46:25Z",
+            "id": "IC_kwDOAWaYQc7X3d0M",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/3923#issuecomment-3621641484",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "heiwais25"
+            },
+            "authorAssociation": "NONE",
+            "body": "Sorry for late. I double checked and found the ask was to expose this feature for the server. \n\nhttps://github.com/hyperium/hyper/blob/1c70fab64e90f90025eab364beda927044e356fc/src/proto/h1/role.rs#L165\n\nThe change was about enhancing `h1_parser_config`, and found it is not actually used by Server implementation. It is used by Client only.\n\nPlease correct me if I'm wrong.",
+            "createdAt": "2025-12-08T17:56:34Z",
+            "id": "IC_kwDOAWaYQc7YQ6k8",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3923#issuecomment-3628312892",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "heiwais25"
+            },
+            "authorAssociation": "NONE",
+            "body": "I believe we need to reopen the ticket again unless I missed the implementation for Server.\n\nWe can do like using `match ctx.h1_parser_config.parse_request~~()` with the default config used currently\n\nI was occupied with others, but now I have some time. Let me create a PR for this.",
+            "createdAt": "2025-12-08T17:57:05Z",
+            "id": "IC_kwDOAWaYQc7YQ7U7",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3923#issuecomment-3628315963",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Ah, I see. So the builder method was added to the public API, but the parser doesn't yet use that config.",
+            "createdAt": "2025-12-08T19:31:57Z",
+            "id": "IC_kwDOAWaYQc7YSW-m",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3923#issuecomment-3628691366",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "heiwais25"
+            },
+            "authorAssociation": "NONE",
+            "body": "Yes, that's correct. ",
+            "createdAt": "2025-12-08T20:46:59Z",
+            "id": "IC_kwDOAWaYQc7YTTje",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3923#issuecomment-3628939486",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "0xPoe"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "@heiwais25 I have created a PR for it: https://github.com/hyperium/hyper/pull/4002. I hope I understood your request correctly, and I also added unit tests. It seems to work well.",
+            "createdAt": "2026-01-03T20:05:08Z",
+            "id": "IC_kwDOAWaYQc7c-TH2",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3923#issuecomment-3707318774",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "heiwais25"
+            },
+            "authorAssociation": "NONE",
+            "body": "Thanks! @0xPoe ",
+            "createdAt": "2026-01-05T15:14:33Z",
+            "id": "IC_kwDOAWaYQc7dLvtl",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3923#issuecomment-3710843749",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2025-07-31T21:54:10Z",
+        "labels": [
+          {
+            "color": "fbca04",
+            "description": "Area: server.",
+            "id": "MDU6TGFiZWwxMjgzOTk3OTc=",
+            "name": "A-server"
+          },
+          {
+            "color": "0e8a16",
+            "description": "Effort: easy. A task that would be a great starting point for a new contributor.",
+            "id": "MDU6TGFiZWwxNTQwMDI2NzU=",
+            "name": "E-easy"
+          },
+          {
+            "color": "f9d0c4",
+            "description": "Category: feature. This is adding a new feature.",
+            "id": "MDU6TGFiZWw2OTQ0OTY1OTg=",
+            "name": "C-feature"
+          },
+          {
+            "color": "fbca04",
+            "description": "Area: HTTP/1 specific.",
+            "id": "MDU6TGFiZWw5NTY3OTU2OTI=",
+            "name": "A-http1"
+          }
+        ],
+        "number": 3923,
+        "state": "CLOSED",
+        "title": "Add HTTP1 server config for allowing multiple spaces in parsing",
+        "url": "https://github.com/hyperium/hyper/issues/3923"
+      },
+      "target": {
+        "number": 3923,
+        "reason": "HTTP/1 parser config not applied to server request parsing.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    },
+    {
+      "detail": {
+        "baseRefName": "master",
+        "baseRefOid": "974289fb3dc40db87f7e759c27cdba4e1eb407d4",
+        "body": "Adds an `allow_multiple_spaces_in_request_line_delimiters` config method to the http1 server `Builder` as requested in #3923 ",
+        "comments": [],
+        "files": [
+          {
+            "additions": 7,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "src/server/conn/http1.rs"
+          }
+        ],
+        "headRefName": "feature/h1-server-multi-space-delimiters",
+        "headRefOid": "31d9f156b991c022b8e5b3348891d2539822da32",
+        "labels": [],
+        "mergedAt": "2025-08-15T15:42:20Z",
+        "number": 3929,
+        "reviewDecision": "APPROVED",
+        "reviews": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Thanks!",
+            "commit": {
+              "oid": "31d9f156b991c022b8e5b3348891d2539822da32"
+            },
+            "id": "PRR_kwDOAWaYQc66OK9P",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "APPROVED",
+            "submittedAt": "2025-08-15T15:37:21Z"
+          }
+        ],
+        "state": "MERGED",
+        "title": "feat(http1): add allow_multiple_spaces_in_request_line_delimiters h1 builder config method",
+        "url": "https://github.com/hyperium/hyper/pull/3929"
+      },
+      "target": {
+        "number": 3929,
+        "reason": "Related parser config change context.",
+        "repo": "hyperium/hyper",
+        "type": "pr"
+      }
+    }
+  ]
+}

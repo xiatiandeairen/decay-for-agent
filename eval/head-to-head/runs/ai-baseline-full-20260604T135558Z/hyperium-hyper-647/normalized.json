@@ -1,0 +1,29 @@
+{
+  "case_id": "hyperium-hyper-647",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "self.stream = Some(stream.into_inner());\n+                return Err(Error::Header);"
+      ],
+      "rank": 1,
+      "rationale": "Restores the underlying stream into self.stream before returning Err(Error::Header) on illegal Content-Length, so close_connection / into_inner no longer panic on lost stream after this error path.",
+      "risk_signal": "lifecycle_ordering",
+      "subject": "src/http/h1.rs:get_incoming",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "assert!(msg.get_incoming().is_err());\n+        assert!(msg.close_connection().is_ok());"
+      ],
+      "rank": 2,
+      "rationale": "New test covers the invalid Content-Length error path and asserts close_connection succeeds afterwards, exercising the restored stream lifecycle.",
+      "risk_signal": "non_happy_path",
+      "subject": "src/http/h1.rs:test_message_get_incoming_invalid_content_length",
+      "value": "supporting"
+    }
+  ]
+}

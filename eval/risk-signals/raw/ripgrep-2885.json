@@ -1,0 +1,55 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Previously accepted large-scale candidate; merged bug fix for search correctness.",
+    "id": "ripgrep-2885",
+    "limitations": "Exact crate path should be confirmed.",
+    "production_files": [
+      "crates/regex/src/literal.rs"
+    ],
+    "repo": "BurntSushi/ripgrep",
+    "risk_summary": "Regex inner literal extraction caused false negatives.",
+    "signal_ids": [
+      "state_transition",
+      "external_contract"
+    ],
+    "source_refs": [
+      "https://github.com/BurntSushi/ripgrep/pull/2885",
+      "eval/large-scale-50/candidates/open-source.toml"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/BurntSushi/ripgrep/pull/2885",
+    "why_high_value": "False negatives violate core search correctness.",
+    "why_not_noise": "Specific optimizer correctness failure."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "6c5108ed17987531644518fac8c1659b0b202611",
+    "body": "In some rare cases, it was possible for ripgrep's inner literal detector\r\nto extract a set of literals that could produce a false negative. #2884\r\ngives an example: `(?i:e.x|ex)`. In this case, the set extracted can be\r\ndiscovered by running `rg '(?i:e.x|ex) --trace`:\r\n\r\n    Seq[E(\"EX\"), E(\"Ex\"), E(\"eX\"), E(\"ex\")]\r\n\r\nThis extraction leads to building a multi-substring matcher for `EX`,\r\n`Ex`, `eX` and `ex`. Searching the haystack `e-x` produces no match,\r\nand thus, ripgrep shows no matches. But the regex `(?i:e.x|ex)` matches\r\n`e-x`.\r\n\r\nThe issue at play here was that when two extracted literal sequences\r\nwere unioned, we were incorrectly unioning their \"prefix\" attribute.\r\nAnd this in turn leads to those literal sequences being combined\r\nincorrectly via cross product. This case in particular triggers it\r\nbecause two different optimizations combine to produce an incorrect\r\nresult. Firslty, the regex has a common prefix extracted and is\r\nrewritten as `(?i:e(?:.x|x))`. Secondly, the `x` in the first branch of\r\nthe alternation has its `prefix` attribute set to `false` (correctly),\r\nwhich means it can't be cross producted with another concatenation. But\r\nin this case, it is unioned with the `x` from the second branch, and\r\nthis results in the union result having `prefix` set to `true`. This\r\nin turn pops up and lets it get cross producted with the `e` prefix,\r\nproducing an incorrect literal sequence.\r\n\r\nWe fix this by changing the implementation of `union` to return\r\n`prefix` set to `true` only when *both* literal sequences being unioned\r\nhave `prefix` set to `true`.\r\n\r\nDoing this exposed a second bug that was present, but was purely\r\ncosmetic: the extracted literals in this case, after the fix, are\r\n`X` and `x`. They were considered \"exact\" (i.e., lead to a match),\r\nbut of course they are not. Observing an `X` or an `x` does not mean\r\nthere is a match. This was fixed by making `choose` always return\r\nan inexact literal sequence. This is perhaps too conservative in\r\naggregate in some cases, but always correct. The idea here is that if\r\none is choosing between two concatenations, then it is likely the case\r\nthat the sequence returned should be considered inexact. The issue\r\nis that this can lead to avoiding cross products in some cases that\r\nwould otherwise be correct. This is bad because it means extracting\r\nshorter literals in some cases. (In general, the longer the literal the\r\nbetter.) But we prioritize correctness for now and fix it. You can see\r\na few tests where this shortens some extracted literals.\r\n\r\nFixes #2884\r\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 21,
+        "changeType": "MODIFIED",
+        "deletions": 8,
+        "path": "crates/regex/src/literal.rs"
+      },
+      {
+        "additions": 2,
+        "changeType": "MODIFIED",
+        "deletions": 20,
+        "path": "tests/util.rs"
+      }
+    ],
+    "headRefName": "ag/fix-inner-literal-extraction",
+    "headRefOid": "342e8ff826b9bd61cee5603c79336ee396b79377",
+    "labels": [],
+    "mergedAt": "2024-09-09T02:00:47Z",
+    "number": 2885,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "regex: fix inner literal extraction that resulted in false negatives",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/2885"
+  }
+}

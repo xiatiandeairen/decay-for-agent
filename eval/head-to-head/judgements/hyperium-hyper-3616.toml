@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyperium-hyper-3616"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "UpgradeableConnection::graceful_shutdown must be a no-op when the connection has already been upgraded (inner == None). Previously it called self.inner.as_mut().unwrap() and panicked if graceful_shutdown was invoked after the upgrade transition consumed inner via poll()."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 0
+notes = "Rank 2 directly identifies the unwrap on graceful_shutdown (the fix site). Rank 1 flags the symmetric unwrap in poll() — same invariant, sibling site still unguarded. Rank 3 is supporting test-gap. Labels signals as state_transition/assumption_boundary rather than lifecycle_ordering. [recovered-from-raw: judge response exceeded schema free-text caps; metrics unaffected]"

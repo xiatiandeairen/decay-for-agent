@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "BurntSushi-ripgrep-3182"
+repo = "BurntSushi/ripgrep"
+pr = 3182
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Replacement panic in look-around corner case."
+
+[fact_only]
+top3_total = 3
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 3
+notes = "True risk is replacement panic in look-around corner case. Fact top3 includes two broad quality findings and touched_existing_risky for crates/printer/src/util.rs:replace_all, which points to the relevant replacement path."
+
+[semantic_filtered]
+top3_total = 1
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "Semantic drops the relevant printer util touched-risk evidence and emits only generic prod_change_with_tests for crates/core/search.rs, missing the replacement panic path."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = true
+notes = "Semantic filtering regresses this case by suppressing the only relevant fact signal and keeping a generic signal on a less relevant file."

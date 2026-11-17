@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "hyperium-hyper-518"
+repo = "hyperium/hyper"
+pr = 518
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "SSL verifier connector lifecycle contract."
+
+[fact_only]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 2
+notes = "True risk is SSL verifier connector lifecycle contract. Fact top3 is dominated by mock public API/panic and broad quality signals; it misses connector lifecycle semantics."
+
+[semantic_filtered]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 0
+notes = "Semantic keeps only mock API/panic evidence, which is not the connector lifecycle risk."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = true
+notes = "Semantic output is concise but focused on the wrong mock boundary."

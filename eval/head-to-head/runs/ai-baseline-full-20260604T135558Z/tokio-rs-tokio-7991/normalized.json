@@ -1,0 +1,40 @@
+{
+  "case_id": "tokio-rs-tokio-7991",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "-                assert!(buffer.is_empty());\n+                debug_assert_eq!(buffer.len(), initial_length);"
+      ],
+      "rank": 1,
+      "rationale": "Invariant changed from runtime `assert!(buffer.is_empty())` to `debug_assert_eq!(buffer.len(), initial_length)`: in release builds a pre-populated buffer no longer triggers a panic, and the asserted\u2026",
+      "risk_signal": "assumption_boundary",
+      "subject": "tokio/src/sync/mpsc/chan.rs:recv_many",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "-                            assert!(self.inner.semaphore.is_idle());\n+                            debug_assert!(self.inner.semaphore.is_idle());"
+      ],
+      "rank": 2,
+      "rationale": "Downgrading `assert!` to `debug_assert!` removes the release-build check that the semaphore is idle when `Read::Closed` is observed; if the TODO assumption is wrong, release builds will silently proc\u2026",
+      "risk_signal": "assumption_boundary",
+      "subject": "tokio/src/sync/mpsc/chan.rs:recv",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "+    let mut buffer: Vec<i32> = vec![1];\n+\n+    rx.close();\n+\n+    assert_eq!(0, rx.recv_many(&mut buffer, 1).await);\n+    assert_eq!(vec![1], buffer);"
+      ],
+      "rank": 3,
+      "rationale": "New tests cover the rx_closed+idle path with a pre-populated buffer but only via `rx.close()`; the `Read::Closed` branch (all tx dropped while buffer non-empty) where the downgraded debug_assert live\u2026",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tokio/tests/sync_mpsc.rs:recv_many_with_non_empty_buffer_bounded_rx_closed_and_idle",
+      "value": "supporting"
+    }
+  ]
+}

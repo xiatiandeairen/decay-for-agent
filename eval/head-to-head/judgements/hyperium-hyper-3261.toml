@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyperium-hyper-3261"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "When graceful_shutdown is called on an HTTP/1 server connection before any request bytes arrive, disable_keep_alive must transition the connection toward close instead of waiting on a non-existent in-flight request. Previously the connection future hung indefinitely; now an initial-state check (Reading::Init + Writing::Init + empty read buffer) triggers self.close() so the serve future resolves."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 0
+notes = "Nails the mechanism: assumption_boundary on has_initial_read_write_state (read_buf-empty as proxy for idle is racy) and state_transition on disable_keep_alive (matches primary signal). Third item flags test_gap_for_risk_path on the 10ms sleep. lifecycle_ordering not explicitly surfaced but state_tr… [recovered-from-raw: judge response exceeded schema free-text caps; metrics unaffected]"

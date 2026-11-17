@@ -1,0 +1,120 @@
+{
+  "candidate": {
+    "id": "hyperium-hyper-3952",
+    "repo": "hyperium/hyper",
+    "url": "https://github.com/hyperium/hyper/pull/3952"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "f9f8f44058745d23fa52abf51b96b61ee7665642",
+    "body": "I ran into some lockups running hyper with some custom futures. If one of my futures is ready when polled, the waker is never signaled and I think this uncovered a logical issue with the http1 poll_loop. That it to say, **if the poll_write is demonstrating readiness to write and the connection has readiness to write, we should do that or else hyper may stall**.\r\n\r\nI built a pathological example \"ready_stream.rs\" - you can run it from this branch with: `RUSTFLAGS='--cfg hyper_unstable_tracing' cargo test --test ready_stream --features full,tracing`.\r\n\r\nI provided a proposed patch for the poll_loop, but I'm open to other angles on this.",
+    "comments": [
+      {
+        "author": {
+          "login": "lthiery"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "It's an interesting loop and I think with this edge case handled it works well. It would be nice to expose the 16 as a config (as noted in the comments) and maybe I'll PR that later.\n\nOne thing that I considered while looking at it is that maybe doing some tricks with custom wakers could be nice? Similar to FuturesUnordered, the waker could indicate who is actually ready for polling. The juice is probably not worth the squeeze (or perhaps even an efficiency loss with all the bookkeeping?) as I know FuturesUnordered is intended for some level of scale and three is probably not it. ",
+        "createdAt": "2025-10-31T04:32:16Z",
+        "id": "IC_kwDOAWaYQc7O5-30",
+        "includesCreatedEdit": true,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3952#issuecomment-3471306228",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Yea, hm, if it's a complicated edge case, perhaps that's fine as-is, then.",
+        "createdAt": "2025-10-31T14:29:29Z",
+        "id": "IC_kwDOAWaYQc7PBxKd",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3952#issuecomment-3473347229",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 6,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "Cargo.toml"
+      },
+      {
+        "additions": 15,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "src/proto/h1/dispatch.rs"
+      },
+      {
+        "additions": 249,
+        "changeType": "ADDED",
+        "deletions": 0,
+        "path": "tests/ready_stream.rs"
+      }
+    ],
+    "headRefName": "lthiery/wants-write-again",
+    "headRefOid": "f2aa734e5699a91fc20f1178e38af7b1e374bdbc",
+    "labels": [],
+    "mergedAt": "2025-11-10T14:51:16Z",
+    "number": 3952,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks for looking into this! This loop can be tricky, it was initially added to improve performance when multiple messages have been batched together. But the loop has a limit, since otherwise it could starve all other futures. (Tokio's cooperative budget can help here, but hyper doesn't assume it's Tokio.)\r\n\r\nLooking close, I appreciate you cleaning up the mistake in here: since we're essentially \"selecting\" over read and write, we need to make sure both sides either registered a waker, or that we will poll again with the `yield_once` util. Thanks for the attention!",
+        "commit": {
+          "oid": "f2aa734e5699a91fc20f1178e38af7b1e374bdbc"
+        },
+        "id": "PRR_kwDOAWaYQc7KAoiD",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-10-28T14:42:51Z"
+      },
+      {
+        "author": {
+          "login": "lthiery"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "f2aa734e5699a91fc20f1178e38af7b1e374bdbc"
+        },
+        "id": "PRR_kwDOAWaYQc7KzuEx",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-10-31T04:27:56Z"
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "f2aa734e5699a91fc20f1178e38af7b1e374bdbc"
+        },
+        "id": "PRR_kwDOAWaYQc7NQeAO",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2025-11-10T14:47:34Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix(http1): poll_loop writes when ready",
+    "url": "https://github.com/hyperium/hyper/pull/3952"
+  }
+}

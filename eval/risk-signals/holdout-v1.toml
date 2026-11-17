@@ -1,0 +1,193 @@
+# Phase-gate holdout set.
+#
+# This set is reserved for end-of-sprint validation of risk-item quality.
+# Do not tune detectors, wrappers, or prompts against these cases inside the
+# same sprint. Use dev-cases.toml for day-to-day iteration and frozen-v1.toml
+# for version-level product-effect claims.
+
+version = "risk-signal-holdout.v1"
+status = "active"
+source = "eval/risk-signals/eval-candidates.toml"
+purpose = "Phase-gate validation for single-risk-item and wrapper changes without reusing the full frozen benchmark."
+target_cases = 12
+actual_cases = 12
+use_rules = [
+  "Use this set only for end-of-sprint gate judgement, not for in-sprint tuning.",
+  "Do not replace cases to improve scores; if a case becomes invalid, mark the holdout gate blocked and collect a replacement separately.",
+  "Any failed forbidden-claim check or evidence drift is a gate failure even if ranking metrics look better.",
+]
+
+[gate]
+min_detection_precision = 0.85
+min_value_precision = 0.70
+min_evidence_valid_rate = 1.0
+max_overclaim_rate = 0.0
+min_unsupported_scope_silence_rate = 0.90
+
+[[cases]]
+id = "tokio-rs-tokio-7991"
+candidate_status = "freeze_ready"
+gate_role = "high_value_positive"
+high_value = true
+primary_signal_ids = ["assumption_boundary", "risk_path_test_gap"]
+expected_behavior = "detect"
+why_in_holdout = "Issue-backed closed-channel panic boundary with regression tests exercises assumption-strengthening and test-gap evidence."
+forbidden_claims = [
+  "do not generalize to all recv_many buffering paths",
+  "do not claim loom or cross-platform coverage from this case alone",
+]
+required_context = ["issue_link_or_repro", "production_diff", "regression_test"]
+
+[[cases]]
+id = "tokio-rs-tokio-8001"
+candidate_status = "freeze_ready"
+gate_role = "high_value_positive"
+high_value = true
+primary_signal_ids = ["error_propagation", "state_transition"]
+expected_behavior = "detect"
+why_in_holdout = "Caller-visible UDP error propagation and readiness transition make this a strong non-happy-path semantic case."
+forbidden_claims = [
+  "do not claim behavior on all operating systems from one Linux-shaped path",
+  "do not claim complete socket contract coverage without caller-path evidence",
+]
+required_context = ["issue_link_or_repro", "production_diff", "regression_test"]
+
+[[cases]]
+id = "hyperium-hyper-3261"
+candidate_status = "freeze_ready"
+gate_role = "high_value_positive"
+high_value = true
+primary_signal_ids = ["lifecycle_ordering", "state_transition", "external_contract"]
+expected_behavior = "detect"
+why_in_holdout = "Graceful shutdown before first request is a scoped lifecycle/contract bug with issue and server-test context."
+forbidden_claims = [
+  "do not restate this as a generic shutdown bug across all HTTP paths",
+  "do not drop the compatibility caveat around graceful_shutdown semantics",
+]
+required_context = ["issue_link_or_repro", "production_diff", "regression_test", "api_contract_context"]
+
+[[cases]]
+id = "serde-rs-json-757"
+candidate_status = "freeze_ready"
+gate_role = "high_value_positive"
+high_value = true
+primary_signal_ids = ["error_propagation", "assumption_boundary"]
+expected_behavior = "detect"
+why_in_holdout = "Invalid UTF-8 panic-to-error transition is clear, reproducible, and tightly scoped."
+forbidden_claims = [
+  "do not generalize from RawValue invalid UTF-8 to all serde_json UTF-8 policy",
+  "do not claim complete malformed-input coverage",
+]
+required_context = ["issue_link_or_repro", "production_diff", "regression_test"]
+
+[[cases]]
+id = "hyper-4056"
+candidate_status = "freeze_ready"
+gate_role = "high_value_positive"
+high_value = true
+primary_signal_ids = ["assumption_boundary", "error_propagation"]
+expected_behavior = "detect"
+why_in_holdout = "32-bit integer boundary in HTTP body decoding is high-value but should preserve architecture and missing-test uncertainty."
+forbidden_claims = [
+  "do not claim confirmed 32-bit runtime behavior without target-specific execution",
+  "do not claim complete large-body coverage without regression test evidence",
+]
+required_context = ["issue_link_or_repro", "production_diff", "platform_specific_scope"]
+
+[[cases]]
+id = "hyper-4061"
+candidate_status = "freeze_ready"
+gate_role = "high_value_positive"
+high_value = true
+primary_signal_ids = ["concurrency_ordering", "lifecycle_ordering", "state_transition"]
+expected_behavior = "detect"
+why_in_holdout = "HTTP/2 capacity-reservation timing is a strong ordering case and should not collapse into generic memory commentary."
+forbidden_claims = [
+  "do not reduce this case to generic memory behavior",
+  "do not claim deadlock proof without full flow-control path evidence",
+]
+required_context = ["issue_link_or_repro", "production_diff", "regression_test"]
+
+[[cases]]
+id = "tokio-rs-tokio-8021"
+candidate_status = "freeze_ready"
+gate_role = "high_value_positive"
+high_value = true
+primary_signal_ids = ["state_transition", "concurrency_ordering", "assumption_boundary"]
+expected_behavior = "detect"
+why_in_holdout = "Closed-bit preservation is a strong terminal-state invariant with reproduction and duplicate-fix context."
+forbidden_claims = [
+  "do not generalize to all semaphore transitions from one closed-bit invariant",
+  "do not claim every concurrent interleaving is covered by the stored tests",
+]
+required_context = ["issue_link_or_repro", "production_diff", "regression_test"]
+
+[[cases]]
+id = "clap-rs-clap-1439"
+candidate_status = "rejected"
+gate_role = "negative_control"
+high_value = false
+primary_signal_ids = ["external_contract"]
+expected_behavior = "suppress_or_context_only"
+why_in_holdout = "This is a real contract-risk seed but rejected for the current runtime-correctness-focused eval scope."
+forbidden_claims = [
+  "do not treat dependency or API-compatibility revert alone as current runtime semantic success",
+  "do not upgrade context-only dependency churn into a direct runtime risk claim",
+]
+required_context = ["unsupported_scope_marker", "production_diff"]
+
+[[cases]]
+id = "BurntSushi-ripgrep-827"
+candidate_status = "rejected"
+gate_role = "negative_control"
+high_value = false
+primary_signal_ids = ["risk_path_test_gap", "external_contract"]
+expected_behavior = "suppress_or_context_only"
+why_in_holdout = "A real Windows performance regression that should remain silent or context-only until performance signals are in scope."
+forbidden_claims = [
+  "do not claim throughput or platform regressions from correctness-only evidence",
+  "do not promote unsupported performance concerns to top direct risk",
+]
+required_context = ["unsupported_scope_marker", "issue_link_or_repro"]
+
+[[cases]]
+id = "tokio-rs-tokio-7638"
+candidate_status = "rejected"
+gate_role = "negative_control"
+high_value = false
+primary_signal_ids = ["external_contract", "assumption_boundary"]
+expected_behavior = "suppress_or_context_only"
+why_in_holdout = "Macro hygiene is a real compile-time contract issue but out of scope for current function-level runtime semantic gates."
+forbidden_claims = [
+  "do not count macro compile-time hygiene as current runtime semantic success",
+  "do not map macro-scope evidence onto function-level behavior risk",
+]
+required_context = ["unsupported_scope_marker", "production_diff", "regression_test"]
+
+[[cases]]
+id = "hyperium-hyper-3290"
+candidate_status = "needs_more_context"
+gate_role = "boundary_needs_context"
+high_value = true
+primary_signal_ids = ["concurrency_ordering", "state_transition"]
+expected_behavior = "low_confidence"
+why_in_holdout = "Real async state-machine failure mode, but repro and fix-root-cause confidence are not strong enough for a freeze-ready claim."
+forbidden_claims = [
+  "do not claim root-cause confirmation from title and issue alone",
+  "do not promote this to high-confidence without stable repro or follow-up confirmation",
+]
+required_context = ["issue_link_or_repro", "production_diff"]
+
+[[cases]]
+id = "serde-rs-json-265"
+candidate_status = "needs_more_context"
+gate_role = "boundary_needs_context"
+high_value = true
+primary_signal_ids = ["non_happy_path", "risk_path_test_gap", "state_transition"]
+expected_behavior = "low_confidence"
+why_in_holdout = "Regression-of-a-fix is valuable ground-truth material, but stored context is incomplete and should force uncertainty."
+forbidden_claims = [
+  "do not claim the original regression mechanism is fully reconstructed",
+  "do not claim performance or correctness details that are absent from stored follow-up context",
+]
+required_context = ["follow_up_or_revert_context", "production_diff"]

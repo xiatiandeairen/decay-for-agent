@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "hyperium-hyper-3275"
+repo = "hyperium/hyper"
+pr = 3275
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "HTTP/2 early response error propagation."
+
+[fact_only]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 1
+notes = "True risk is HTTP/2 early response NO_ERROR propagation. Fact output directly flags worsened src/body/incoming.rs:poll_frame, the relevant body/error propagation path; prod/test is supporting."
+
+[semantic_filtered]
+top3_total = 2
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Semantic preserves poll_frame complexity and pairs prod/test review with it. It is actionable though not exact NO_ERROR semantics."
+
+[comparison]
+semantic_improved_ranking = true
+semantic_reduced_noise = true
+semantic_introduced_noise = false
+notes = "Semantic improves by binding weak quality signal to direct function evidence."

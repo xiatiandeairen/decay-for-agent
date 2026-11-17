@@ -1,5 +1,9 @@
 # decay Product Roadmap
 
+> **STATUS: TERMINATED（2026-06-10）。** decay 产品方向已终止，不再开发新方向、不再 reframe。
+> 连续两次冻结评测否定了核心价值假设：v0.2.0 证伪“置信证据层优于 AI 直读 diff”（fact-only 0/4、semantic 0/4），v0.3 前置诊断证伪“diff 外上下文提供者”（control 8 个漏报中 0 个为上下文可修）。
+> 决策见 `docs/decision/v0.2.0-closeout.md` 与 `docs/decision/v0.3-gate.md`。下方为历史路线，保留作上下文。
+
 ## 1. Product Vision
 
 ### Product Essence
@@ -52,7 +56,7 @@
 |---------|----------------|-------------------|--------|--------|------------|
 | v0.1.0 | 跑通 Rust 函数扫描、baseline、diff、doctor 的本地闭环 | ↑ active metrics 0→6（measured: `src/metric/mod.rs`）；↑ integration tests 0→16（measured: `cargo test` 2026-05-06）；↓ product certainty no data→unproven（no data: 尚无 fixed case） | released | TBD - 2026.05.05 | M1-M1 |
 | v0.1.1 | 建立 fact evidence baseline，验证纯静态扫描的真实价值边界 | ↑ external judged cases 0→10（measured: 2026-05-13）；↑ precision@top3 no data→65%（measured）；↑ actionable_pr_rate no data→60%（measured）；↑ negative_control_silence_rate no data→100%（measured）；↓ product scope: semantic risks deferred to v0.2.0 | released | 2026.05.05 - 2026.05.13 | M2-M2 |
-| v0.2.0 | 在事实证据层之上建设语义筛选层，把静态扫描事实收敛成高价值 review 证据 | ↑ semantic-filtered top risk baseline 65% precision@top3→≥75%（target，基于 10-case 外部 PR benchmark）；↑ actionable_pr_rate 60%→≥70%（target）；↓ missed_high_risk_count 2/10→≤1/20（target）；↓ weak-only top risk 3/10→≤2/20（target） | planning | 2026.05.13 - TBD | M3-M3 |
+| v0.2.0 | 在事实证据层之上建设给 AI 消费的置信证据层 | head-to-head v1（40-case，ai-baseline 实判 34）证伪“置信证据层优于 AI 直读 diff”：fact-only 0/4、semantic-filtered 0/4 通过阈值；冻结为负结果 | deferred | 2026.05.13 - 2026.06.08 | M3-M3 |
 
 ### Version Details
 
@@ -96,19 +100,20 @@
 
 #### v0.2.0 — semantic evidence
 
-- **Strategic intent**: 在 fact evidence 上增加 semantic selection，降低 weak-only Top risk，补 API/protocol/behavior 类漏报。
-- **Input/output**: input 是 fact evidence、diff context、本地 DB 和 opt-in 外部上下文；output 是 semantic findings。
-- **Success metric**: `precision_at_top3 >= 75%`、`actionable_pr_rate >= 70%`、`negative_control_silence_rate >= 90%`、`missed_high_risk_count <= 1`、`weak_only_top_risk <= 2`。
+- **Strategic intent**: 在 fact evidence 上增加置信度和证据价值标注，让 AI 能可靠区分 direct / supporting / context evidence。M3.1 已证明仅靠语义改写不能补缺失事实，所以 M3.2 不生成面向人的语义化结论。
+- **Input/output**: input 是 fact evidence、diff context、本地 DB 和可选 codex-cli analysis；output 仍是 machine-readable evidence，不是 reviewer prose。
+- **Success metric**: frozen eval v1 重新跑后报告 `precision_at_top3`、`actionable_pr_rate`、`negative_control_silence_rate`、`missed_high_risk_count`、`weak_only_top_risk` 的变化；v0.2.0 closeout 前不得用单个命中 case 宣称产品成功。
 - **Constraints**: Top risk 必须有 source refs；不输出 merge recommendation；不声明 bug；`doctor` deferred。
 - **Core metric** (v0.1.1 → v0.2.0):
 
 | Metric | v0.1.1 | v0.2.0 | Delta |
 |--------|--------|--------|-------|
-| Fact evidence baseline | 10-case benchmark: precision@top3 65%, actionable 60%, missed high risk 2, noise top3 3 | 20-case benchmark: precision@top3 ≥75%, actionable ≥70%, missed high risk ≤1, weak-only top risk ≤2（target） | ↑ top value, ↓ weak noise |
+| Fact evidence baseline | 10-case benchmark: precision@top3 65%, actionable 60%, missed high risk 2, noise top3 3 | 40-case frozen eval v1 baseline complete: semantic filtering improved precision/noise but missed count remained high | establishes larger validation target |
+| Direct semantic evidence | no dedicated direct evidence for many semantic risks | M3.1 added boundary condition/expression, integer platform boundary, and panic-to-error propagation direct evidence | ↓ known fact gaps |
 | Semantic claim traceability | no dedicated layer | every semantic top finding links to supporting facts and source context（target 100%） | ↑ explainability |
-| Weak signal handling | weak signals can enter Top risk directly | `mixed_concerns` / `blast_radius` / history / touched old debt default to supporting context unless paired with direct evidence | ↓ misleading top risk |
-| High-value missed risk | API/protocol behavior cases can be missed | add bad-case driven semantic scenarios for API surface, protocol behavior, behavior gate/config boundary | ↓ missed risk |
-| Negative controls | 100% silence on current 10-case judged set | keep ≥90% silence while adding semantic layer | maintain trust |
+| Weak signal handling | weak signals can enter Top risk directly | M3.2 labels `mixed_concerns` / `blast_radius` / history / touched old debt as supporting/context so downstream AI cannot confuse them with direct evidence | ↓ misleading evidence |
+| High-value missed risk | API/protocol behavior cases can be missed | M3.2 validates whether direct evidence + selector reduces missed risk on frozen eval replay | measured after replay |
+| Negative controls | 100% silence on current 10-case judged set | keep silence while adding selector and evidence grouping | maintain trust |
 | Doctor output shape | function-level current findings | deferred until diff semantic layer passes first benchmark | scope reduction |
 
 ## 3. Milestones
@@ -117,4 +122,5 @@
 |---|----------------|------------------|--------|-----------------|
 | [M1](milestones/m1.md) | 交付 v0.1.0 本地功能闭环 | 功能闭环完成，`cargo test` 和 clippy 通过；产品 fixed case 仍无数据，因此不声明产品成功 | done | 2026-05-05 |
 | [M2](milestones/m2.md) | v0.1.1 fact evidence baseline | 已完成 10-case 外部 PR benchmark，明确静态扫描有效边界和 v0.2.0 语义层目标 | done | 2026-05-13 |
-| [M3](milestones/m3.md) | v0.2.0 语义筛选证据层 | planning；0.1.1 已完成事实层和 10-case benchmark，下一步建设 semantic-filtered top review evidence | planning | — |
+| [M3](milestones/m3.md) | v0.2.0 置信证据层 | deferred；head-to-head v1 证伪置信证据层优于 AI 直读 diff（fact-only 0/4、semantic-filtered 0/4），决策见 docs/decision/v0.2.0-closeout.md | deferred | 2026-06-08 |
+| — | v0.3 context-gate（diff 外上下文提供者假设） | terminated；前置诊断显示 control 8 个漏报中 0 个为 diff 外上下文可修，Path A 主杠杆 missed 构造上降不下来；决策见 docs/decision/v0.3-gate.md。decay 产品方向终止 | terminated | 2026-06-10 |

@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -36,17 +37,20 @@ Top risk findings:
 Complexity impact:
   changed_functions=1 evidence=0
 
+Coverage impact:
+  evidence=0
+
 Stability impact:
   evidence=0
 
 Quality impact:
   evidence=1
-- id=1 category=quality kind=mixed_concerns subject=multiple production domains source=quality
+- id=1 category=quality kind=mixed_concerns subject=multiple production domains source=quality confidence=low value=context
   file=src/lib.rs
 
 Semantic impact:
   evidence=1
-- id=2 category=semantic kind=default_value_changed subject=DEFAULT_TIMEOUT: 30 -> 5 source=semantic_diff
+- id=2 category=semantic kind=default_value_changed subject=DEFAULT_TIMEOUT: 30 -> 5 source=semantic_diff confidence=medium value=direct
   file=src/lib.rs
 
 History impact:
@@ -107,6 +111,31 @@ class SemanticFlowTest(unittest.TestCase):
 
             self.assertEqual(validator.main.__globals__["Path"](stdout_path), stdout_path)
             self.assertEqual(validator.load_json(json_path)["version"], "semantic-findings.v1")
+
+    def test_risk_signal_pilot_corpus_matches_frozen_pilot(self) -> None:
+        with (ROOT / "risk-signals" / "frozen-pilot-v1.toml").open("rb") as handle:
+            pilot = tomllib.load(handle)
+        with (ROOT / "corpus" / "risk-signal-pilot.toml").open("rb") as handle:
+            corpus = tomllib.load(handle)
+
+        pilot_ids = pilot["case_ids"]
+        corpus_ids = [case["id"] for case in corpus["cases"]]
+
+        self.assertEqual(pilot_ids, corpus_ids)
+        self.assertEqual(26, len(corpus_ids))
+
+    def test_risk_signal_frozen_v1_corpus_matches_frozen_v1_seed(self) -> None:
+        with (ROOT / "risk-signals" / "frozen-v1.toml").open("rb") as handle:
+            frozen_v1 = tomllib.load(handle)
+        with (ROOT / "corpus" / "risk-signal-frozen-v1.toml").open("rb") as handle:
+            corpus = tomllib.load(handle)
+
+        v1_ids = frozen_v1["case_ids"]
+        corpus_ids = [case["id"] for case in corpus["cases"]]
+
+        self.assertEqual(v1_ids, corpus_ids)
+        self.assertEqual(frozen_v1["actual_cases"], len(corpus_ids))
+        self.assertEqual("complete", frozen_v1["status"])
 
 
 if __name__ == "__main__":

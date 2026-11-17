@@ -46,7 +46,11 @@ pub fn classify(path: &str) -> FileRole {
     if is_build_or_ci_path(path) {
         return FileRole::Build;
     }
-    if path.starts_with("src/") || path.starts_with("crates/") || path.starts_with("bindings/") {
+    if path.starts_with("src/")
+        || path.starts_with("crates/")
+        || path.starts_with("bindings/")
+        || path.contains("/src/")
+    {
         return FileRole::Prod;
     }
 

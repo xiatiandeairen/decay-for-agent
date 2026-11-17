@@ -1,0 +1,513 @@
+diff --git a/src/body/incoming.rs b/src/body/incoming.rs
+index 8c7c6ff6..4b0ca60e 100644
+--- a/src/body/incoming.rs
++++ b/src/body/incoming.rs
+@@ -171,183 +171,192 @@ impl Incoming {
+     }
+ 
+     #[cfg(feature = "ffi")]
+     pub(crate) fn as_ffi_mut(&mut self) -> &mut crate::ffi::UserBody {
+         match self.kind {
+             Kind::Ffi(ref mut body) => return body,
+             _ => {
+                 self.kind = Kind::Ffi(crate::ffi::UserBody::new());
+             }
+         }
+ 
+         match self.kind {
+             Kind::Ffi(ref mut body) => body,
+             _ => unreachable!(),
+         }
+     }
+ }
+ 
+ impl Body for Incoming {
+     type Data = Bytes;
+     type Error = crate::Error;
+ 
+     fn poll_frame(
+         #[cfg_attr(
+             not(all(
+                 any(feature = "http1", feature = "http2"),
+                 any(feature = "client", feature = "server")
+             )),
+             allow(unused_mut)
+         )]
+         mut self: Pin<&mut Self>,
+         #[cfg_attr(
+             not(all(
+                 any(feature = "http1", feature = "http2"),
+                 any(feature = "client", feature = "server")
+             )),
+             allow(unused_variables)
+         )]
+         cx: &mut Context<'_>,
+     ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+         match self.kind {
+             Kind::Empty => Poll::Ready(None),
+             #[cfg(all(feature = "http1", any(feature = "client", feature = "server")))]
+             Kind::Chan {
+                 content_length: ref mut len,
+                 ref mut data_rx,
+                 ref mut want_tx,
+                 ref mut trailers_rx,
+             } => {
+                 want_tx.send(WANT_READY);
+ 
+                 if !data_rx.is_terminated() {
+                     if let Some(chunk) = ready!(Pin::new(data_rx).poll_next(cx)?) {
+                         len.sub_if(chunk.len() as u64);
+                         return Poll::Ready(Some(Ok(Frame::data(chunk))));
+                     }
+                 }
+ 
+                 // check trailers after data is terminated
+                 match ready!(Pin::new(trailers_rx).poll(cx)) {
+                     Ok(t) => Poll::Ready(Some(Ok(Frame::trailers(t)))),
+                     Err(_) => Poll::Ready(None),
+                 }
+             }
+             #[cfg(all(feature = "http2", any(feature = "client", feature = "server")))]
+             Kind::H2 {
+                 ref mut data_done,
+                 ref ping,
+                 recv: ref mut h2,
+                 content_length: ref mut len,
+             } => {
+                 if !*data_done {
+                     match ready!(h2.poll_data(cx)) {
+                         Some(Ok(bytes)) => {
+                             let _ = h2.flow_control().release_capacity(bytes.len());
+                             len.sub_if(bytes.len() as u64);
+                             ping.record_data(bytes.len());
+                             return Poll::Ready(Some(Ok(Frame::data(bytes))));
+                         }
+                         Some(Err(e)) => {
+-                            return match e.reason() {
+-                                // These reasons should cause the body reading to stop, but not fail it.
+-                                // The same logic as for `Read for H2Upgraded` is applied here.
+-                                Some(h2::Reason::NO_ERROR) | Some(h2::Reason::CANCEL) => {
+-                                    Poll::Ready(None)
+-                                }
+-                                _ => Poll::Ready(Some(Err(crate::Error::new_body(e)))),
+-                            };
++                            if let Some(h2::Reason::NO_ERROR) = e.reason() {
++                                // As mentioned in RFC 7540 Section 8.1, a RST_STREAM with NO_ERROR
++                                // indicates an early response, and should cause the body reading
++                                // to stop, but not fail it:
++                                return Poll::Ready(None);
++                            } else {
++                                return Poll::Ready(Some(Err(crate::Error::new_body(e))));
++                            }
+                         }
+                         None => {
+                             *data_done = true;
+                             // fall through to trailers
+                         }
+                     }
+                 }
+ 
+                 // after data, check trailers
+                 match ready!(h2.poll_trailers(cx)) {
+                     Ok(t) => {
+                         ping.record_non_data();
+                         Poll::Ready(Ok(t.map(Frame::trailers)).transpose())
+                     }
+-                    Err(e) => Poll::Ready(Some(Err(crate::Error::new_h2(e)))),
++                    Err(e) => {
++                        if let Some(h2::Reason::NO_ERROR) = e.reason() {
++                            // Same as above, a RST_STREAM with NO_ERROR indicates an early
++                            // response, and should cause reading the trailers to stop, but
++                            // not fail it:
++                            Poll::Ready(None)
++                        } else {
++                            Poll::Ready(Some(Err(crate::Error::new_h2(e))))
++                        }
++                    }
+                 }
+             }
+ 
+             #[cfg(feature = "ffi")]
+             Kind::Ffi(ref mut body) => body.poll_data(cx),
+         }
+     }
+ 
+     fn is_end_stream(&self) -> bool {
+         match self.kind {
+             Kind::Empty => true,
+             #[cfg(all(feature = "http1", any(feature = "client", feature = "server")))]
+             Kind::Chan { content_length, .. } => content_length == DecodedLength::ZERO,
+             #[cfg(all(feature = "http2", any(feature = "client", feature = "server")))]
+             Kind::H2 { recv: ref h2, .. } => h2.is_end_stream(),
+             #[cfg(feature = "ffi")]
+             Kind::Ffi(..) => false,
+         }
+     }
+ 
+     fn size_hint(&self) -> SizeHint {
+         #[cfg(all(
+             any(feature = "http1", feature = "http2"),
+             any(feature = "client", feature = "server")
+         ))]
+         fn opt_len(decoded_length: DecodedLength) -> SizeHint {
+             if let Some(content_length) = decoded_length.into_opt() {
+                 SizeHint::with_exact(content_length)
+             } else {
+                 SizeHint::default()
+             }
+         }
+ 
+         match self.kind {
+             Kind::Empty => SizeHint::with_exact(0),
+             #[cfg(all(feature = "http1", any(feature = "client", feature = "server")))]
+             Kind::Chan { content_length, .. } => opt_len(content_length),
+             #[cfg(all(feature = "http2", any(feature = "client", feature = "server")))]
+             Kind::H2 { content_length, .. } => opt_len(content_length),
+             #[cfg(feature = "ffi")]
+             Kind::Ffi(..) => SizeHint::default(),
+         }
+     }
+ }
+ 
+ impl fmt::Debug for Incoming {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         #[cfg(any(
+             all(
+                 any(feature = "http1", feature = "http2"),
+                 any(feature = "client", feature = "server")
+             ),
+             feature = "ffi"
+         ))]
+         #[derive(Debug)]
+         struct Streaming;
+         #[derive(Debug)]
+         struct Empty;
+ 
+         let mut builder = f.debug_tuple("Body");
+         match self.kind {
+             Kind::Empty => builder.field(&Empty),
+             #[cfg(any(
+                 all(
+                     any(feature = "http1", feature = "http2"),
+                     any(feature = "client", feature = "server")
+                 ),
+                 feature = "ffi"
+             ))]
+             _ => builder.field(&Streaming),
+         };
+ 
+         builder.finish()
+     }
+ }
+ 
+ #[cfg(all(feature = "http1", any(feature = "client", feature = "server")))]
+ impl Sender {
+     /// Check to see if this `Sender` can send more data.
+     pub(crate) fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<crate::Result<()>> {
+diff --git a/tests/client.rs b/tests/client.rs
+index e8045932..f74cec74 100644
+--- a/tests/client.rs
++++ b/tests/client.rs
+@@ -2549,213 +2549,294 @@ mod conn {
+             .expect("http handshake");
+ 
+         tokio::spawn(async move {
+             let err = conn.await.expect_err("client conn should timeout");
+             assert!(err.is_timeout());
+         });
+ 
+         let req = http::Request::new(Empty::<Bytes>::new());
+         let err = client
+             .send_request(req)
+             .await
+             .expect_err("request should timeout");
+         assert!(err.is_timeout());
+ 
+         let err = future::poll_fn(|ctx| client.poll_ready(ctx))
+             .await
+             .expect_err("client should be closed");
+         assert!(
+             err.is_closed(),
+             "poll_ready error should be closed: {:?}",
+             err
+         );
+     }
+ 
+     #[tokio::test]
+     async fn http2_keep_alive_with_responsive_server() {
+         // Test that a responsive server works just when client keep
+         // alive is enabled
+         use hyper::service::service_fn;
+ 
+         let (client_io, server_io, _addr) = setup_duplex_test_server();
+ 
+         // Spawn an HTTP2 server that reads the whole body and responds
+         tokio::spawn(async move {
+             let sock = TokioIo::new(server_io);
+             hyper::server::conn::http2::Builder::new(TokioExecutor)
+                 .timer(TokioTimer)
+                 .serve_connection(
+                     sock,
+                     service_fn(|req| async move {
+                         tokio::spawn(async move {
+                             let _ = concat(req.into_body())
+                                 .await
+                                 .expect("server req body aggregate");
+                         });
+                         Ok::<_, hyper::Error>(http::Response::new(Empty::<Bytes>::new()))
+                     }),
+                 )
+                 .await
+                 .expect("serve_connection");
+         });
+ 
+         let io = TokioIo::new(client_io);
+         let (mut client, conn) = conn::http2::Builder::new(TokioExecutor)
+             .timer(TokioTimer)
+             .keep_alive_interval(Duration::from_secs(1))
+             .keep_alive_timeout(Duration::from_secs(1))
+             .handshake(io)
+             .await
+             .expect("http handshake");
+ 
+         tokio::spawn(async move {
+             conn.await.expect("client conn shouldn't error");
+         });
+ 
+         // Use a channel to keep request stream open
+         let (_tx, recv) = mpsc::channel::<Result<Frame<Bytes>, Box<dyn Error + Send + Sync>>>(0);
+         let req = http::Request::new(StreamBody::new(recv));
+ 
+         let _resp = client.send_request(req).await.expect("send_request");
+ 
+         // sleep longer than keepalive would trigger
+         TokioTimer.sleep(Duration::from_secs(4)).await;
+ 
+         future::poll_fn(|ctx| client.poll_ready(ctx))
+             .await
+             .expect("client should be open");
+     }
+ 
+     #[tokio::test]
+-    async fn http2_responds_before_consuming_request_body() {
++    async fn http2_responds_before_consuming_request_body_no_trailers() {
+         // Test that a early-response from server works correctly (request body wasn't fully consumed).
+         // https://github.com/hyperium/hyper/issues/2872
+         use hyper::service::service_fn;
+ 
+         let _ = pretty_env_logger::try_init();
+ 
+         let (listener, addr) = setup_tk_test_server().await;
+ 
+         // Spawn an HTTP2 server that responds before reading the whole request body.
+         // It's normal case to decline the request due to headers or size of the body.
+         tokio::spawn(async move {
+             let sock = TokioIo::new(listener.accept().await.unwrap().0);
+             hyper::server::conn::http2::Builder::new(TokioExecutor)
+                 .timer(TokioTimer)
+                 .serve_connection(
+                     sock,
+                     service_fn(|_req| async move {
+                         Ok::<_, hyper::Error>(Response::new(Full::new(Bytes::from(
+                             "No bread for you!",
+                         ))))
+                     }),
+                 )
+                 .await
+                 .expect("serve_connection");
+         });
+ 
+         let io = tcp_connect(&addr).await.expect("tcp connect");
+         let (mut client, conn) = conn::http2::Builder::new(TokioExecutor)
+             .timer(TokioTimer)
+             .handshake(io)
+             .await
+             .expect("http handshake");
+ 
+         tokio::spawn(async move {
+             conn.await.expect("client conn shouldn't error");
+         });
+ 
+         // Use a channel to keep request stream open
+         let (_tx, recv) = mpsc::channel::<Result<Frame<Bytes>, Box<dyn Error + Send + Sync>>>(0);
+         let req = Request::post("/a").body(StreamBody::new(recv)).unwrap();
+         let resp = client.send_request(req).await.expect("send_request");
+         assert!(resp.status().is_success());
+ 
+-        let mut body = String::new();
+-        concat(resp.into_body())
++        let (body, trailers) = crate::concat_with_trailers(resp.into_body()).await.unwrap();
++        assert_eq!(body.as_ref(), b"No bread for you!");
++        assert!(trailers.is_none());
++    }
++
++    #[tokio::test]
++    async fn http2_responds_before_consuming_request_body_with_trailers() {
++        // Test that a early-response from server works correctly (request body wasn't fully consumed).
++        // https://github.com/hyperium/hyper/issues/2872
++        use hyper::body::{Body, Frame, SizeHint};
++        use hyper::header::{HeaderMap, HeaderValue};
++        use hyper::service::service_fn;
++
++        let _ = pretty_env_logger::try_init();
++
++        let (listener, addr) = setup_tk_test_server().await;
++
++        /// An `HttpBody` implementation whose `is_end_stream()` will
++        /// return `true` after sending trailers.
++        pub struct TrailersBody(Option<HeaderMap>);
++
++        impl Body for TrailersBody {
++            type Data = bytes::Bytes;
++            type Error = hyper::Error;
++
++            fn poll_frame(
++                mut self: Pin<&mut Self>,
++                _cx: &mut Context<'_>,
++            ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
++                if let Some(trailers) = self.0.take() {
++                    Poll::Ready(Some(Ok(Frame::trailers(trailers))))
++                } else {
++                    Poll::Ready(None)
++                }
++            }
++
++            fn is_end_stream(&self) -> bool {
++                self.0.is_none()
++            }
++
++            fn size_hint(&self) -> SizeHint {
++                SizeHint::with_exact(0)
++            }
++        }
++
++        // Spawn an HTTP2 server that responds before reading the whole request body.
++        // It's normal case to decline the request due to headers or size of the body.
++        tokio::spawn(async move {
++            let sock = TokioIo::new(listener.accept().await.unwrap().0);
++            hyper::server::conn::http2::Builder::new(TokioExecutor)
++                .timer(TokioTimer)
++                .serve_connection(
++                    sock,
++                    service_fn(|_req| async move {
++                        let mut trailers = HeaderMap::new();
++                        trailers.insert("grpc", HeaderValue::from_static("0"));
++                        let body = TrailersBody(Some(trailers));
++                        Ok::<_, hyper::Error>(http::Response::new(body))
++                    }),
++                )
++                .await
++                .expect("serve_connection");
++        });
++
++        let io = tcp_connect(&addr).await.expect("tcp connect");
++        let (mut client, conn) = conn::http2::Builder::new(TokioExecutor)
++            .timer(TokioTimer)
++            .handshake(io)
+             .await
+-            .unwrap()
+-            .reader()
+-            .read_to_string(&mut body)
+-            .unwrap();
++            .expect("http handshake");
++
++        tokio::spawn(async move {
++            conn.await.expect("client conn shouldn't error");
++        });
++
++        // Use a channel to keep request stream open
++        let (_tx, recv) = mpsc::channel::<Result<Frame<Bytes>, Box<dyn Error + Send + Sync>>>(0);
++        let req = Request::post("/a").body(StreamBody::new(recv)).unwrap();
++        let resp = client.send_request(req).await.expect("send_request");
++        assert!(resp.status().is_success());
++
++        let (body, trailers) = crate::concat_with_trailers(resp.into_body()).await.unwrap();
++
++        // No body:
++        assert!(body.is_empty());
+ 
+-        assert_eq!(&body, "No bread for you!");
++        // Have our `grpc` trailer:
++        let trailers = trailers.expect("response has trailers");
++        assert_eq!(trailers.len(), 1);
++        assert_eq!(trailers.get("grpc").unwrap(), "0");
+     }
+ 
+     #[tokio::test]
+     async fn h2_connect() {
+         let (client_io, server_io, _) = setup_duplex_test_server();
+ 
+         // Spawn an HTTP2 server that asks for bread and responds with baguette.
+         tokio::spawn(async move {
+             let sock = server_io;
+             let mut h2 = h2::server::handshake(sock).await.unwrap();
+ 
+             let (req, mut respond) = h2.accept().await.unwrap().unwrap();
+             tokio::spawn(async move {
+                 poll_fn(|cx| h2.poll_closed(cx)).await.unwrap();
+             });
+             assert_eq!(req.method(), Method::CONNECT);
+ 
+             let mut body = req.into_body();
+ 
+             let mut send_stream = respond.send_response(Response::new(()), false).unwrap();
+ 
+             send_stream.send_data("Bread?".into(), true).unwrap();
+ 
+             let bytes = body.data().await.unwrap().unwrap();
+             assert_eq!(&bytes[..], b"Baguette!");
+             let _ = body.flow_control().release_capacity(bytes.len());
+ 
+             assert!(body.data().await.is_none());
+         });
+ 
+         let io = TokioIo::new(client_io);
+         let (mut client, conn) = conn::http2::Builder::new(TokioExecutor)
+             .handshake(io)
+             .await
+             .expect("http handshake");
+ 
+         tokio::spawn(async move {
+             conn.await.expect("client conn shouldn't error");
+         });
+ 
+         let req = Request::connect("localhost")
+             .body(Empty::<Bytes>::new())
+             .unwrap();
+         let res = client.send_request(req).await.expect("send_request");
+         assert_eq!(res.status(), StatusCode::OK);
+ 
+         let mut upgraded = TokioIo::new(hyper::upgrade::on(res).await.unwrap());
+ 
+         let mut vec = vec![];
+         upgraded.read_to_end(&mut vec).await.unwrap();
+         assert_eq!(s(&vec), "Bread?");
+ 
+         upgraded.write_all(b"Baguette!").await.unwrap();
+ 
+         upgraded.shutdown().await.unwrap();
+     }
+ 
+     #[tokio::test]
+     async fn h2_connect_rejected() {
+         let (client_io, server_io, _) = setup_duplex_test_server();
+         let (done_tx, done_rx) = oneshot::channel();
+ 
+         tokio::spawn(async move {
+             let sock = server_io;
+             let mut h2 = h2::server::handshake(sock).await.unwrap();
+ 
+             let (req, mut respond) = h2.accept().await.unwrap().unwrap();
+             tokio::spawn(async move {
+                 poll_fn(|cx| h2.poll_closed(cx)).await.unwrap();
+             });
+             assert_eq!(req.method(), Method::CONNECT);
+ 
+             let res = Response::builder().status(400).body(()).unwrap();
+             let mut send_stream = respond.send_response(res, false).unwrap();
+             send_stream
+                 .send_data("No bread for you!".into(), true)
+                 .unwrap();
+             done_rx.await.unwrap();
+         });
+ 

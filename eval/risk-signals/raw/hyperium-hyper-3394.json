@@ -1,0 +1,117 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Enriched candidate; production server connection timing behavior changed.",
+    "id": "hyperium-hyper-3394",
+    "limitations": "Feature-shaped; needs stronger issue context.",
+    "production_files": [
+      "src/common/time.rs",
+      "src/server/conn/http1.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "Missing Timer would warn or panic.",
+    "signal_ids": [
+      "assumption_boundary",
+      "external_contract"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/3394",
+      "eval/semantic-candidates/enriched.jsonl"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/hyperium/hyper/pull/3394",
+    "why_high_value": "Runtime timer availability is a configuration/assumption boundary.",
+    "why_not_noise": "Specific missing runtime dependency failure mode."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "837c27772183e2d492ad2096752c1cd7c2f200b0",
+    "body": "If a default timeout is set, and no Timer, a warning will be emitted.\r\n\r\nIf a timeout is configured by the user, and no Timer is set, it will panic.\r\n\r\nCloses #3393\r\n\r\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 29,
+        "changeType": "MODIFIED",
+        "deletions": 35,
+        "path": "src/common/time.rs"
+      },
+      {
+        "additions": 19,
+        "changeType": "MODIFIED",
+        "deletions": 8,
+        "path": "src/server/conn/http1.rs"
+      }
+    ],
+    "headRefName": "timer-warn-or-panic",
+    "headRefOid": "49f3585ff244ff66ec9ab68379af5fe969ba22eb",
+    "labels": [],
+    "mergedAt": "2023-11-08T21:07:51Z",
+    "number": 3394,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviews": [
+      {
+        "author": {
+          "login": "tottoto"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Looks good to me. I left some questions about the implementation and the document.",
+        "commit": {
+          "oid": "9bdf96df8360743d30e790519f3ecba562bbd29a"
+        },
+        "id": "PRR_kwDOAWaYQc5mX8VA",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-11-07T12:32:49Z"
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "9bdf96df8360743d30e790519f3ecba562bbd29a"
+        },
+        "id": "PRR_kwDOAWaYQc5mkJDy",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-11-08T16:12:14Z"
+      },
+      {
+        "author": {
+          "login": "tottoto"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "9bdf96df8360743d30e790519f3ecba562bbd29a"
+        },
+        "id": "PRR_kwDOAWaYQc5mkfu_",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-11-08T16:55:58Z"
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "1e2c1c5cce46bcfd45320fd6f2badf624da4f446"
+        },
+        "id": "PRR_kwDOAWaYQc5mkmTI",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-11-08T17:09:22Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "feat(lib): missing Timer will warn or panic",
+    "url": "https://github.com/hyperium/hyper/pull/3394"
+  }
+}

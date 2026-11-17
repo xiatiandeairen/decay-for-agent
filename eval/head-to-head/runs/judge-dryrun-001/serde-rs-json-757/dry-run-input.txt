@@ -1,0 +1,396 @@
+case_id: serde-rs-json-757
+manifest_hash: 06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208
+
+pr.json:
+```json
+{"baseRefName":"master","baseRefOid":"9bcb08fd926c1c727cb1343363d41c25f2e6025d","body":"Fixes #755.","comments":[],"files":[{"path":"src/read.rs","additions":4,"deletions":1,"changeType":"MODIFIED"},{"path":"tests/test.rs","additions":19,"deletions":0,"changeType":"MODIFIED"}],"headRefName":"panicraw","headRefOid":"c64c1d7429d32eaef3a501c730906656a9606f5d","labels":[],"mergedAt":"2021-02-28T04:54:05Z","number":757,"reviewDecision":"","reviews":[],"state":"MERGED","title":"Fix panic deserializing RawValue from invalid utf-8 bytes","url":"https://github.com/serde-rs/json/pull/757"}
+```
+
+files.txt:
+```
+M	src/read.rs
+M	tests/test.rs
+```
+
+diff.patch:
+```
+diff --git a/src/read.rs b/src/read.rs
+index 522c0e0..574857c 100644
+--- a/src/read.rs
++++ b/src/read.rs
+@@ -510,161 +510,164 @@ impl<'a> Read<'a> for SliceRead<'a> {
+     fn position(&self) -> Position {
+         self.position_of_index(self.index)
+     }
+ 
+     fn peek_position(&self) -> Position {
+         // Cap it at slice.len() just in case the most recent call was next()
+         // and it returned the last byte.
+         self.position_of_index(cmp::min(self.slice.len(), self.index + 1))
+     }
+ 
+     fn byte_offset(&self) -> usize {
+         self.index
+     }
+ 
+     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'a, 's, str>> {
+         self.parse_str_bytes(scratch, true, as_str)
+     }
+ 
+     fn parse_str_raw<'s>(
+         &'s mut self,
+         scratch: &'s mut Vec<u8>,
+     ) -> Result<Reference<'a, 's, [u8]>> {
+         self.parse_str_bytes(scratch, false, |_, bytes| Ok(bytes))
+     }
+ 
+     fn ignore_str(&mut self) -> Result<()> {
+         loop {
+             while self.index < self.slice.len() && !ESCAPE[self.slice[self.index] as usize] {
+                 self.index += 1;
+             }
+             if self.index == self.slice.len() {
+                 return error(self, ErrorCode::EofWhileParsingString);
+             }
+             match self.slice[self.index] {
+                 b'"' => {
+                     self.index += 1;
+                     return Ok(());
+                 }
+                 b'\\' => {
+                     self.index += 1;
+                     tri!(ignore_escape(self));
+                 }
+                 _ => {
+                     return error(self, ErrorCode::ControlCharacterWhileParsingString);
+                 }
+             }
+         }
+     }
+ 
+     fn decode_hex_escape(&mut self) -> Result<u16> {
+         if self.index + 4 > self.slice.len() {
+             self.index = self.slice.len();
+             return error(self, ErrorCode::EofWhileParsingString);
+         }
+ 
+         let mut n = 0;
+         for _ in 0..4 {
+             let ch = decode_hex_val(self.slice[self.index]);
+             self.index += 1;
+             match ch {
+                 None => return error(self, ErrorCode::InvalidEscape),
+                 Some(val) => {
+                     n = (n << 4) + val;
+                 }
+             }
+         }
+         Ok(n)
+     }
+ 
+     #[cfg(feature = "raw_value")]
+     fn begin_raw_buffering(&mut self) {
+         self.raw_buffering_start_index = self.index;
+     }
+ 
+     #[cfg(feature = "raw_value")]
+     fn end_raw_buffering<V>(&mut self, visitor: V) -> Result<V::Value>
+     where
+         V: Visitor<'a>,
+     {
+         let raw = &self.slice[self.raw_buffering_start_index..self.index];
+-        let raw = str::from_utf8(raw).unwrap();
++        let raw = match str::from_utf8(raw) {
++            Ok(raw) => raw,
++            Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint),
++        };
+         visitor.visit_map(BorrowedRawDeserializer {
+             raw_value: Some(raw),
+         })
+     }
+ 
+     const should_early_return_if_failed: bool = false;
+ 
+     #[inline]
+     #[cold]
+     fn set_failed(&mut self, _failed: &mut bool) {
+         self.slice = &self.slice[..self.index];
+     }
+ }
+ 
+ //////////////////////////////////////////////////////////////////////////////
+ 
+ impl<'a> StrRead<'a> {
+     /// Create a JSON input source to read from a UTF-8 string.
+     pub fn new(s: &'a str) -> Self {
+         StrRead {
+             delegate: SliceRead::new(s.as_bytes()),
+             #[cfg(feature = "raw_value")]
+             data: s,
+         }
+     }
+ }
+ 
+ impl<'a> private::Sealed for StrRead<'a> {}
+ 
+ impl<'a> Read<'a> for StrRead<'a> {
+     #[inline]
+     fn next(&mut self) -> Result<Option<u8>> {
+         self.delegate.next()
+     }
+ 
+     #[inline]
+     fn peek(&mut self) -> Result<Option<u8>> {
+         self.delegate.peek()
+     }
+ 
+     #[inline]
+     fn discard(&mut self) {
+         self.delegate.discard();
+     }
+ 
+     fn position(&self) -> Position {
+         self.delegate.position()
+     }
+ 
+     fn peek_position(&self) -> Position {
+         self.delegate.peek_position()
+     }
+ 
+     fn byte_offset(&self) -> usize {
+         self.delegate.byte_offset()
+     }
+ 
+     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'a, 's, str>> {
+         self.delegate.parse_str_bytes(scratch, true, |_, bytes| {
+             // The input is assumed to be valid UTF-8 and the \u-escapes are
+             // checked along the way, so don't need to check here.
+             Ok(unsafe { str::from_utf8_unchecked(bytes) })
+         })
+     }
+ 
+     fn parse_str_raw<'s>(
+         &'s mut self,
+         scratch: &'s mut Vec<u8>,
+     ) -> Result<Reference<'a, 's, [u8]>> {
+         self.delegate.parse_str_raw(scratch)
+     }
+ 
+     fn ignore_str(&mut self) -> Result<()> {
+         self.delegate.ignore_str()
+     }
+ 
+     fn decode_hex_escape(&mut self) -> Result<u16> {
+         self.delegate.decode_hex_escape()
+     }
+ 
+diff --git a/tests/test.rs b/tests/test.rs
+index ffe58c9..2fe7c56 100644
+--- a/tests/test.rs
++++ b/tests/test.rs
+@@ -2124,123 +2124,142 @@ fn test_integer128() {
+ fn test_borrowed_raw_value() {
+     use serde_json::value::RawValue;
+ 
+     #[derive(Serialize, Deserialize)]
+     struct Wrapper<'a> {
+         a: i8,
+         #[serde(borrow)]
+         b: &'a RawValue,
+         c: i8,
+     }
+ 
+     let wrapper_from_str: Wrapper =
+         serde_json::from_str(r#"{"a": 1, "b": {"foo": 2}, "c": 3}"#).unwrap();
+     assert_eq!(r#"{"foo": 2}"#, wrapper_from_str.b.get());
+ 
+     let wrapper_to_string = serde_json::to_string(&wrapper_from_str).unwrap();
+     assert_eq!(r#"{"a":1,"b":{"foo": 2},"c":3}"#, wrapper_to_string);
+ 
+     let wrapper_to_value = serde_json::to_value(&wrapper_from_str).unwrap();
+     assert_eq!(json!({"a": 1, "b": {"foo": 2}, "c": 3}), wrapper_to_value);
+ 
+     let array_from_str: Vec<&RawValue> =
+         serde_json::from_str(r#"["a", 42, {"foo": "bar"}, null]"#).unwrap();
+     assert_eq!(r#""a""#, array_from_str[0].get());
+     assert_eq!(r#"42"#, array_from_str[1].get());
+     assert_eq!(r#"{"foo": "bar"}"#, array_from_str[2].get());
+     assert_eq!(r#"null"#, array_from_str[3].get());
+ 
+     let array_to_string = serde_json::to_string(&array_from_str).unwrap();
+     assert_eq!(r#"["a",42,{"foo": "bar"},null]"#, array_to_string);
+ }
+ 
+ #[cfg(feature = "raw_value")]
+ #[test]
+ fn test_boxed_raw_value() {
+     use serde_json::value::RawValue;
+ 
+     #[derive(Serialize, Deserialize)]
+     struct Wrapper {
+         a: i8,
+         b: Box<RawValue>,
+         c: i8,
+     }
+ 
+     let wrapper_from_str: Wrapper =
+         serde_json::from_str(r#"{"a": 1, "b": {"foo": 2}, "c": 3}"#).unwrap();
+     assert_eq!(r#"{"foo": 2}"#, wrapper_from_str.b.get());
+ 
+     let wrapper_from_reader: Wrapper =
+         serde_json::from_reader(br#"{"a": 1, "b": {"foo": 2}, "c": 3}"#.as_ref()).unwrap();
+     assert_eq!(r#"{"foo": 2}"#, wrapper_from_reader.b.get());
+ 
+     let wrapper_from_value: Wrapper =
+         serde_json::from_value(json!({"a": 1, "b": {"foo": 2}, "c": 3})).unwrap();
+     assert_eq!(r#"{"foo":2}"#, wrapper_from_value.b.get());
+ 
+     let wrapper_to_string = serde_json::to_string(&wrapper_from_str).unwrap();
+     assert_eq!(r#"{"a":1,"b":{"foo": 2},"c":3}"#, wrapper_to_string);
+ 
+     let wrapper_to_value = serde_json::to_value(&wrapper_from_str).unwrap();
+     assert_eq!(json!({"a": 1, "b": {"foo": 2}, "c": 3}), wrapper_to_value);
+ 
+     let array_from_str: Vec<Box<RawValue>> =
+         serde_json::from_str(r#"["a", 42, {"foo": "bar"}, null]"#).unwrap();
+     assert_eq!(r#""a""#, array_from_str[0].get());
+     assert_eq!(r#"42"#, array_from_str[1].get());
+     assert_eq!(r#"{"foo": "bar"}"#, array_from_str[2].get());
+     assert_eq!(r#"null"#, array_from_str[3].get());
+ 
+     let array_from_reader: Vec<Box<RawValue>> =
+         serde_json::from_reader(br#"["a", 42, {"foo": "bar"}, null]"#.as_ref()).unwrap();
+     assert_eq!(r#""a""#, array_from_reader[0].get());
+     assert_eq!(r#"42"#, array_from_reader[1].get());
+     assert_eq!(r#"{"foo": "bar"}"#, array_from_reader[2].get());
+     assert_eq!(r#"null"#, array_from_reader[3].get());
+ 
+     let array_to_string = serde_json::to_string(&array_from_str).unwrap();
+     assert_eq!(r#"["a",42,{"foo": "bar"},null]"#, array_to_string);
+ }
+ 
++#[cfg(feature = "raw_value")]
++#[test]
++fn test_raw_invalid_utf8() {
++    use serde_json::value::RawValue;
++
++    let j = &[b'"', b'\xCE', b'\xF8', b'"'];
++    let value_err = serde_json::from_slice::<Value>(j).unwrap_err();
++    let raw_value_err = serde_json::from_slice::<Box<RawValue>>(j).unwrap_err();
++
++    assert_eq!(
++        value_err.to_string(),
++        "invalid unicode code point at line 1 column 4",
++    );
++    assert_eq!(
++        raw_value_err.to_string(),
++        "invalid unicode code point at line 1 column 4",
++    );
++}
++
+ #[test]
+ fn test_borrow_in_map_key() {
+     #[derive(Deserialize, Debug)]
+     struct Outer {
+         map: BTreeMap<MyMapKey, ()>,
+     }
+ 
+     #[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
+     struct MyMapKey(usize);
+ 
+     impl<'de> Deserialize<'de> for MyMapKey {
+         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+         where
+             D: de::Deserializer<'de>,
+         {
+             let s = <&str>::deserialize(deserializer)?;
+             let n = s.parse().map_err(de::Error::custom)?;
+             Ok(MyMapKey(n))
+         }
+     }
+ 
+     let value = json!({ "map": { "1": null } });
+     Outer::deserialize(&value).unwrap();
+ }
+ 
+ #[test]
+ fn test_value_into_deserializer() {
+     #[derive(Deserialize)]
+     struct Outer {
+         inner: Inner,
+     }
+ 
+     #[derive(Deserialize)]
+     struct Inner {
+         string: String,
+     }
+ 
+     let mut map = BTreeMap::new();
+     map.insert("inner", json!({ "string": "Hello World" }));
+ 
+     let outer = Outer::deserialize(map.into_deserializer()).unwrap();
+     assert_eq!(outer.inner.string, "Hello World");
+ }
+```
+
+decay.stdout:
+```
+Diff context:
+  repo_root=/private/tmp/decay-pr-eval/serde-rs-json-757/repo
+  mode=git_ref
+  base_input=9bcb08fd926c1c727cb1343363d41c25f2e6025d
+  base=9bcb08fd926c1c727cb1343363d41c25f2e6025d
+  head=c64c1d7429d32eaef3a501c730906656a9606f5d
+  changed_files=2
+
+Top risk findings:
+1. [high] src/read.rs
+   semantic panic_to_error_propagation_changed Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint)
+   action: review malformed-input error propagation and require regression coverage
+2. [medium] src/read.rs
+   quality prod_change_with_tests
+   action: review changed behavior invariants and confirm regression tests cover the risky path
+
+Complexity impact:
+  changed_functions=1 evidence=0 partial=false diagnostics=0
+  value_note=direct for worsened/new_high_risk; touched_existing_risky is supporting context, not proof of current-diff risk
+
+Coverage impact:
+  evidence=0
+  value_note=scan coverage gaps limit decay confidence; this is tool coverage evidence, not proof of product code risk
+
+Stability impact:
+  evidence=0
+  value_note=direct for newly introduced unsafe/panic/public-api evidence; move/refactor diffs can weaken this signal
+
+Quality impact:
+  evidence=1 prod_files_changed=1 test_files_changed=1 docs_files_changed=0
+  value_note=missing-test signals are supporting evidence; broad scope signals are weak unless paired with direct diff evidence
+- id=1 category=quality kind=prod_change_with_tests subject=production code changed with test changes source=quality confidence=low value=supporting
+  file=src/read.rs
+
+Semantic impact:
+  evidence=1
+  value_note=high confidence only for explicit scanned patterns; this is not general semantic understanding
+- id=2 category=semantic kind=panic_to_error_propagation_changed subject=Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint) source=semantic_diff confidence=high value=direct
+  file=src/read.rs
+
+History impact:
+  evidence=0
+  value_note=context only; excluded from top risk unless direct diff evidence exists
+recorded=true changeset=1 evidence_saved=2
+```
+
+semantic-findings.json:
+```json
+{"version":"semantic-findings.v1","findings":[{"claim":"`src/read.rs` changed malformed-input handling from a panic path to error propagation for invalid Unicode code points.","supporting_facts":["Semantic diff evidence reports `panic_to_error_propagation_changed` for `Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint)` in `src/read.rs`.","Quality evidence reports production code changed with accompanying test changes in `src/read.rs`, which supports reviewing whether regression coverage reaches this behavior path."],"source_refs":[{"type":"evidence","id":2},{"type":"evidence","id":1}],"confidence":"high","limitation":"Confidence is based only on the explicit scanned semantic pattern and provided quality signal; this is not a full semantic review of the repository behavior.","review_action":"Review malformed-input error propagation in `src/read.rs` and require regression coverage for the invalid Unicode code point path."}]}
+```
+
+ai-baseline.normalized.json:
+```json
+{
+  "case_id": "serde-rs-json-757",
+  "reason": "raw output is not valid JSON: Expecting value: line 1 column 1 (char 0)",
+  "status": "ai-baseline-failed"
+}
+```

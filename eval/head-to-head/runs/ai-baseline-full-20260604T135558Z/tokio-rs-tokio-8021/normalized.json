@@ -1,0 +1,29 @@
+{
+  "case_id": "tokio-rs-tokio-8021",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "(new << Self::PERMIT_SHIFT) | (curr_bits & Self::CLOSED),"
+      ],
+      "rank": 1,
+      "rationale": "CAS in forget_permits now ORs curr_bits & CLOSED into the new value; prior `new << PERMIT_SHIFT` write cleared the CLOSED flag, silently reopening a closed semaphore on forget.",
+      "risk_signal": "state_transition",
+      "subject": "tokio/src/sync/batch_semaphore.rs:forget_permits",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "sem.close();\n            sem.add_permits(add);\n            assert_eq!(sem.available_permits(), size + add);\n            assert!(sem.is_closed());"
+      ],
+      "rank": 2,
+      "rationale": "New closed-state tests cover single-threaded close-then-forget/add only; the CAS retry loop in forget_permits under concurrent permit churn against a closed semaphore is not exercised.",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tokio/tests/sync_semaphore.rs:forget_closed",
+      "value": "supporting"
+    }
+  ]
+}

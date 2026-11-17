@@ -1,0 +1,41 @@
+{
+  "case_id": "serde-rs-json-757",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "-        let raw = str::from_utf8(raw).unwrap();\n+        let raw = match str::from_utf8(raw) {\n+            Ok(raw) => raw,\n+            Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint),\n+        };"
+      ],
+      "rank": 1,
+      "rationale": "Replaces an unwrap on str::from_utf8 over the raw-buffered slice with an InvalidUnicodeCodePoint error; previously invalid UTF-8 in raw_value buffering would panic.",
+      "risk_signal": "assumption_boundary",
+      "subject": "src/read.rs:end_raw_buffering",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "+            Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint),"
+      ],
+      "rank": 2,
+      "rationale": "Maps any Utf8Error to ErrorCode::InvalidUnicodeCodePoint, collapsing distinct UTF-8 failure modes into one variant which downstream consumers may key on.",
+      "risk_signal": "error_propagation",
+      "subject": "src/read.rs:end_raw_buffering",
+      "value": "supporting"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "+    let j = &[b'\"', b'\\xCE', b'\\xF8', b'\"'];",
+        "+    let raw_value_err = serde_json::from_slice::<Box<RawValue>>(j).unwrap_err();"
+      ],
+      "rank": 3,
+      "rationale": "New test only covers from_slice into Box<RawValue>; borrowed &RawValue path and from_reader/from_str variants for the invalid-UTF-8 boundary are not exercised.",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tests/test.rs:test_raw_invalid_utf8",
+      "value": "supporting"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyperium-hyper-3242"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "For HTTP/2 CONNECT requests carrying a Protocol extension (RFC 8441 Extended CONNECT), the client must preserve :scheme and :path on the wire instead of rewriting the URI to authority-form. Plain HTTP/2 CONNECT (no Protocol extension) and the http2-disabled build path continue to use authority-form."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank-1 directly names the external_contract / RFC 8441 mechanism on send_request; rank-2 captures the cfg-gated CONNECT branch divergence. Rank-3 is supporting test-gap context. Saw the right mechanism from the diff alone. [mechanical-flag: ai_baseline: ai=2, mechanical=1]"

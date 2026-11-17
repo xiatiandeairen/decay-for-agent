@@ -1,0 +1,84 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Previously accepted large-scale candidate; merged bug fix for matcher cycle handling.",
+    "id": "ripgrep-2692",
+    "limitations": "Needs full diff and test refs.",
+    "production_files": [
+      "crates/ignore/src/gitignore.rs"
+    ],
+    "repo": "BurntSushi/ripgrep",
+    "risk_summary": "Compiled ignore matchers had a reference cycle bug.",
+    "signal_ids": [
+      "state_transition",
+      "assumption_boundary"
+    ],
+    "source_refs": [
+      "https://github.com/BurntSushi/ripgrep/pull/2692",
+      "eval/large-scale-50/candidates/open-source.toml"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/BurntSushi/ripgrep/pull/2692",
+    "why_high_value": "Cycle handling can affect ignore matcher compilation correctness.",
+    "why_not_noise": "Specific reference cycle bug in production matcher code."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "67dd809a8097923a721305ce0632a9fb9f19cb57",
+    "body": "This attempts to fix the issue around unbounded memory growth in the ignore crate when ignore flags are enabled, see https://github.com/BurntSushi/ripgrep/issues/2690\r\n\r\nI don't have full understanding of the ignore crate codebase but it looks like there is a reference cycle caused by the compiled matchers (compiled HashMap holds ref to Ignore and Ignore holds ref to HashMap). Using weak refs fixes issue #2690 in my test project. Also confirmed via before and after when profiling the code, see the attached screenshots.\r\n\r\n![CleanShot 2023-12-20 at 16 30 56@2x](https://github.com/BurntSushi/ripgrep/assets/213498/05e3bb27-7670-483a-ac34-32f38b00c7e7)\r\n![CleanShot 2023-12-20 at 16 26 02@2x](https://github.com/BurntSushi/ripgrep/assets/213498/50928023-7d9c-4a83-8d27-7f26cfd8c939)\r\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 5,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "CHANGELOG.md"
+      },
+      {
+        "additions": 13,
+        "changeType": "MODIFIED",
+        "deletions": 7,
+        "path": "crates/ignore/src/dir.rs"
+      }
+    ],
+    "headRefName": "master",
+    "headRefOid": "338a9e57fd3e15a9b6ee0add4a945e2449782028",
+    "labels": [],
+    "mergedAt": "2024-01-06T17:50:42Z",
+    "number": 2692,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "BurntSushi"
+        },
+        "authorAssociation": "OWNER",
+        "body": "Very nice, thank you.",
+        "commit": {
+          "oid": "f6956a68c063987df0dcf3988f95d0f8604d54ba"
+        },
+        "id": "PRR_kwDOAzJbyc5rvKCX",
+        "includesCreatedEdit": false,
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 1
+            }
+          },
+          {
+            "content": "HOORAY",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "state": "APPROVED",
+        "submittedAt": "2024-01-06T17:41:22Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "ignore crate: Fix reference cycle for compiled matchers",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/2692"
+  }
+}

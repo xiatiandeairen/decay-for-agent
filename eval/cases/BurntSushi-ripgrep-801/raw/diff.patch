@@ -1,0 +1,552 @@
+diff --git a/ignore/src/dir.rs b/ignore/src/dir.rs
+index 923d574..77ee6ad 100644
+--- a/ignore/src/dir.rs
++++ b/ignore/src/dir.rs
+@@ -1,162 +1,155 @@
+ // This module provides a data structure, `Ignore`, that connects "directory
+ // traversal" with "ignore matchers." Specifically, it knows about gitignore
+ // semantics and precedence, and is organized based on directory hierarchy.
+ // Namely, every matcher logically corresponds to ignore rules from a single
+ // directory, and points to the matcher for its corresponding parent directory.
+ // In this sense, `Ignore` is a *persistent* data structure.
+ //
+ // This design was specifically chosen to make it possible to use this data
+ // structure in a parallel directory iterator.
+ //
+ // My initial intention was to expose this module as part of this crate's
+ // public API, but I think the data structure's public API is too complicated
+ // with non-obvious failure modes. Alas, such things haven't been documented
+ // well.
+ 
+ use std::collections::HashMap;
+ use std::ffi::{OsString, OsStr};
+ use std::path::{Path, PathBuf};
+ use std::sync::{Arc, RwLock};
+ 
+ use gitignore::{self, Gitignore, GitignoreBuilder};
+ use pathutil::{is_hidden, strip_prefix};
+ use overrides::{self, Override};
+ use types::{self, Types};
+ use {Error, Match, PartialErrorBuilder};
+ 
+ /// IgnoreMatch represents information about where a match came from when using
+ /// the `Ignore` matcher.
+ #[derive(Clone, Debug)]
+ pub struct IgnoreMatch<'a>(IgnoreMatchInner<'a>);
+ 
+ /// IgnoreMatchInner describes precisely where the match information came from.
+ /// This is private to allow expansion to more matchers in the future.
+ #[derive(Clone, Debug)]
+ enum IgnoreMatchInner<'a> {
+     Override(overrides::Glob<'a>),
+     Gitignore(&'a gitignore::Glob),
+     Types(types::Glob<'a>),
+     Hidden,
+ }
+ 
+ impl<'a> IgnoreMatch<'a> {
+     fn overrides(x: overrides::Glob<'a>) -> IgnoreMatch<'a> {
+         IgnoreMatch(IgnoreMatchInner::Override(x))
+     }
+ 
+     fn gitignore(x: &'a gitignore::Glob) -> IgnoreMatch<'a> {
+         IgnoreMatch(IgnoreMatchInner::Gitignore(x))
+     }
+ 
+     fn types(x: types::Glob<'a>) -> IgnoreMatch<'a> {
+         IgnoreMatch(IgnoreMatchInner::Types(x))
+     }
+ 
+     fn hidden() -> IgnoreMatch<'static> {
+         IgnoreMatch(IgnoreMatchInner::Hidden)
+     }
+ }
+ 
+ /// Options for the ignore matcher, shared between the matcher itself and the
+ /// builder.
+ #[derive(Clone, Copy, Debug)]
+ struct IgnoreOptions {
+     /// Whether to ignore hidden file paths or not.
+     hidden: bool,
+     /// Whether to read .ignore files.
+     ignore: bool,
+     /// Whether to read git's global gitignore file.
+     git_global: bool,
+     /// Whether to read .gitignore files.
+     git_ignore: bool,
+     /// Whether to read .git/info/exclude files.
+     git_exclude: bool,
+ }
+ 
+-impl IgnoreOptions {
+-    /// Returns true if at least one type of ignore rules should be matched.
+-    fn has_any_ignore_options(&self) -> bool {
+-        self.ignore || self.git_global || self.git_ignore || self.git_exclude
+-    }
+-}
+-
+ /// Ignore is a matcher useful for recursively walking one or more directories.
+ #[derive(Clone, Debug)]
+ pub struct Ignore(Arc<IgnoreInner>);
+ 
+ #[derive(Clone, Debug)]
+ struct IgnoreInner {
+     /// A map of all existing directories that have already been
+     /// compiled into matchers.
+     ///
+     /// Note that this is never used during matching, only when adding new
+     /// parent directory matchers. This avoids needing to rebuild glob sets for
+     /// parent directories if many paths are being searched.
+     compiled: Arc<RwLock<HashMap<OsString, Ignore>>>,
+     /// The path to the directory that this matcher was built from.
+     dir: PathBuf,
+     /// An override matcher (default is empty).
+     overrides: Arc<Override>,
+     /// A file type matcher.
+     types: Arc<Types>,
+     /// The parent directory to match next.
+     ///
+     /// If this is the root directory or there are otherwise no more
+     /// directories to match, then `parent` is `None`.
+     parent: Option<Ignore>,
+     /// Whether this is an absolute parent matcher, as added by add_parent.
+     is_absolute_parent: bool,
+     /// The absolute base path of this matcher. Populated only if parent
+     /// directories are added.
+     absolute_base: Option<Arc<PathBuf>>,
+     /// Explicit global ignore matchers specified by the caller.
+     explicit_ignores: Arc<Vec<Gitignore>>,
+     /// Ignore files used in addition to `.ignore`
+     custom_ignore_filenames: Arc<Vec<OsString>>,
+     /// The matcher for custom ignore files
+     custom_ignore_matcher: Gitignore,
+     /// The matcher for .ignore files.
+     ignore_matcher: Gitignore,
+     /// A global gitignore matcher, usually from $XDG_CONFIG_HOME/git/ignore.
+     git_global_matcher: Arc<Gitignore>,
+     /// The matcher for .gitignore files.
+     git_ignore_matcher: Gitignore,
+     /// Special matcher for `.git/info/exclude` files.
+     git_exclude_matcher: Gitignore,
+     /// Whether this directory contains a .git sub-directory.
+     has_git: bool,
+     /// Ignore config.
+     opts: IgnoreOptions,
+ }
+ 
+ impl Ignore {
+     /// Return the directory path of this matcher.
+     pub fn path(&self) -> &Path {
+         &self.0.dir
+     }
+ 
+     /// Return true if this matcher has no parent.
+     pub fn is_root(&self) -> bool {
+         self.0.parent.is_none()
+     }
+ 
+     /// Returns true if this matcher was added via the `add_parents` method.
+     pub fn is_absolute_parent(&self) -> bool {
+         self.0.is_absolute_parent
+     }
+ 
+     /// Return this matcher's parent, if one exists.
+     pub fn parent(&self) -> Option<Ignore> {
+         self.0.parent.clone()
+     }
+ 
+     /// Create a new `Ignore` matcher with the parent directories of `dir`.
+     ///
+     /// Note that this can only be called on an `Ignore` matcher with no
+     /// parents (i.e., `is_root` returns `true`). This will panic otherwise.
+     pub fn add_parents<P: AsRef<Path>>(
+         &self,
+         path: P,
+     ) -> (Ignore, Option<Error>) {
+         if !self.is_root() {
+             panic!("Ignore::add_parents called on non-root matcher");
+@@ -190,189 +183,198 @@ impl Ignore {
+             errs.maybe_push(err);
+             igtmp.is_absolute_parent = true;
+             igtmp.absolute_base = Some(absolute_base.clone());
+             ig = Ignore(Arc::new(igtmp));
+             compiled.insert(parent.as_os_str().to_os_string(), ig.clone());
+         }
+         (ig, errs.into_error_option())
+     }
+ 
+     /// Create a new `Ignore` matcher for the given child directory.
+     ///
+     /// Since building the matcher may require reading from multiple
+     /// files, it's possible that this method partially succeeds. Therefore,
+     /// a matcher is always returned (which may match nothing) and an error is
+     /// returned if it exists.
+     ///
+     /// Note that all I/O errors are completely ignored.
+     pub fn add_child<P: AsRef<Path>>(
+         &self,
+         dir: P,
+     ) -> (Ignore, Option<Error>) {
+         let (ig, err) = self.add_child_path(dir.as_ref());
+         (Ignore(Arc::new(ig)), err)
+     }
+ 
+     /// Like add_child, but takes a full path and returns an IgnoreInner.
+     fn add_child_path(&self, dir: &Path) -> (IgnoreInner, Option<Error>) {
+         let mut errs = PartialErrorBuilder::default();
+         let custom_ig_matcher =
+             {
+                 let (m, err) =
+                     create_gitignore(&dir, &self.0.custom_ignore_filenames);
+                 errs.maybe_push(err);
+                 m
+             };
+         let ig_matcher =
+             if !self.0.opts.ignore {
+                 Gitignore::empty()
+             } else {
+                 let (m, err) = create_gitignore(&dir, &[".ignore"]);
+                 errs.maybe_push(err);
+                 m
+             };
+         let gi_matcher =
+             if !self.0.opts.git_ignore {
+                 Gitignore::empty()
+             } else {
+                 let (m, err) = create_gitignore(&dir, &[".gitignore"]);
+                 errs.maybe_push(err);
+                 m
+             };
+         let gi_exclude_matcher =
+             if !self.0.opts.git_exclude {
+                 Gitignore::empty()
+             } else {
+                 let (m, err) = create_gitignore(&dir, &[".git/info/exclude"]);
+                 errs.maybe_push(err);
+                 m
+             };
+         let ig = IgnoreInner {
+             compiled: self.0.compiled.clone(),
+             dir: dir.to_path_buf(),
+             overrides: self.0.overrides.clone(),
+             types: self.0.types.clone(),
+             parent: Some(self.clone()),
+             is_absolute_parent: false,
+             absolute_base: self.0.absolute_base.clone(),
+             explicit_ignores: self.0.explicit_ignores.clone(),
+             custom_ignore_filenames: self.0.custom_ignore_filenames.clone(),
+             custom_ignore_matcher: custom_ig_matcher,
+             ignore_matcher: ig_matcher,
+             git_global_matcher: self.0.git_global_matcher.clone(),
+             git_ignore_matcher: gi_matcher,
+             git_exclude_matcher: gi_exclude_matcher,
+             has_git: dir.join(".git").is_dir(),
+             opts: self.0.opts,
+         };
+         (ig, errs.into_error_option())
+     }
+ 
++    /// Returns true if at least one type of ignore rule should be matched.
++    fn has_any_ignore_rules(&self) -> bool {
++        let opts = self.0.opts;
++        let has_custom_ignore_files = !self.0.custom_ignore_filenames.is_empty();
++
++        opts.ignore || opts.git_global || opts.git_ignore
++                    || opts.git_exclude || has_custom_ignore_files
++    }
++
+     /// Returns a match indicating whether the given file path should be
+     /// ignored or not.
+     ///
+     /// The match contains information about its origin.
+     pub fn matched<'a, P: AsRef<Path>>(
+         &'a self,
+         path: P,
+         is_dir: bool,
+     ) -> Match<IgnoreMatch<'a>> {
+         // We need to be careful with our path. If it has a leading ./, then
+         // strip it because it causes nothing but trouble.
+         let mut path = path.as_ref();
+         if let Some(p) = strip_prefix("./", path) {
+             path = p;
+         }
+         // Match against the override patterns. If an override matches
+         // regardless of whether it's whitelist/ignore, then we quit and
+         // return that result immediately. Overrides have the highest
+         // precedence.
+         if !self.0.overrides.is_empty() {
+             let mat =
+                 self.0.overrides.matched(path, is_dir)
+                     .map(IgnoreMatch::overrides);
+             if !mat.is_none() {
+                 return mat;
+             }
+         }
+         let mut whitelisted = Match::None;
+-        if self.0.opts.has_any_ignore_options() {
++        if self.has_any_ignore_rules() {
+             let mat = self.matched_ignore(path, is_dir);
+             if mat.is_ignore() {
+                 return mat;
+             } else if mat.is_whitelist() {
+                 whitelisted = mat;
+             }
+         }
+         if !self.0.types.is_empty() {
+             let mat =
+                 self.0.types.matched(path, is_dir).map(IgnoreMatch::types);
+             if mat.is_ignore() {
+                 return mat;
+             } else if mat.is_whitelist() {
+                 whitelisted = mat;
+             }
+         }
+         if whitelisted.is_none() && self.0.opts.hidden && is_hidden(path) {
+             return Match::Ignore(IgnoreMatch::hidden());
+         }
+         whitelisted
+     }
+ 
+     /// Performs matching only on the ignore files for this directory and
+     /// all parent directories.
+     fn matched_ignore<'a>(
+         &'a self,
+         path: &Path,
+         is_dir: bool,
+     ) -> Match<IgnoreMatch<'a>> {
+         let (mut m_custom_ignore, mut m_ignore, mut m_gi, mut m_gi_exclude, mut m_explicit) =
+             (Match::None, Match::None, Match::None, Match::None, Match::None);
+         let mut saw_git = false;
+         for ig in self.parents().take_while(|ig| !ig.0.is_absolute_parent) {
+             if m_custom_ignore.is_none() {
+                 m_custom_ignore =
+                     ig.0.custom_ignore_matcher.matched(path, is_dir)
+                       .map(IgnoreMatch::gitignore);
+             }
+             if m_ignore.is_none() {
+                 m_ignore =
+                     ig.0.ignore_matcher.matched(path, is_dir)
+                       .map(IgnoreMatch::gitignore);
+             }
+             if !saw_git && m_gi.is_none() {
+                 m_gi =
+                     ig.0.git_ignore_matcher.matched(path, is_dir)
+                       .map(IgnoreMatch::gitignore);
+             }
+             if !saw_git && m_gi_exclude.is_none() {
+                 m_gi_exclude =
+                     ig.0.git_exclude_matcher.matched(path, is_dir)
+                       .map(IgnoreMatch::gitignore);
+             }
+             saw_git = saw_git || ig.0.has_git;
+         }
+         if let Some(abs_parent_path) = self.absolute_base() {
+             let path = abs_parent_path.join(path);
+             for ig in self.parents().skip_while(|ig|!ig.0.is_absolute_parent) {
+                 if m_custom_ignore.is_none() {
+                     m_custom_ignore =
+                         ig.0.custom_ignore_matcher.matched(&path, is_dir)
+                           .map(IgnoreMatch::gitignore);
+                 }
+                 if m_ignore.is_none() {
+                     m_ignore =
+                         ig.0.ignore_matcher.matched(&path, is_dir)
+                           .map(IgnoreMatch::gitignore);
+                 }
+                 if !saw_git && m_gi.is_none() {
+                     m_gi =
+                         ig.0.git_ignore_matcher.matched(&path, is_dir)
+                           .map(IgnoreMatch::gitignore);
+                 }
+                 if !saw_git && m_gi_exclude.is_none() {
+                     m_gi_exclude =
+                         ig.0.git_exclude_matcher.matched(&path, is_dir)
+                           .map(IgnoreMatch::gitignore);
+                 }
+                 saw_git = saw_git || ig.0.has_git;
+             }
+diff --git a/ignore/src/walk.rs b/ignore/src/walk.rs
+index 0ecd28b..e43aa45 100644
+--- a/ignore/src/walk.rs
++++ b/ignore/src/walk.rs
+@@ -1508,160 +1508,180 @@ mod tests {
+             paths.push(normal_path(path.to_str().unwrap()));
+         }
+         paths.sort();
+         paths
+     }
+ 
+     fn walk_collect_parallel(
+         prefix: &Path,
+         builder: &WalkBuilder,
+     ) -> Vec<String> {
+         let paths = Arc::new(Mutex::new(vec![]));
+         let prefix = Arc::new(prefix.to_path_buf());
+         builder.build_parallel().run(|| {
+             let paths = paths.clone();
+             let prefix = prefix.clone();
+             Box::new(move |result| {
+                 let dent = match result {
+                     Err(_) => return WalkState::Continue,
+                     Ok(dent) => dent,
+                 };
+                 let path = dent.path().strip_prefix(&**prefix).unwrap();
+                 if path.as_os_str().is_empty() {
+                     return WalkState::Continue;
+                 }
+                 let mut paths = paths.lock().unwrap();
+                 paths.push(normal_path(path.to_str().unwrap()));
+                 WalkState::Continue
+             })
+         });
+         let mut paths = paths.lock().unwrap();
+         paths.sort();
+         paths.to_vec()
+     }
+ 
+     fn mkpaths(paths: &[&str]) -> Vec<String> {
+         let mut paths: Vec<_> = paths.iter().map(|s| s.to_string()).collect();
+         paths.sort();
+         paths
+     }
+ 
+     fn assert_paths(
+         prefix: &Path,
+         builder: &WalkBuilder,
+         expected: &[&str],
+     ) {
+         let got = walk_collect(prefix, builder);
+         assert_eq!(got, mkpaths(expected));
+         let got = walk_collect_parallel(prefix, builder);
+         assert_eq!(got, mkpaths(expected));
+     }
+ 
+     #[test]
+     fn no_ignores() {
+         let td = TempDir::new("walk-test-").unwrap();
+         mkdirp(td.path().join("a/b/c"));
+         mkdirp(td.path().join("x/y"));
+         wfile(td.path().join("a/b/foo"), "");
+         wfile(td.path().join("x/y/foo"), "");
+ 
+         assert_paths(td.path(), &WalkBuilder::new(td.path()), &[
+             "x", "x/y", "x/y/foo", "a", "a/b", "a/b/foo", "a/b/c",
+         ]);
+     }
+ 
+     #[test]
+     fn custom_ignore() {
+         let td = TempDir::new("walk-test-").unwrap();
+         let custom_ignore = ".customignore";
+         mkdirp(td.path().join("a"));
+         wfile(td.path().join(custom_ignore), "foo");
+         wfile(td.path().join("foo"), "");
+         wfile(td.path().join("a/foo"), "");
+         wfile(td.path().join("bar"), "");
+         wfile(td.path().join("a/bar"), "");
+ 
+         let mut builder = WalkBuilder::new(td.path());
+         builder.add_custom_ignore_filename(&custom_ignore);
+         assert_paths(td.path(), &builder, &["bar", "a", "a/bar"]);
+     }
+ 
++    #[test]
++    fn custom_ignore_exclusive_use() {
++        let td = TempDir::new("walk-test-").unwrap();
++        let custom_ignore = ".customignore";
++        mkdirp(td.path().join("a"));
++        wfile(td.path().join(custom_ignore), "foo");
++        wfile(td.path().join("foo"), "");
++        wfile(td.path().join("a/foo"), "");
++        wfile(td.path().join("bar"), "");
++        wfile(td.path().join("a/bar"), "");
++
++        let mut builder = WalkBuilder::new(td.path());
++        builder.ignore(false);
++        builder.git_ignore(false);
++        builder.git_global(false);
++        builder.git_exclude(false);
++        builder.add_custom_ignore_filename(&custom_ignore);
++        assert_paths(td.path(), &builder, &["bar", "a", "a/bar"]);
++    }
++
+     #[test]
+     fn gitignore() {
+         let td = TempDir::new("walk-test-").unwrap();
+         mkdirp(td.path().join("a"));
+         wfile(td.path().join(".gitignore"), "foo");
+         wfile(td.path().join("foo"), "");
+         wfile(td.path().join("a/foo"), "");
+         wfile(td.path().join("bar"), "");
+         wfile(td.path().join("a/bar"), "");
+ 
+         assert_paths(td.path(), &WalkBuilder::new(td.path()), &[
+             "bar", "a", "a/bar",
+         ]);
+     }
+ 
+     #[test]
+     fn explicit_ignore() {
+         let td = TempDir::new("walk-test-").unwrap();
+         let igpath = td.path().join(".not-an-ignore");
+         mkdirp(td.path().join("a"));
+         wfile(&igpath, "foo");
+         wfile(td.path().join("foo"), "");
+         wfile(td.path().join("a/foo"), "");
+         wfile(td.path().join("bar"), "");
+         wfile(td.path().join("a/bar"), "");
+ 
+         let mut builder = WalkBuilder::new(td.path());
+         assert!(builder.add_ignore(&igpath).is_none());
+         assert_paths(td.path(), &builder, &["bar", "a", "a/bar"]);
+     }
+ 
+     #[test]
+     fn gitignore_parent() {
+         let td = TempDir::new("walk-test-").unwrap();
+         mkdirp(td.path().join("a"));
+         wfile(td.path().join(".gitignore"), "foo");
+         wfile(td.path().join("a/foo"), "");
+         wfile(td.path().join("a/bar"), "");
+ 
+         let root = td.path().join("a");
+         assert_paths(&root, &WalkBuilder::new(&root), &["bar"]);
+     }
+ 
+     #[test]
+     fn max_depth() {
+         let td = TempDir::new("walk-test-").unwrap();
+         mkdirp(td.path().join("a/b/c"));
+         wfile(td.path().join("foo"), "");
+         wfile(td.path().join("a/foo"), "");
+         wfile(td.path().join("a/b/foo"), "");
+         wfile(td.path().join("a/b/c/foo"), "");
+ 
+         let mut builder = WalkBuilder::new(td.path());
+         assert_paths(td.path(), &builder, &[
+             "a", "a/b", "a/b/c", "foo", "a/foo", "a/b/foo", "a/b/c/foo",
+         ]);
+         assert_paths(td.path(), builder.max_depth(Some(0)), &[]);
+         assert_paths(td.path(), builder.max_depth(Some(1)), &["a", "foo"]);
+         assert_paths(td.path(), builder.max_depth(Some(2)), &[
+             "a", "a/b", "foo", "a/foo",
+         ]);
+     }
+ 
+     #[test]
+     fn max_filesize() {
+         let td = TempDir::new("walk-test-").unwrap();
+         mkdirp(td.path().join("a/b"));
+         wfile_size(td.path().join("foo"), 0);
+         wfile_size(td.path().join("bar"), 400);
+         wfile_size(td.path().join("baz"), 600);
+         wfile_size(td.path().join("a/foo"), 600);
+         wfile_size(td.path().join("a/bar"), 500);
+         wfile_size(td.path().join("a/baz"), 200);
+ 
+         let mut builder = WalkBuilder::new(td.path());
+         assert_paths(td.path(), &builder, &[
+             "a", "a/b", "foo", "bar", "baz", "a/foo", "a/bar", "a/baz",
+         ]);
+         assert_paths(td.path(), builder.max_filesize(Some(0)), &[
+             "a", "a/b", "foo"

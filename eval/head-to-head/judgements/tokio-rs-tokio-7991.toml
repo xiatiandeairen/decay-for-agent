@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "tokio-rs-tokio-7991"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "Chan::recv_many no longer panics when called on a closed+idle channel with a non-empty caller-provided buffer. The rx_closed/idle exit path asserts that no items were added (buffer.len() == initial_length) instead of asserting buffer.is_empty(), and the assertion is downgraded to debug_assert so release builds tolerate the boundary. Adjacent assert! on semaphore.is_idle() in recv/recv_many Read::…"
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank 1 directly pinpoints the buffer.is_empty() -> debug_assert_eq!(buffer.len(), initial_length) change as assumption_boundary (direct). Rank 2 flags the parallel semaphore.is_idle() downgrade in recv (direct). Rank 3 is a supporting test_gap observation. Mechanism correctly identified from diff a… [recovered-from-raw: judge response exceeded schema free-text caps; metrics unaffected]"

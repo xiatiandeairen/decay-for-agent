@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyper-4056"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "On 32-bit targets, replace truncating `*remaining as usize` / `r as usize` casts in the Length and chunked-body read paths with `usize::try_from(...).unwrap_or(usize::MAX)` so that u64 lengths exceeding usize::MAX saturate instead of silently truncating, allowing large bodies to be fully read (downstream u64 bookkeeping still tracks the real remaining count)."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Ranks 1–2 pinpoint both saturation sites with assumption_boundary/direct and correctly explain the u64→usize truncation on 32-bit; rank 3 is a supporting test_gap. Matches ground truth without PR metadata."

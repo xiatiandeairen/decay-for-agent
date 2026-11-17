@@ -1,0 +1,320 @@
+{
+  "case_id": "tokio-rs-tokio-2804",
+  "refs": [
+    {
+      "detail": {
+        "body": "# Summary\r\n\r\nBased on experience gained in 0.2, there are a few aspects of the Runtime that can use improvements.\r\n\r\n* Remove `basic_scheduler` and `threaded_scheduler` variants from the public API.\r\n* Automatically use the `basic_scheduler` when core_threads is set to 0, or 1.\r\n  * When `core_threads` is set to 1, use `basic_scheduler` and spawn it on a background thread.\r\n  * When `core_threads` is set to 0, use `basic_scheduler` on the current thread.\r\n* Switch `Runtime::block_on` to take `&self` and remove `tokio::runtime::Handle`.\r\n* `#[tokio::main]` always uses the threaded scheduler and requires the `rt-threaded` scheduler.\r\n   * Using `#[tokio::main]` panics without `rt-threaded`.\r\n   * Using `#[tokio::main(core_threads = 1)]` results in a build failure.\r\n\r\n# Remaining\r\n\r\n* [x] Initial pass #2782\r\n* [x] Support concurrent calls to `block_on`. Refactor `basic_scheduler`/`shell` to embed the `block_on` implementation within their own structs rather than within `Runtime::block_on`. This means making those `block_on`'s take &self not `&mut self`. Improve stealing the root parker in situations where it gets reset back into the mutex and another thread needs to now drive it.\r\n* [x] Refactor `runtime::Builder` to remove `threaded_scheduler`/`basic_scheduler` and refactor core_threads to do the behavior described in #2720.\r\n* [x] ~~For `new_single_thread` should spawn basic on a bg thread~~\r\n* [x] Refactor `#[tokio::main]` as described in #2720.\r\n* [ ] Review runtime/macro docs to ensure consistency\r\n\r\n\r\n# Details\r\n\r\n## Removing `basic_scheduler` and `threaded_scheduler`\r\n\r\nThe details of which scheduler to pick isn't really what matters to the end-user. We already have `core_threads` to configure how many threads should be used to schedule tasks. The scheduler implementation can be selected internally based on the number of threads used.\r\n\r\nCurrently, `basic_scheduler` does not spawn a dedicated runtime thread. Instead, the current thread is used to schedule tasks. When `block_on` is called, the runtime starts running tasks and when `block_on` completes, the runtime is paused. This behavior can be gained again by setting `core_threads = 0`.\r\n\r\nUsing `core_threads = 0` to signify running on the current thread might be a bit confusing. However, running the scheduler on the current thread is, in effect, requesting no runtime threads. This is also a somewhat specialized use case. Most users will use the threaded scheduler with default configuration settings.\r\n\r\n## Switch `Runtime::block_on` to take `&self`\r\n\r\nThe reason `Runtime::block_on` takes `&mut self` is to support the `core_threads = 0` use case. When there are no runtime threads, the runtime is executed \"in-place\". The `&mut self` argument enforces that a single caller may \"enter\" the runtime so it is clear which thread executes the runtime.\r\n\r\nHowever, there are valid cases where **multiple** threads may want to potentially share the responsibility of executing the runtime. In this case, the user is responsible for managing synchronization. Instead, Tokio can provide this functionality out of the box. When running with `core_threads = 0` and calling `block_on` concurrently from multiple threads, the first thread that enters the runtime becomes responsible for executing the runtime. Other threads just block on the supplied task.\r\n\r\nMaking this change also has the property of removing the need for having a separate `runtime::Handle`. The `Handle` type was added because `Runtime` is `!Sync`. This change would make `Runtime` sync and threads could just use functions on `Runtime` instead of `Handle`.\r\n\r\nAdditional consideration must be taken to support concurrent calls to `block_on` when `core_threads == 0`. Consider the following:\r\n\r\n* Thread A calls `block_on` and takes the responsibility of driving the runtime\r\n* Thread B calls `block_on` and uses a regular thread parker.\r\n* Thread A's future completes and no longer drives the runtime.\r\n\r\nAt this point, thread B is waiting for its future to complete, but nothing is driving the runtime anymore, so the future will never unblock.\r\n\r\nTo handle this, when the thread that is driving the runtime completes the call to `block_on`, another blocked thread must be notified to start driving the runtime.\r\n\r\nThis can probably be implemented using a `SyncParker<T: Park>` utility that handles the hand off and implements `Park for &Self`.\r\n\r\n## `#[tokio::main]` always uses the threaded scheduler and requires the `rt-threaded` scheduler.\r\n\r\nThe behavior of `#[tokio::main]` changes based on feature flags that are enabled. When `rt-threaded` is **not** included, `#[tokio::main]` uses the basic scheduler. When it is enabled, the threaded scheduler is used. In general, changing behavior based on feature flags is not great. Feature flags are intended to be additive.\r\n\r\nAdditionally, `Runtime::new()` is only defined with `rt-threaded`.\r\n\r\nInstead, `#[tokio::main]` will require `rt-threaded` and always have the same behavior. If `rt-threaded` is not the program will fail to build. The main macro can stll be used without the `rt-threaded` feature flag enabled, but `core_threads` will need to be set to 0 or 1. In this case, the basic scheduler is used.\r\n\r\nThe goal is to ensure consistent behavior regardless of which feature flags are selected.\r\n\r\n## Open question\r\n\r\nShould `#[tokio::main]` / `Runtime::new()` be available if `io-driver` and `time` feature flags are not enabled? I.e. should the default functions be available when **all** feature flags are not enabled? I'm leaning towards allowing `#[tokio::main]` being available w/ only `rt-threaded` and not require 'io-driver` / `time`.\r\n\r\nRefs: #2698",
+        "closedAt": "2020-10-13T22:49:27Z",
+        "comments": [
+          {
+            "author": {
+              "login": "hawkw"
+            },
+            "authorAssociation": "MEMBER",
+            "body": ">  * Using `#[tokio::main]` panics without `rt-threaded`.\r\n\r\nCouldn't we just only expose `main` if `rt-threaded` is enabled? We can still expose other macros without the `rt-threaded` feature.\r\n",
+            "createdAt": "2020-07-31T17:31:56Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDY2NzI0NDA4NQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-667244085",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "LucioFranco"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Can we still provide a single threaded macro too? Otherwise this looks good.\r\n\r\n> Should #[tokio::main] / Runtime::new() be available if io-driver and time feature flags are not enabled? I.e. should the default functions be available when all feature flags are not enabled? I'm leaning towards allowing #[tokio::main] being available w/ only rt-threaded and not require 'io-driver/time`.\r\n\r\nI am curious what the use-case here would be with no io driver or timer? ",
+            "createdAt": "2020-08-04T20:56:13Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDY2ODgyMDc4OQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-668820789",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "hawkw"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "> I am curious what the use-case here would be with no io driver or timer?\r\n\r\nIMO, yeah, it seems pretty reasonable to require users who want the shell runtime to have to actually go through the builder API...it's not a common configuration or what most folks are going to want out of the box.\r\n\r\nI'm open to being convinced otherwise, of course.",
+            "createdAt": "2020-08-04T21:06:29Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDY2ODgyNTQzNA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-668825434",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "LucioFranco"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "We also likely want to remove `runtime::Builder::num_threads` in this release.",
+            "createdAt": "2020-08-26T20:25:42Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDY4MTEwNTE1MA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-681105150",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Some thoughts: (partially from https://github.com/tokio-rs/tokio/pull/2876#issuecomment-698987744)\r\n\r\n**core_threads**\r\n\r\nI think the suggested behavior with `core_threads` makes sense, however I have a suggestion: Do not provide a `core_threads` method on the runtime builder at all if `rt-threaded` is disabled. The behavior currently suggested in #2876 is to ignore it when `rt-threaded` is disabled, but this means we are back to the situation where behavior of code that compiles changes when feature flags are added.\r\n\r\n**#[tokio::main]**\r\n\r\nWe could still provide a `core_threads` option on `#[tokio::main]` without `rt-threaded`, because here we can fail at compile time if it is set to a value larger than 1. In fact, setting it to 0 or 1 should probably be required.\r\n\r\n**time and io drivers**\r\n\r\nI think it makes perfect sense to provide the runtime without them. As for whether this counts as a change of behavior based on feature flags, any code that tries to use the drivers would fail to compile without the feature, so I think it's ok in this case.\r\n\r\n**A question**\r\n\r\nShould `#[tokio::main(core_threads = 1)]` be silently converted to `core_threads = 0` on the builder? ",
+            "createdAt": "2020-09-25T15:29:56Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDY5ODk5NTg3OA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-698995878",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "What about `max_threads`? I think we should consider saying that it should be strictly larger than `core_threads`, and perhaps rename it, as many new people think that this is the thing they need for configuring the number of core threads.",
+            "createdAt": "2020-09-25T15:46:06Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDY5OTAwNDY5Nw==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-699004697",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "As for the shell runtime, I think we should consider removing it entirely from the public API.",
+            "createdAt": "2020-09-25T15:48:49Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDY5OTAwNjEwNg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-699006106",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "carllerche"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "@Darksonn I generally agree w/ the sentiment. We should avoid changing behavior w/ feature flags.\r\n\r\nOne problem w/ removing `core_threads` when `rt-threaded` is missing is that `core_threads=0` and `core_theads=1` mean different things and neither option uses the work-stealing scheduler. We could have `core_threads > 1` panic w/o the `rt-threaded` option...\r\n\r\nOr, we change the API completely and add a \"runtime flavor\" option defined as an `enum`\r\n\r\n```rust\r\nenum Flavor {\r\n    InPlace,\r\n    SingleThreaded,\r\n    WorkStealing(num_workers),\r\n}\r\n```\r\n\r\nAnother option:\r\n\r\n```rust\r\nenum Flavor {\r\n    Isolated(num_workers),\r\n    WorkStealing(num_workers),\r\n}\r\n```\r\n\r\nWe could then enable the variants using the feature flags. We could also consider renaming `rt-threaded` to `rt-work-stealing`. This would also open up the API to supporting multi-threaded basic-scheduler (fully isolated workers w/o stealing) as an option.\r\n\r\nWe could also pass the flavor to the builder `new` function.",
+            "createdAt": "2020-09-25T16:33:56Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDY5OTAyOTE0Ng==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-699029146",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "carllerche"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "@Darksonn I think I am OK w/ removing the shell runtime entirely.",
+            "createdAt": "2020-09-25T16:34:28Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDY5OTAyOTM5OQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-699029399",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Note that the enum would have to be marked `#[non_exhaustive]`.",
+            "createdAt": "2020-09-25T16:37:30Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDY5OTAzMDgwOQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-699030809",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "LucioFranco"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Yeah, I think some way to enforce this stuff at compile time would be really nice. I think its extremely rare someone would want this runtime selection to be done implicitly like it currently does.",
+            "createdAt": "2020-09-25T20:04:52Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDY5OTEyOTA0Ng==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-699129046",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Here's another option:\r\n```rust\r\nimpl Builder {\r\n    fn new_in_place() -> Builder;\r\n    fn new_single_threaded() -> Builder;\r\n    \r\n    // Defaults to num-cpus threads\r\n    #[cfg(feature = \"rt-threaded\")]\r\n    fn new_work_stealing() -> Builder;\r\n    \r\n    #[cfg(feature = \"rt-threaded\")]\r\n    fn core_threads(&mut self, num: usize) -> &mut Builder;\r\n}\r\n```\r\n± naming",
+            "createdAt": "2020-09-25T20:51:00Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDY5OTE0ODg5OA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-699148898",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "carllerche"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "**Edit**: I updated this to factor in @Darksonn's feedback below.\r\n\r\nIn an effort to keep things simpler (hopefully), I propose we go roughly w/ what @Darksonn proposed:\r\n\r\n```rust\r\nimpl Builder {\r\n    fn new_in_place() -> Builder;\r\n    fn new_single_threaded() -> Builder;\r\n    \r\n    // Defaults to num-cpus threads\r\n    #[cfg(feature = \"rt-work-stealing\")]\r\n    fn new_work_stealing(num_workers: usize) -> Builder;\r\n}\r\n```\r\n\r\nWe rename the `rt-threaded` feature flag to `rt-work-stealing`.\r\n\r\nThen, for the main macro, we just keep a flat space:\r\n\r\n```rust\r\n#[tokio::main(flavor = \"work_stealing\", num_workers = 4)]\r\n\r\n#[tokio::main(flavor = \"in_place\")]\r\n```\r\n\r\nWe leave off `single_threaded` from the macro. And `#[tokio::main]` defaults to `work_stealing` and only succeeds when `rt-work-stealing` is present.",
+            "createdAt": "2020-10-01T18:13:01Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDcwMjMxMDE5OA==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-702310198",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "It looks good to me. My only concern is the naming of single threaded vs in place, since it seems like people who really wanted `in_place` might often go for `single_threaded` based on its name when using the `#[tokio::main]` macro. In some sense, `single_threaded` is actually two-threaded when including the `main` function.",
+            "createdAt": "2020-10-01T18:19:56Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDcwMjMxMzkwMA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-702313900",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "One option is to only provide `work_stealing` and `in_place`, at least initially.",
+            "createdAt": "2020-10-01T18:27:50Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDcwMjMxODEyNw==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-702318127",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "LucioFranco"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Why work-stealing over threaded? I personally like threaded since it feels easier to digest?",
+            "createdAt": "2020-10-05T15:46:33Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDcwMzcxODA4OA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-703718088",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "I have no strong feelings either way. I assume you're talking about the name of the Cargo feature.",
+            "createdAt": "2020-10-05T15:51:19Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDcwMzcyMTA0Nw==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/2720#issuecomment-703721047",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2020-07-30T04:43:50Z",
+        "labels": [
+          {
+            "color": "9514d1",
+            "description": "Category: a proposal and request for comments",
+            "id": "MDU6TGFiZWwxMTg3MDc5NTU4",
+            "name": "C-proposal"
+          },
+          {
+            "color": "f7e101",
+            "description": "Area: The main tokio crate",
+            "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+            "name": "A-tokio"
+          },
+          {
+            "color": "f7b101",
+            "description": "Module: tokio/runtime",
+            "id": "MDU6TGFiZWwxOTkzNTEwODc4",
+            "name": "M-runtime"
+          }
+        ],
+        "number": 2720,
+        "state": "CLOSED",
+        "title": "rt: Runtime refinements",
+        "url": "https://github.com/tokio-rs/tokio/issues/2720"
+      },
+      "target": {
+        "number": 2720,
+        "reason": "Concurrent block_on/basic_scheduler behavior context.",
+        "repo": "tokio-rs/tokio",
+        "type": "issue"
+      }
+    }
+  ]
+}

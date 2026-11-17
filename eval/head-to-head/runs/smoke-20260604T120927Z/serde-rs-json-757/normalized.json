@@ -1,0 +1,5 @@
+{
+  "case_id": "serde-rs-json-757",
+  "reason": "raw output is not valid JSON: Expecting ',' delimiter: line 1 column 1661 (char 1660)",
+  "status": "ai-baseline-failed"
+}

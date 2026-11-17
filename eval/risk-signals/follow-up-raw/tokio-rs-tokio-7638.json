@@ -1,0 +1,239 @@
+{
+  "case_id": "tokio-rs-tokio-7638",
+  "refs": [
+    {
+      "detail": {
+        "body": "**Version**\n\n1.46\n\n**Platform**\nLinux nixos 6.12.45 #1-NixOS SMP PREEMPT_DYNAMIC Thu Sep  4 13:31:56 UTC 2025 x86_64 GNU/Linux\n\n**Description**\n\nThe commit https://github.com/tokio-rs/tokio/commit/8e999e380643160f0e944fd5708de2bd3d1b0d51#diff-71d8f976620bd493969f9c0ecf5db22825ba06ca05acdcce17f400c5c6ae2c11 changed the scope of the `COUNT` constant of the `join!` and `try_join!` macros so that it is in the same scope as the expansion of the futures expressions `$e`. If a user of these macros has their own `COUNT` constant in scope, this leads to a compile error due to mismatching types (`usize` and `u32` in my case) or in the worst case to a change in behavior if the types are compatible but the values are different ([repro](https://play.rust-lang.org/?version=stable&mode=debug&edition=2024&gist=337c32f36b04ebc70370b1cf4ee09515)).\n\nApparently macros are not hygienic for items, which includes consts... :(\n\n**I tried this code**:\n\nIn one of my projects I have a few test cases which look like this:\n```rust\n    #[tokio::test]\n    async fn test_extension() {\n        let _g = init_tracing();\n        const COUNT: usize = 2 * DEFAULT_OT_BATCH_SIZE;\n        let (c1, c2) = local_conn().await.unwrap();\n        let rng1 = StdRng::seed_from_u64(42);\n        let mut rng2 = StdRng::seed_from_u64(24);\n        let choices = random_choices(COUNT, &mut rng2);\n        let mut sender = SemiHonestOtExtensionSender::new_with_rng(c1, rng1);\n        let mut receiver = SemiHonestOtExtensionReceiver::new_with_rng(c2, rng2);\n        let (send_ots, recv_ots) =\n            tokio::try_join!(sender.send(COUNT), receiver.receive(&choices)).unwrap();\n        for ((r, s), c) in recv_ots.into_iter().zip(send_ots).zip(choices) {\n            assert_eq!(r, s[c.unwrap_u8() as usize]);\n        }\n    }\n```\n[source](https://github.com/robinhundt/CryProt/blob/cde3e70e58445370e4da941d4b9fa3c7aaff3f5d/cryprot-ot/src/extension.rs#L798-L813)\n\n\n**I expected to see this happen**:\n\nThe code should still compile after a minor version upgrade from 1.45 to 1.46.\n\n**Instead, this happened**:\n\nThis code used to work but unexpectedly broke when upgrading Tokio from 1.45 to 1.46 (or later) with the following error:\n```rust\nerror[E0308]: mismatched types\n   --> cryprot-ot/src/extension.rs:809:42\n    |\n809 |             tokio::try_join!(sender.send(COUNT), receiver.receive(&choices)).unwrap();\n    |                                     ---- ^^^^^ expected `usize`, found `u32`\n    |                                     |\n    |                                     arguments to this method are incorrect\n    |\n```\n\nThis confused me, as clearly the `COUNT` const is declared as usize and not `u32`. As explained above, this is due to the scope change of the `COUNT` constant in the `join!` and `try_join!` macros.\n\n",
+        "closedAt": "2025-09-21T05:47:23Z",
+        "comments": [
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "@jlizen What do you think?",
+            "createdAt": "2025-09-20T13:53:46Z",
+            "id": "IC_kwDOBAsbdc7Flqge",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/7637#issuecomment-3314984990",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "jlizen"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "From what I recall, it's not trivial to move the constant back into the `poll_fn` scope because we are relying on the access in broader scope to initialize the non-biased rotator.\n\nBut, this is indeed clear semver breakage, sorry to introduce these hygiene concerns.\n\nPerhaps a decent middle ground might be to just make the constant something that is very unlikely to collide with existing user declarations? For instance `TOKIO_TRY_JOIN_BRANCH_COUNT`?",
+            "createdAt": "2025-09-20T14:07:14Z",
+            "id": "IC_kwDOBAsbdc7FlsWN",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/7637#issuecomment-3314992525",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "I think we can use a very very looooooooong and unusual name for this `const COUNT: u32`, while this is still possible to collide, but very unlikely.\n\nAnother solution is storing an `u32` into the `Rotator`.\n\n<del>I prefer the first one as it is the minimal change.</del>\n\n\nI prefer the second one as the any collision might change the runtime behavior. What do you think @jlizen ?",
+            "createdAt": "2025-09-20T14:11:58Z",
+            "id": "IC_kwDOBAsbdc7Fls9p",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/7637#issuecomment-3314995049",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "jlizen"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "I prefer the first option of an unlikely to collide name. \n\nStoring the count inside the rotator would increase the memory size of the future beyond its original (pre-biased feature) footprint since we still need access to the count inside the poll loop as well, resulting in the variable being stored in two places. The current implementation avoids this by using a const generic.\n\nAvoiding additional memory footprint was a chief concern that drove the current implementation.\n\nIt seems like a better tradeoff for most users (or presumably all, if a weird enough variable name were picked) to optimize for memory footprint. This came up in this issue since we are instead using an extremely common variable name.\n\nThat said I'm open to going with option 2 (store in rotator) if that is the general preference though i'd suggest getting Alice's opinion as well as she guided the initial implementation.",
+            "createdAt": "2025-09-20T14:23:23Z",
+            "id": "IC_kwDOBAsbdc7FluYR",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/7637#issuecomment-3315000849",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "> It seems like a better tradeoff for most users (or presumably all\n\nThat makes a lot of sense, and I get your point.\n\nBut I still think reliability matters more than performance—those very rare bugs can be really painful when they happen.\n\n@Darksonn What do you think?",
+            "createdAt": "2025-09-20T14:29:54Z",
+            "id": "IC_kwDOBAsbdc7FlvLo",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/7637#issuecomment-3315004136",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "jlizen"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Edit: nvm, that won't work, since I still will need to manipulate the variable while preserving its original value. Really would need the const generic to avoid the memory increase. And my understanding is that declaring the const is all is what is breaking hygiene.\n\n~~I could possibly finagle it to just bundle the counter used inside the poll function inside the rotator. That would trade a bit of complexity for no additional memory footprint. Let me poke around and see what I can do~~\n\n~~Would you want a quickie PR to obfuscate the variable name in the meantime as a stopgap for this issue? Or hold out for the deeper fix?~~",
+            "createdAt": "2025-09-20T14:35:53Z",
+            "id": "IC_kwDOBAsbdc7Flv_b",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/7637#issuecomment-3315007451",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "I have another idea, will this work?\n\n```rust\n#[doc(hidden)]\n/// DO NOT USE IT UNLESS YOU ARE DEVELOPING THE TOKIO ITSELF\npub struct PrivU32(u32);\n\n#[derive(Default, Debug)]\npub struct Rotator<const COUNT: PrivU32> {\n    next: u32,\n}\n```",
+            "createdAt": "2025-09-20T14:43:11Z",
+            "id": "IC_kwDOBAsbdc7Flw9j",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/7637#issuecomment-3315011427",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "jlizen"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Wouldn't that cause the same name collision, just now with a different type from the macro's constant?",
+            "createdAt": "2025-09-20T14:45:23Z",
+            "id": "IC_kwDOBAsbdc7FlxdZ",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/7637#issuecomment-3315013465",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Emm, it doesn't work. I thought this approach can at least report the type mismatch error instead of shadowing the variable secretly.\n\n```\nerror: `PrivU32` is forbidden as the type of a const generic parameter\n   --> tokio/src/macros/join.rs:231:33\n    |\n231 | pub struct Rotator<const COUNT: PrivU32> {\n    |                                 ^^^^^^^\n    |\n    = note: the only supported types are integers, `bool`, and `char`\n\n```",
+            "createdAt": "2025-09-20T14:48:57Z",
+            "id": "IC_kwDOBAsbdc7Fl0cr",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/7637#issuecomment-3315025707",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "robinhundt"
+            },
+            "authorAssociation": "NONE",
+            "body": "How about something like this approach?\n\n```rust\ntrait RotatorSelect {\n    type Rotator<const COUNT: u32>: Default;\n}\n\nstruct SelectNormal;\nstruct SelectBiased;\n\n#[derive(Default)]\nstruct Rotator<const COUNT: u32>;\n#[derive(Default)]\nstruct BiasedRotator;\n\nimpl RotatorSelect for SelectNormal {\n    type Rotator<const COUNT: u32> = Rotator<COUNT>;\n}\n\nimpl RotatorSelect for SelectBiased {\n    type Rotator<const COUNT: u32> = BiasedRotator;\n}\n\nmacro_rules! join {\n    (rotator=$rotator:ty, $($total:tt)*) => {\n        let rotator = <$rotator as RotatorSelect>::Rotator::<{$($total)*}>::default();\n    }\n}\n\nfn foo() {\n    join!(rotator = SelectNormal, 0 + 1 + 1 + 1);\n}\n\n```\n[playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2024&gist=37e1f4689b562adbf044711b0030b08e)\n\nThis is a bit more complicated, but this way you don't need to refer to a constant when providing the rotator type.",
+            "createdAt": "2025-09-20T20:24:14Z",
+            "id": "IC_kwDOBAsbdc7Fmoog",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/7637#issuecomment-3315239456",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "jlizen"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "> How about something like this approach?\n\nGood suggestion, thanks. I think that will work && address all concerns. Poking around with it now.",
+            "createdAt": "2025-09-20T21:22:22Z",
+            "id": "IC_kwDOBAsbdc7FmwN3",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/7637#issuecomment-3315270519",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "@robinhundt quick question: did linter report unsed variable for the shadowed `const COUNT: usize = 2 * DEFAULT_OT_BATCH_SIZE;`?",
+            "createdAt": "2025-09-21T03:42:39Z",
+            "id": "IC_kwDOBAsbdc7FniMa",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/7637#issuecomment-3315475226",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "robinhundt"
+            },
+            "authorAssociation": "NONE",
+            "body": "@ADD-SP in my case I directly got a compile error, as the types were different.\nAs [this playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2024&gist=aa3ca135a274e1029875470aa40b7518) shows, if the only use of the constant is within a macro where it is shadowed by another constant of the same name and type, you get an unused warning. However, if in the calling scope you have an actual use of the constant (like I did with my code with the `random_choices(COUNT)` line, which wasn't inside a join macro), you won't get this warning.",
+            "createdAt": "2025-09-23T19:55:53Z",
+            "id": "IC_kwDOBAsbdc7GNL_9",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/7637#issuecomment-3325345789",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2025-09-20T13:22:41Z",
+        "labels": [
+          {
+            "color": "f5f1fd",
+            "description": "Category: This is a bug.",
+            "id": "MDU6TGFiZWw0Mzk4OTcxODg=",
+            "name": "C-bug"
+          },
+          {
+            "color": "f7e101",
+            "description": "Area: The main tokio crate",
+            "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+            "name": "A-tokio"
+          },
+          {
+            "color": "f7b101",
+            "description": "Module: macros in the main Tokio crate",
+            "id": "MDU6TGFiZWwyMjE2ODgwNzU3",
+            "name": "M-macros"
+          }
+        ],
+        "number": 7637,
+        "state": "CLOSED",
+        "title": "`COUNT` constant in `join*!` macros can collide with user's constant used in futures",
+        "url": "https://github.com/tokio-rs/tokio/issues/7637"
+      },
+      "target": {
+        "number": 7637,
+        "reason": "Macro hygiene regression report.",
+        "repo": "tokio-rs/tokio",
+        "type": "issue"
+      }
+    }
+  ]
+}

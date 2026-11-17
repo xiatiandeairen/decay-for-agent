@@ -1,0 +1,5 @@
+{
+  "case_id": "hyper-4011",
+  "reason": "judgement_drafts.ai_baseline: 'notes' length 320 exceeds max 300",
+  "status": "judge-failed"
+}

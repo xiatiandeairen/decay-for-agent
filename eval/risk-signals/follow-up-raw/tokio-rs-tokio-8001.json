@@ -1,0 +1,96 @@
+{
+  "case_id": "tokio-rs-tokio-8001",
+  "refs": [
+    {
+      "detail": {
+        "body": "**Version**\n```\n│   │   │   ├── tokio v1.50.0\n│   │   │   │   └── tokio-macros v2.6.1 (proc-macro)\n│   │   │   ├── tokio-util v0.7.18\n│   │   │   │   └── tokio v1.50.0 (*)\n│   │   ├── tokio v1.50.0 (*)\n│   │   ├── tokio v1.50.0 (*)\n│   ├── tokio v1.50.0 (*)\n│   │   ├── tokio v1.50.0 (*)\n│   │   ├── tokio-util v0.7.18 (*)\n├── tokio v1.50.0 (*)\n├── tokio-stream v0.1.18\n│   └── tokio v1.50.0 (*)\n├── tokio-util v0.7.18 (*)\n│   │   ├── tokio v1.50.0 (*)\n│   ├── tokio v1.50.0 (*)\n│   ├── tokio-stream v0.1.18 (*)\n│   ├── tokio v1.50.0 (*)\n├── tokio v1.50.0 (*)\n```\n\n**Platform**\n```\nLinux 912834ca0917 6.17.8-orbstack-00308-g8f9c941121b1 #1 SMP PREEMPT Thu Nov 20 09:34:02 UTC 2025 aarch64 GNU/Linux\n```\n\n**Description**\n`UdpSocket::recv` silently disregards any errors surfaced by the (Linux) kernel in `SO_ERROR`. This can cause sockets to hang instead of returning an appropriate error. For example, when calling `recv` after sending to a closed port.\n\n[Rust Playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2024&gist=675bb45ca4a03153783f3067798d7563)\n```rust\nuse std::{io, net::SocketAddr};\nuse tokio::net::UdpSocket;\n\n#[tokio::main]\nasync fn main() -> io::Result<()> {\n    // Bind a server socket then immediately drop it to get a port we know is closed\n    let server = UdpSocket::bind(\"127.0.0.1:0\").await?;\n    let target: SocketAddr = server.local_addr()?;\n    drop(server);\n\n    let sock = UdpSocket::bind(\"127.0.0.1:0\").await?;\n    sock.connect(target).await?;\n    sock.send(b\"ping\").await?;\n\n    let mut buf = [0; 8];\n    let result = sock.recv(&mut buf).await;  // hangs infinitely\n    println!(\"{:?}\", result);\n\n    Ok(())\n}\n```\n\nThe standard library `UdpSocket::recv` implementation works correctly because it uses the Linux [`recv(2)`](https://man7.org/linux/man-pages/man2/recv.2.html) syscall which will return any error that occurred.\n\n[Rust Playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2024&gist=60b77c15c8dac9a2c70194c79529be97)\n```rust\nuse std::{io, net::{SocketAddr, UdpSocket}};\n\nfn main() -> io::Result<()> {\n    // Bind a server socket then immediately drop it to get a port we know is closed\n    let server = UdpSocket::bind(\"127.0.0.1:0\")?;\n    let target: SocketAddr = server.local_addr()?;\n    drop(server);\n\n    let sock = UdpSocket::bind(\"127.0.0.1:0\")?;\n    sock.connect(target)?;\n    sock.send(b\"ping\")?;\n\n    let mut buf = [0; 8];\n    let err = sock.recv(&mut buf).unwrap_err();\n\n    assert_eq!(err.kind(), io::ErrorKind::ConnectionRefused);\n\n    Ok(())\n}\n```\n\nCalling `read` on a Tokio `TcpStream` also works as expected and will return any errors pending in `SO_ERROR`.",
+        "closedAt": "2026-04-08T06:00:11Z",
+        "comments": [
+          {
+            "author": {
+              "login": "cxw620"
+            },
+            "authorAssociation": "NONE",
+            "body": "`UdpSocket::poll_recv` seems to have this bug as well, `Direction::Read` only maps to `Ready::READABLE | Ready::READ_CLOSED`.\n\n[Rust Playground](https://play.rust-lang.org/?version=stable&mode=release&edition=2024&gist=70a0aece24fb14befd831818502b6e83)\n\nSimilarly, when I implemented `poll_recv` for a wrapper type of `AsyncFd<socket2::Socket>`, `AsyncFd::poll_read_ready` is used and testing results indicate the same issue.",
+            "createdAt": "2026-05-02T15:14:45Z",
+            "id": "IC_kwDOBAsbdc8AAAABBB8JBQ",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/8000#issuecomment-4364110085",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "martin-g"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "@cxw620 I've just added a test with 66a06574, part of https://github.com/tokio-rs/tokio/pull/8084",
+            "createdAt": "2026-05-05T07:02:59Z",
+            "id": "IC_kwDOBAsbdc8AAAABBOYwNg",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "HEART",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/8000#issuecomment-4377161782",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "cxw620"
+            },
+            "authorAssociation": "NONE",
+            "body": "> [@cxw620](https://github.com/cxw620) I've just added a test with [66a0657](https://github.com/tokio-rs/tokio/commit/66a0657405f774306d91727b1898e25f08c8631c), part of [#8084](https://github.com/tokio-rs/tokio/pull/8084)\n\nhttps://github.com/tokio-rs/tokio/actions/runs/25362578266/job/74365642136?pr=8084, maybe we need a timeout when testing so.",
+            "createdAt": "2026-05-05T09:48:44Z",
+            "id": "IC_kwDOBAsbdc8AAAABBPWGeQ",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/8000#issuecomment-4378166905",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2026-04-01T21:41:36Z",
+        "labels": [
+          {
+            "color": "f5f1fd",
+            "description": "Category: This is a bug.",
+            "id": "MDU6TGFiZWw0Mzk4OTcxODg=",
+            "name": "C-bug"
+          },
+          {
+            "color": "f7e101",
+            "description": "Area: The main tokio crate",
+            "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+            "name": "A-tokio"
+          },
+          {
+            "color": "f7b101",
+            "description": "Module: tokio/net",
+            "id": "MDU6TGFiZWwxOTkzNTA4OTI2",
+            "name": "M-net"
+          }
+        ],
+        "number": 8000,
+        "state": "CLOSED",
+        "title": "`UdpSocket::recv` does not return socket errors",
+        "url": "https://github.com/tokio-rs/tokio/issues/8000"
+      },
+      "target": {
+        "number": 8000,
+        "reason": "Skeptic requires issue reproduction and platform/readiness context.",
+        "repo": "tokio-rs/tokio",
+        "type": "issue"
+      }
+    }
+  ]
+}

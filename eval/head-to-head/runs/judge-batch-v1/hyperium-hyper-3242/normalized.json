@@ -1,0 +1,42 @@
+{
+  "case_id": "hyperium-hyper-3242",
+  "ground_truth_draft": {
+    "expected_behavior": "For HTTP/2 CONNECT requests carrying a Protocol extension (RFC 8441 Extended CONNECT), the client must preserve :scheme and :path on the wire instead of rewriting the URI to authority-form. Plain HTTP/2 CONNECT (no Protocol extension) and the http2-disabled build path continue to use authority-form.",
+    "high_value": true,
+    "primary_signal_ids": [
+      "external_contract"
+    ],
+    "rationale_from_pr_metadata": "PR title: 'fix(client): Do not strip `path` and `scheme` components from URIs for HTTP/2 Extended CONNECT requests'. Body cites RFC 8441 \u00a74 requiring `:scheme` and `:path` when `:protocol` is present, and shows HAProxy 2.8 rejecting the prior request as invalid; after the patch the WebSocket-over-H2 handshake succeeds. Reviewer nox: 'Would be nice to have a test'; subsequent commits add h2_connect_authority_form and h2_extended_connect_full_uri integration tests, confirming the protocol-contract scope.",
+    "subject_files": [
+      "src/client/client.rs"
+    ]
+  },
+  "judgement_drafts": {
+    "ai_baseline": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "Rank-1 directly names the external_contract / RFC 8441 mechanism on send_request; rank-2 captures the cfg-gated CONNECT branch divergence. Rank-3 is supporting test-gap context. Saw the right mechanism from the diff alone.",
+      "top3_total": 3,
+      "top3_useful": 2,
+      "weak_only_top_risk_count": 0
+    },
+    "fact_only": {
+      "actionable": false,
+      "missed_high_risk_count": 1,
+      "notes": "Flags send_request via a +2 cognitive complexity bump and a generic prod_change_with_tests quality signal. Points at the right file but misses the RFC 8441 / Extended CONNECT mechanism entirely; a reviewer reading only this would not catch the bug.",
+      "top3_total": 2,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 1
+    },
+    "semantic_filtered": {
+      "actionable": false,
+      "missed_high_risk_count": 1,
+      "notes": "Same two findings rephrased as semantic claims. Higher-confidence wording but identical evidence \u2014 complexity delta plus prod+test co-change. No semantic understanding of the protocol-contract change; external_contract not surfaced.",
+      "top3_total": 2,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 1
+    }
+  },
+  "manifest_hash": "06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208",
+  "model": "claude-opus-4-7"
+}

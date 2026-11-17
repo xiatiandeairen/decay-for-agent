@@ -1,0 +1,3 @@
+M	ignore/src/gitignore.rs
+M	ignore/src/overrides.rs
+M	ignore/tests/gitignore_matched_path_or_any_parents_tests.rs

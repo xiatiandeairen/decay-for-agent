@@ -1,0 +1,12 @@
+{
+  "case_id": "BurntSushi-ripgrep-762",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"BurntSushi-ripgrep-762\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"external_contract\",\"subject\":\"ignore/src/gitignore.rs:add_line\",\"evidence_refs\":[\"if is_absolute || line.chars().any(|c| c == '/') {\",\"if !literal_separator {\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Glob matching semantics for patterns containing a slash changed: now `literal_separator` gates the `**/` prefix, so non-absolute patterns with a mid-string slash (e.g. `src/*.rs`) no longer get `**/` prepended, altering match behavior.\"},{\"rank\":2,\"risk_signal\":\"state_transition\",\"subject\":\"ignore/tests/gitignore_matched_path_or_any_parents_tests.rs:test_dirs_in_deep\",\"evidence_refs\":[\"assert!(m(\\\"ROOT/parent_dir/dir_deep_02\\\", true).is_none());\",\"assert!(m(\\\"ROOT/parent_dir/dir_deep_02/file\\\", false).is_none());\",\"assert!(m(\\\"ROOT/parent_dir/dir_deep_03/file\\\", false).is_none());\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Test expectations flipped from is_ignore() to is_none() for dir_deep_02/03 cases, indicating a behavior change where previously-ignored deep paths are no longer matched by gitignore patterns.\"},{\"rank\":3,\"risk_signal\":\"external_contract\",\"subject\":\"ignore/src/overrides.rs:gitignore\",\"evidence_refs\":[\"assert!(ov.matched(\\\"bar/lib.rs\\\", false).is_whitelist());\",\"assert!(ov.matched(\\\"wat/bar/lib.rs\\\", false).is_ignore());\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Override semantics for `bar/*.rs` flipped: `wat/bar/lib.rs` went from whitelist to ignore (no longer matches across path prefixes), changing how non-absolute slash patterns are anchored.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+case_id = "ripgrep-3195"
+repo = "BurntSushi/ripgrep"
+pr = 3195
+kind = "risk_signal"
+status = "freeze_ready"
+base_sha = "38d630261aded3a8e535fe85761e68af35bc462d"
+head_sha = "eb60087486a01f573cae9186fcca8973ef602dfd"
+diff_exit = 0

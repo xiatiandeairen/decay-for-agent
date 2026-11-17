@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyperium-hyper-228"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "read_chunk_size in src/http.rs previously stopped parsing at the first non-hex digit and silently returned the partial value (e.g. \"1X\" => 1, \"aY\" => 10). The fix tracks an in_chunk_size state so non-hex octets outside an explicit ';' extension or trailing LWS return io::InvalidInput, and ';' correctly delimits the chunk-extension. Regression tests for the parser plus client and server chunked-de…"
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 0
+notes = "Correctly localizes risk to src/http.rs:read_chunk_size. #2 (external_contract on permissive extension acceptance) directly matches a ground-truth signal and the PR body's own caveat. #1 (assumption_boundary / uint overflow) is a real adjacent concern at the same site. Missed the core non_happy_pat… [recovered-from-raw: judge response exceeded schema free-text caps; metrics unaffected]"

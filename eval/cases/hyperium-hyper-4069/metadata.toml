@@ -1,0 +1,8 @@
+case_id = "hyperium-hyper-4069"
+repo = "hyperium/hyper"
+pr = 4069
+kind = "risk_signal"
+status = "freeze_ready"
+base_sha = "156a6f6aaacdc782861a4cab23ab3940a029d6ac"
+head_sha = "c50341cc317ae2b8f1be58e38c55302505db5cea"
+diff_exit = 0

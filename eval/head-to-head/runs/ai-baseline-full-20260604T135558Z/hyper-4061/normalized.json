@@ -1,0 +1,43 @@
+{
+  "case_id": "hyper-4061",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "if me.buffered_data.is_some() {",
+        "*me.buffered_data = Some(Peeked {"
+      ],
+      "rank": 1,
+      "rationale": "Poll loop restructured around new buffered_data state: a chunk polled from body is stashed in self across Pending returns from poll_capacity, splitting frame-poll and send-data across iterations.",
+      "risk_signal": "state_transition",
+      "subject": "src/proto/h2/mod.rs:PipeToSendStream::poll",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "if let Poll::Ready(reason) = me\n                .body_tx\n                .poll_reset(cx)",
+        "// Register for RST_STREAM notification while we wait for the next\n            // body chunk or for send capacity"
+      ],
+      "rank": 2,
+      "rationale": "poll_reset moved to the top of every loop iteration (previously only in the else branch when capacity>0); reset is now observed before draining buffered_data, dropping any pending chunk.",
+      "risk_signal": "lifecycle_ordering",
+      "subject": "src/proto/h2/mod.rs:PipeToSendStream::poll",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "if len == 0 {",
+        "// Zero-length data frames need no capacity; send\n                            // them straight through"
+      ],
+      "rank": 3,
+      "rationale": "New zero-length fast path bypasses reserve_capacity entirely and sends directly via send_data; relies on h2 accepting zero-byte DATA frames (including is_eos) without any flow-control reservation.",
+      "risk_signal": "assumption_boundary",
+      "subject": "src/proto/h2/mod.rs:PipeToSendStream::poll",
+      "value": "supporting"
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "candidate": {
+    "id": "clap-rs-clap-4668",
+    "repo": "clap-rs/clap",
+    "url": "https://github.com/clap-rs/clap/pull/4668"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "90c042eeaef36ef6a1718b19cc9ea213ac249f6e",
+    "body": "Implementation of Jaro-Winkler similarity in the dguo/strsim-rs crate\r\nis wrong, causing strings with common prefix >=10\r\nto all be considered perfect matches\r\n\r\nUsing Jaro instead from the same crate fixes this issue\r\nBenefit of favoring long prefixes exists for matching common names\r\nBut not for typo detection\r\nHence use of Jaro instead of Jaro-Winkler is acceptable\r\n\r\nConfidence threshold adjusted so that `bar` is still suggested for `baz`\r\nsince Jaro is strictly < Jaro-Winkler\r\nsuch an adjustment is expected. This is acceptable.\r\nWhile exact suggestions may change, the net change will be positive\r\nSuggestions are purely decorative and should thus not breaking change\r\n\r\nFixes #4660\r\nAlso see https://github.com/dguo/strsim-rs/issues/53",
+    "comments": [
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks for following through on this!",
+        "createdAt": "2023-01-23T21:56:07Z",
+        "id": "IC_kwDOAd3Usc5TgkxF",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "HEART",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/clap-rs/clap/pull/4668#issuecomment-1401048133",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "corneliusroemer"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Thanks for the fast review and merge! It was quite fun tracing it back to the algorithm implementation.\r\n\r\nIn the future, it could be good to have a better, more real-life test set of `possible_values` and `values` to check that the threshold makes sense.",
+        "createdAt": "2023-01-23T22:41:34Z",
+        "id": "IC_kwDOAd3Usc5TgzKA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/4668#issuecomment-1401107072",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 17,
+        "changeType": "MODIFIED",
+        "deletions": 6,
+        "path": "src/parser/features/suggestions.rs"
+      }
+    ],
+    "headRefName": "fix-4660",
+    "headRefOid": "f5540d264631e725deb5de76a5b1ccce7e740f2c",
+    "labels": [],
+    "mergedAt": "2023-01-23T21:55:59Z",
+    "number": 4668,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "fix(suggestions): Replace wrong Jaro-Winkler",
+    "url": "https://github.com/clap-rs/clap/pull/4668"
+  }
+}

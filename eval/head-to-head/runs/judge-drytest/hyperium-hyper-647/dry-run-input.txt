@@ -1,0 +1,507 @@
+case_id: hyperium-hyper-647
+manifest_hash: 06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208
+
+pr.json:
+```json
+{"baseRefName":"master","baseRefOid":"32e09a04292b0247456a8fb9003a75a6abaa998e","body":"When the Content-Length header is invalid, the Http11Message ends up\ndropping the stream before returning the error. This causes a panic when\nthe `close_connection` method of the message is used later. This commit\nfixes this by saving the stream onto the message instance before\nreturning the error. A regression test is also included.\n\nCloses #646\n","comments":[],"files":[{"path":"src/http/h1.rs","additions":13,"deletions":1,"changeType":"MODIFIED"}],"headRefName":"issue-646","headRefOid":"a36e44af7d4e665a122c1498011ff10035f7376f","labels":[],"mergedAt":"2015-09-04T23:33:48Z","number":647,"reviewDecision":"REVIEW_REQUIRED","reviews":[],"state":"MERGED","title":"fix(http): Make sure not to lose the stream when CL is invalid","url":"https://github.com/hyperium/hyper/pull/647"}
+```
+
+files.txt:
+```
+M	src/http/h1.rs
+```
+
+diff.patch:
+```
+diff --git a/src/http/h1.rs b/src/http/h1.rs
+index 14f25b78..239f9670 100644
+--- a/src/http/h1.rs
++++ b/src/http/h1.rs
+@@ -148,160 +148,161 @@ impl HttpMessage for Http11Message {
+                     } else {
+                         SizedWriter(stream, len)
+                     }
+                 }
+             }
+         };
+ 
+         self.writer = Some(stream);
+         self.method = Some(head.method.clone());
+ 
+         Ok(head)
+     }
+ 
+     fn get_incoming(&mut self) -> ::Result<ResponseHead> {
+         try!(self.flush_outgoing());
+         let stream = match self.stream.take() {
+             Some(stream) => stream,
+             None => {
+                 // The message was already in the reading state...
+                 // TODO Decide what happens in case we try to get a new incoming at that point
+                 return Err(From::from(
+                         io::Error::new(io::ErrorKind::Other,
+                         "Read already in progress")));
+             }
+         };
+ 
+         let expected_no_content = stream.previous_response_expected_no_content();
+         trace!("previous_response_expected_no_content = {}", expected_no_content);
+ 
+         let mut stream = BufReader::new(stream);
+ 
+         let mut invalid_bytes_read = 0;
+         let head;
+         loop {
+             head = match parse_response(&mut stream) {
+                 Ok(head) => head,
+                 Err(::Error::Version)
+                 if expected_no_content && invalid_bytes_read < MAX_INVALID_RESPONSE_BYTES => {
+                     trace!("expected_no_content, found content");
+                     invalid_bytes_read += 1;
+                     stream.consume(1);
+                     continue;
+                 }
+                 Err(e) => {
+                     self.stream = Some(stream.into_inner());
+                     return Err(e);
+                 }
+             };
+             break;
+         }
+ 
+         let raw_status = head.subject;
+         let headers = head.headers;
+ 
+         let method = self.method.take().unwrap_or(Method::Get);
+ 
+         let is_empty = !should_have_response_body(&method, raw_status.0);
+         stream.get_mut().set_previous_response_expected_no_content(is_empty);
+         // According to https://tools.ietf.org/html/rfc7230#section-3.3.3
+         // 1. HEAD reponses, and Status 1xx, 204, and 304 cannot have a body.
+         // 2. Status 2xx to a CONNECT cannot have a body.
+         // 3. Transfer-Encoding: chunked has a chunked body.
+         // 4. If multiple differing Content-Length headers or invalid, close connection.
+         // 5. Content-Length header has a sized body.
+         // 6. Not Client.
+         // 7. Read till EOF.
+         self.reader = Some(if is_empty {
+             EmptyReader(stream)
+         } else {
+              if let Some(&TransferEncoding(ref codings)) = headers.get() {
+                 if codings.last() == Some(&Chunked) {
+                     ChunkedReader(stream, None)
+                 } else {
+                     trace!("not chuncked. read till eof");
+                     EofReader(stream)
+                 }
+             } else if let Some(&ContentLength(len)) =  headers.get() {
+                 SizedReader(stream, len)
+             } else if headers.has::<ContentLength>() {
+                 trace!("illegal Content-Length: {:?}", headers.get_raw("Content-Length"));
++                self.stream = Some(stream.into_inner());
+                 return Err(Error::Header);
+             } else {
+                 trace!("neither Transfer-Encoding nor Content-Length");
+                 EofReader(stream)
+             }
+         });
+ 
+         trace!("Http11Message.reader = {:?}", self.reader);
+ 
+ 
+         Ok(ResponseHead {
+             headers: headers,
+             raw_status: raw_status,
+             version: head.version,
+         })
+     }
+ 
+     fn has_body(&self) -> bool {
+         match self.reader {
+             Some(EmptyReader(..)) |
+             Some(SizedReader(_, 0)) |
+             Some(ChunkedReader(_, Some(0))) => false,
+             // specifically EofReader is always true
+             _ => true
+         }
+     }
+ 
+     #[cfg(feature = "timeouts")]
+     #[inline]
+     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+         self.get_ref().set_read_timeout(dur)
+     }
+ 
+     #[cfg(feature = "timeouts")]
+     #[inline]
+     fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
+         self.get_ref().set_write_timeout(dur)
+     }
+ 
+     #[inline]
+     fn close_connection(&mut self) -> ::Result<()> {
+         try!(self.get_mut().close(Shutdown::Both));
+         Ok(())
+     }
+ }
+ 
+ impl Http11Message {
+     /// Consumes the `Http11Message` and returns the underlying `NetworkStream`.
+     pub fn into_inner(mut self) -> Box<NetworkStream + Send> {
+         if self.stream.is_some() {
+             self.stream.take().unwrap()
+         } else if self.writer.is_some() {
+             self.writer.take().unwrap().into_inner().into_inner().unwrap()
+         } else if self.reader.is_some() {
+             self.reader.take().unwrap().into_inner().into_inner()
+         } else {
+             panic!("Http11Message lost its underlying stream somehow");
+         }
+     }
+ 
+     /// Gets a mutable reference to the underlying `NetworkStream`, regardless of the state of the
+     /// `Http11Message`.
+     pub fn get_ref(&self) -> &(NetworkStream + Send) {
+         if self.stream.is_some() {
+             &**self.stream.as_ref().unwrap()
+         } else if self.writer.is_some() {
+             &**self.writer.as_ref().unwrap().get_ref().get_ref()
+         } else if self.reader.is_some() {
+             &**self.reader.as_ref().unwrap().get_ref().get_ref()
+         } else {
+             panic!("Http11Message lost its underlying stream somehow");
+         }
+     }
+ 
+     /// Gets a mutable reference to the underlying `NetworkStream`, regardless of the state of the
+     /// `Http11Message`.
+     pub fn get_mut(&mut self) -> &mut (NetworkStream + Send) {
+         if self.stream.is_some() {
+             &mut **self.stream.as_mut().unwrap()
+         } else if self.writer.is_some() {
+@@ -816,224 +817,235 @@ trait TryParse {
+     type Subject;
+     fn try_parse<'a>(headers: &'a mut [httparse::Header<'a>], buf: &'a [u8]) ->
+         TryParseResult<Self::Subject>;
+ }
+ 
+ type TryParseResult<T> = Result<httparse::Status<(Incoming<T>, usize)>, Error>;
+ 
+ impl<'a> TryParse for httparse::Request<'a, 'a> {
+     type Subject = (Method, RequestUri);
+ 
+     fn try_parse<'b>(headers: &'b mut [httparse::Header<'b>], buf: &'b [u8]) ->
+             TryParseResult<(Method, RequestUri)> {
+         trace!("Request.try_parse([Header; {}], [u8; {}])", headers.len(), buf.len());
+         let mut req = httparse::Request::new(headers);
+         Ok(match try!(req.parse(buf)) {
+             httparse::Status::Complete(len) => {
+                 trace!("Request.try_parse Complete({})", len);
+                 httparse::Status::Complete((Incoming {
+                     version: if req.version.unwrap() == 1 { Http11 } else { Http10 },
+                     subject: (
+                         try!(req.method.unwrap().parse()),
+                         try!(req.path.unwrap().parse())
+                     ),
+                     headers: try!(Headers::from_raw(req.headers))
+                 }, len))
+             },
+             httparse::Status::Partial => httparse::Status::Partial
+         })
+     }
+ }
+ 
+ impl<'a> TryParse for httparse::Response<'a, 'a> {
+     type Subject = RawStatus;
+ 
+     fn try_parse<'b>(headers: &'b mut [httparse::Header<'b>], buf: &'b [u8]) ->
+             TryParseResult<RawStatus> {
+         trace!("Response.try_parse([Header; {}], [u8; {}])", headers.len(), buf.len());
+         let mut res = httparse::Response::new(headers);
+         Ok(match try!(res.parse(buf)) {
+             httparse::Status::Complete(len) => {
+                 trace!("Response.try_parse Complete({})", len);
+                 let code = res.code.unwrap();
+                 let reason = match StatusCode::from_u16(code).canonical_reason() {
+                     Some(reason) if reason == res.reason.unwrap() => Cow::Borrowed(reason),
+                     _ => Cow::Owned(res.reason.unwrap().to_owned())
+                 };
+                 httparse::Status::Complete((Incoming {
+                     version: if res.version.unwrap() == 1 { Http11 } else { Http10 },
+                     subject: RawStatus(code, reason),
+                     headers: try!(Headers::from_raw(res.headers))
+                 }, len))
+             },
+             httparse::Status::Partial => httparse::Status::Partial
+         })
+     }
+ }
+ 
+ /// An Incoming Message head. Includes request/status line, and headers.
+ #[derive(Debug)]
+ pub struct Incoming<S> {
+     /// HTTP version of the message.
+     pub version: HttpVersion,
+     /// Subject (request line or status line) of Incoming message.
+     pub subject: S,
+     /// Headers of the Incoming message.
+     pub headers: Headers
+ }
+ 
+ /// The `\r` byte.
+ pub const CR: u8 = b'\r';
+ /// The `\n` byte.
+ pub const LF: u8 = b'\n';
+ /// The bytes `\r\n`.
+ pub const LINE_ENDING: &'static str = "\r\n";
+ 
+ #[cfg(test)]
+ mod tests {
+     use std::error::Error;
+     use std::io::{self, Read, Write};
+ 
++
+     use buffer::BufReader;
+     use mock::MockStream;
++    use http::HttpMessage;
+ 
+-    use super::{read_chunk_size, parse_request, parse_response};
++    use super::{read_chunk_size, parse_request, parse_response, Http11Message};
+ 
+     #[test]
+     fn test_write_chunked() {
+         use std::str::from_utf8;
+         let mut w = super::HttpWriter::ChunkedWriter(Vec::new());
+         w.write_all(b"foo bar").unwrap();
+         w.write_all(b"baz quux herp").unwrap();
+         let buf = w.end().unwrap();
+         let s = from_utf8(buf.as_ref()).unwrap();
+         assert_eq!(s, "7\r\nfoo bar\r\nD\r\nbaz quux herp\r\n0\r\n\r\n");
+     }
+ 
+     #[test]
+     fn test_write_sized() {
+         use std::str::from_utf8;
+         let mut w = super::HttpWriter::SizedWriter(Vec::new(), 8);
+         w.write_all(b"foo bar").unwrap();
+         assert_eq!(w.write(b"baz").unwrap(), 1);
+ 
+         let buf = w.end().unwrap();
+         let s = from_utf8(buf.as_ref()).unwrap();
+         assert_eq!(s, "foo barb");
+     }
+ 
+     #[test]
+     fn test_read_chunk_size() {
+         fn read(s: &str, result: u64) {
+             assert_eq!(read_chunk_size(&mut s.as_bytes()).unwrap(), result);
+         }
+ 
+         fn read_err(s: &str) {
+             assert_eq!(read_chunk_size(&mut s.as_bytes()).unwrap_err().kind(),
+                 io::ErrorKind::InvalidInput);
+         }
+ 
+         read("1\r\n", 1);
+         read("01\r\n", 1);
+         read("0\r\n", 0);
+         read("00\r\n", 0);
+         read("A\r\n", 10);
+         read("a\r\n", 10);
+         read("Ff\r\n", 255);
+         read("Ff   \r\n", 255);
+         // Missing LF or CRLF
+         read_err("F\rF");
+         read_err("F");
+         // Invalid hex digit
+         read_err("X\r\n");
+         read_err("1X\r\n");
+         read_err("-\r\n");
+         read_err("-1\r\n");
+         // Acceptable (if not fully valid) extensions do not influence the size
+         read("1;extension\r\n", 1);
+         read("a;ext name=value\r\n", 10);
+         read("1;extension;extension2\r\n", 1);
+         read("1;;;  ;\r\n", 1);
+         read("2; extension...\r\n", 2);
+         read("3   ; extension=123\r\n", 3);
+         read("3   ;\r\n", 3);
+         read("3   ;   \r\n", 3);
+         // Invalid extensions cause an error
+         read_err("1 invalid extension\r\n");
+         read_err("1 A\r\n");
+         read_err("1;no CRLF");
+     }
+ 
+     #[test]
+     fn test_read_sized_early_eof() {
+         let mut r = super::HttpReader::SizedReader(MockStream::with_input(b"foo bar"), 10);
+         let mut buf = [0u8; 10];
+         assert_eq!(r.read(&mut buf).unwrap(), 7);
+         let e = r.read(&mut buf).unwrap_err();
+         assert_eq!(e.kind(), io::ErrorKind::Other);
+         assert_eq!(e.description(), "early eof");
+     }
+ 
+     #[test]
+     fn test_read_chunked_early_eof() {
+         let mut r = super::HttpReader::ChunkedReader(MockStream::with_input(b"\
+             9\r\n\
+             foo bar\
+         "), None);
+ 
+         let mut buf = [0u8; 10];
+         assert_eq!(r.read(&mut buf).unwrap(), 7);
+         let e = r.read(&mut buf).unwrap_err();
+         assert_eq!(e.kind(), io::ErrorKind::Other);
+         assert_eq!(e.description(), "early eof");
+     }
+ 
++    #[test]
++    fn test_message_get_incoming_invalid_content_length() {
++        let raw = MockStream::with_input(
++            b"HTTP/1.1 200 OK\r\nContent-Length: asdf\r\n\r\n");
++        let mut msg = Http11Message::with_stream(Box::new(raw));
++        assert!(msg.get_incoming().is_err());
++        assert!(msg.close_connection().is_ok());
++    }
++
+     #[test]
+     fn test_parse_incoming() {
+         let mut raw = MockStream::with_input(b"GET /echo HTTP/1.1\r\nHost: hyper.rs\r\n\r\n");
+         let mut buf = BufReader::new(&mut raw);
+         parse_request(&mut buf).unwrap();
+     }
+ 
+     #[test]
+     fn test_parse_raw_status() {
+         let mut raw = MockStream::with_input(b"HTTP/1.1 200 OK\r\n\r\n");
+         let mut buf = BufReader::new(&mut raw);
+         let res = parse_response(&mut buf).unwrap();
+ 
+         assert_eq!(res.subject.1, "OK");
+ 
+         let mut raw = MockStream::with_input(b"HTTP/1.1 200 Howdy\r\n\r\n");
+         let mut buf = BufReader::new(&mut raw);
+         let res = parse_response(&mut buf).unwrap();
+ 
+         assert_eq!(res.subject.1, "Howdy");
+     }
+ 
+ 
+     #[test]
+     fn test_parse_tcp_closed() {
+         use std::io::ErrorKind;
+         use error::Error;
+ 
+         let mut empty = MockStream::new();
+         let mut buf = BufReader::new(&mut empty);
+         match parse_request(&mut buf) {
+             Err(Error::Io(ref e)) if e.kind() == ErrorKind::ConnectionAborted => (),
+             other => panic!("unexpected result: {:?}", other)
+         }
+     }
+ 
+     #[cfg(feature = "nightly")]
+     use test::Bencher;
+ 
+     #[cfg(feature = "nightly")]
+     #[bench]
+     fn bench_parse_incoming(b: &mut Bencher) {
+         let mut raw = MockStream::with_input(b"GET /echo HTTP/1.1\r\nHost: hyper.rs\r\n\r\n");
+         let mut buf = BufReader::new(&mut raw);
+         b.iter(|| {
+             parse_request(&mut buf).unwrap();
+             buf.get_mut().read.set_position(0);
+         });
+     }
+ }
+```
+
+decay.stdout:
+```
+Diff context:
+  repo_root=/private/tmp/decay-pr-eval/hyperium-hyper-647/repo
+  mode=git_ref
+  base_input=32e09a04292b0247456a8fb9003a75a6abaa998e
+  base=32e09a04292b0247456a8fb9003a75a6abaa998e
+  head=a36e44af7d4e665a122c1498011ff10035f7376f
+  changed_files=1
+
+Top risk findings:
+1. [medium] src/http/h1.rs
+   coverage parse_coverage_gap
+   action: treat decay output as partial and inspect this diff manually or update parser coverage
+2. [medium] src/http/h1.rs
+   quality prod_change_with_tests
+   action: review changed behavior invariants and confirm regression tests cover the risky path
+
+Complexity impact:
+  changed_functions=0 evidence=0 partial=true diagnostics=2
+  value_note=direct for worsened/new_high_risk; touched_existing_risky is supporting context, not proof of current-diff risk
+
+Coverage impact:
+  evidence=1
+  value_note=scan coverage gaps limit decay confidence; this is tool coverage evidence, not proof of product code risk
+- id=1 category=coverage kind=parse_coverage_gap subject=decay scan coverage is partial source=scan confidence=high value=coverage_limit
+  file=src/http/h1.rs
+
+Stability impact:
+  evidence=0
+  value_note=direct for newly introduced unsafe/panic/public-api evidence; move/refactor diffs can weaken this signal
+
+Quality impact:
+  evidence=1 prod_files_changed=1 test_files_changed=1 docs_files_changed=0
+  value_note=missing-test signals are supporting evidence; broad scope signals are weak unless paired with direct diff evidence
+- id=2 category=quality kind=prod_change_with_tests subject=production code changed with test changes source=quality confidence=low value=supporting
+  file=src/http/h1.rs
+
+Semantic impact:
+  evidence=0
+  value_note=high confidence only for explicit scanned patterns; this is not general semantic understanding
+
+History impact:
+  evidence=0
+  value_note=context only; excluded from top risk unless direct diff evidence exists
+diagnostic=parse error in src/http/h1.rs: source contains syntax errors
+diagnostic=parse error in src/http/h1.rs: source contains syntax errors
+recorded=true changeset=1 evidence_saved=2
+```
+
+semantic-findings.json:
+```json
+{"version":"semantic-findings.v1","findings":[{"claim":"Decay output is partial for src/http/h1.rs because the scan hit a parse coverage gap.","supporting_facts":["Coverage evidence reports a high-confidence parse_coverage_gap for src/http/h1.rs.","The diff summary marks complexity analysis as partial with two parse diagnostics for src/http/h1.rs."],"source_refs":[{"type":"evidence","id":1}],"confidence":"high","limitation":"This is tool coverage evidence only; it does not prove product code risk or behavioral regression.","review_action":"Treat decay output as partial and inspect this diff manually or update parser coverage."}]}
+```
+
+ai-baseline.normalized.json:
+```json
+{
+  "case_id": "hyperium-hyper-647",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "self.stream = Some(stream.into_inner());\n+                return Err(Error::Header);"
+      ],
+      "rank": 1,
+      "rationale": "Restores the underlying stream into self.stream before returning Err(Error::Header) on illegal Content-Length, so close_connection / into_inner no longer panic on lost stream after this error path.",
+      "risk_signal": "lifecycle_ordering",
+      "subject": "src/http/h1.rs:get_incoming",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "assert!(msg.get_incoming().is_err());\n+        assert!(msg.close_connection().is_ok());"
+      ],
+      "rank": 2,
+      "rationale": "New test covers the invalid Content-Length error path and asserts close_connection succeeds afterwards, exercising the restored stream lifecycle.",
+      "risk_signal": "non_happy_path",
+      "subject": "src/http/h1.rs:test_message_get_incoming_invalid_content_length",
+      "value": "supporting"
+    }
+  ]
+}
+```

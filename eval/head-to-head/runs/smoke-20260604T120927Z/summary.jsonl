@@ -1,0 +1,5 @@
+{"attempts": 1, "case_id": "serde-rs-json-757", "normalize_error": "raw output is not valid JSON: Expecting ',' delimiter: line 1 column 1661 (char 1660)", "status": "ai-baseline-failed"}
+{"attempts": 1, "case_id": "hyperium-hyper-3616", "normalize_error": "top_risks[0].subject references unknown file 'src/server/conn/http1.rs'; not in changed_files", "status": "ai-baseline-failed"}
+{"attempts": 1, "case_id": "tokio-rs-tokio-8021", "normalize_error": "top_risks[0].subject references unknown file 'tokio/src/sync/batch_semaphore.rs'; not in changed_files", "status": "ai-baseline-failed"}
+{"attempts": 1, "case_id": "hyper-3621", "normalize_error": "raw output is not valid JSON: Expecting ',' delimiter: line 1 column 1690 (char 1689)", "status": "ai-baseline-failed"}
+{"attempts": 1, "case_id": "tokio-rs-tokio-7922", "normalize_error": "raw output is not valid JSON: Expecting ',' delimiter: line 1 column 1977 (char 1976)", "status": "ai-baseline-failed"}

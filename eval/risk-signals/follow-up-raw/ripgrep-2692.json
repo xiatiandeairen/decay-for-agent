@@ -1,0 +1,47 @@
+{
+  "case_id": "ripgrep-2692",
+  "refs": [
+    {
+      "detail": {
+        "body": "### Please tick this box to confirm you have reviewed the above.\r\n\r\n- [X] I have a different issue.\r\n\r\n### What version of ripgrep are you using?\r\n\r\nignore crate 0.4.21\r\n\r\n### How did you install ripgrep?\r\n\r\ncargo add ignore\r\n\r\n### What operating system are you using ripgrep on?\r\n\r\nmacOS Sonoma 14.1.1\r\n\r\n### Describe your bug.\r\n\r\nignore's WalkParallel does not seem to free memory when ignore flags are enabled.\r\n\r\n### What are the steps to reproduce the behavior?\r\n\r\n- Run the \"stress test\" example project (adjust the path and timeout) and observe the memory growth over time in some process monitoring tool. I'm compiling for the ARM aarch64-apple-darwin target and running it on an M1 Macbook Pro.\r\n\r\n- Run heap profiling tools to confirm the leaks. I used Instruments' Allocations and Leaks via `cargo instruments` on macOS (latest stable Rust toolchain) and LeakSanitizer via the the nightly toolchain and compiled for x86 (`RUSTFLAGS=\"-Z sanitizer=leak\" cargo run --target x86_64-apple-darwin`). Visual output with stack traces is appended for both the leaking and non-leaking versions (ignore flags disabled), the text output of LeakSanitizer is attached, and the visual and text output of heaptrack (linux VM only).\r\n\r\n[ignore-mem.zip](https://github.com/BurntSushi/ripgrep/files/13726976/ignore-mem.zip)\r\n\r\n### What is the actual behavior?\r\n\r\nMemory usage increases over time, unbounded – but only when the ignore flags are enabled. The memory growth increases faster when custom overrides are enabled. There is _no_ continuous memory growth when the ignore flags are disabled (regardless of whether custom overrides are enabled or not).\r\n\r\n### What is the expected behavior?\r\n\r\nI would expect that memory usage would be bounded and not grow over time when the threads have been joined and the WalkParallel instance is dropped in the example project. Memory would stay around a baseline level as the allocator reuses freed memory. This happens when the ignore flags are disabled. To exclude memory fragmentation as a possible cause, I've also tested this with jemalloc and observed the same behavior (with a different baseline memory usage and allocation pattern but still unbounded growth).\r\n\r\nSince I've also tested older version of this crate and observed the same behavior, it makes me think that I'm 1) missing something obvious, or 2) misusing the crate and its API, 3) holding misconceptions about how memory is supposed to be managed in the example. If so, I'd be happy to be pointed in the right direction how to correctly use the crate for a long-running process that walks different subdirectory trees at certain points in time, while keeping memory bounded within a baseline range.",
+        "closedAt": "2024-01-06T17:50:44Z",
+        "comments": [
+          {
+            "author": {
+              "login": "Nicolecolwell"
+            },
+            "authorAssociation": "NONE",
+            "body": "Ignore ",
+            "createdAt": "2024-03-24T11:24:04Z",
+            "id": "IC_kwDOAzJbyc54NZL9",
+            "includesCreatedEdit": false,
+            "isMinimized": true,
+            "minimizedReason": "SPAM",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/2690#issuecomment-2016776957",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2023-12-18T18:33:36Z",
+        "labels": [
+          {
+            "color": "fc2929",
+            "description": "A bug.",
+            "id": "MDU6TGFiZWwzMzk3MjE2Nzg=",
+            "name": "bug"
+          }
+        ],
+        "number": 2690,
+        "state": "CLOSED",
+        "title": "Memory not freed in ignore crate when ignore flags are enabled",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/2690"
+      },
+      "target": {
+        "number": 2690,
+        "reason": "Reference-cycle memory growth report and reproduction context.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    }
+  ]
+}

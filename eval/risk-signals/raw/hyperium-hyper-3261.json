@@ -1,0 +1,125 @@
+{
+  "candidate": {
+    "ground_truth_summary": "PR title and files show shutdown path changes with server tests.",
+    "id": "hyperium-hyper-3261",
+    "limitations": "Needs issue/follow-up context to distinguish severity.",
+    "production_files": [
+      "src/proto/h1/conn.rs",
+      "src/proto/h1/dispatch.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "HTTP/1 graceful shutdown behavior was incorrect.",
+    "signal_ids": [
+      "lifecycle_ordering",
+      "state_transition",
+      "non_happy_path"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/3261"
+    ],
+    "status": "candidate",
+    "test_files": [
+      "tests/server.rs"
+    ],
+    "url": "https://github.com/hyperium/hyper/pull/3261",
+    "why_high_value": "Shutdown behavior is a low-frequency high-impact lifecycle path.",
+    "why_not_noise": "Production shutdown code and tests changed together."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "d92d3917d950e4c61c37c2170f3ce273d2a0f7d1",
+    "body": "This is from #3233, I've fixed up the failing test.\r\n\r\n---\r\n\r\nfix issue in the graceful shutdown logic\r\nwhich causes the connection future to hang\r\nwhen graceful shutdown is called prior to any\r\nrequests being  made. This fix checks to see\r\nif the connection is still in its initial state\r\nwhen disable_keep_alive is called, and starts the\r\nshutdown process if it is.\r\n\r\n\r\nCloses #2730\r\n\r\n",
+    "comments": [
+      {
+        "author": {
+          "login": "djc"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "@seanmonstar could we get a release with this, please?",
+        "createdAt": "2023-09-12T15:01:38Z",
+        "id": "IC_kwDOAWaYQc5mRofn",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3261#issuecomment-1715898343",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "This was included in RC4.",
+        "createdAt": "2023-09-12T15:20:27Z",
+        "id": "IC_kwDOAWaYQc5mRwqS",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3261#issuecomment-1715931794",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "If you mean for 0.14.x, it seemed like a behavior change and was marked as a breaking change. I've forgotten the argument for why. I don't feel strongly, unless it would be *break* expected behavior.",
+        "createdAt": "2023-09-12T15:22:20Z",
+        "id": "IC_kwDOAWaYQc5mRxfP",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3261#issuecomment-1715935183",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "djc"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "From a brief look at the changes and the PR description, it's not obvious to me why this should be a breaking change.",
+        "createdAt": "2023-09-12T15:35:35Z",
+        "id": "IC_kwDOAWaYQc5mR4PR",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3261#issuecomment-1715962833",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 7,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "src/proto/h1/conn.rs"
+      },
+      {
+        "additions": 5,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/proto/h1/dispatch.rs"
+      },
+      {
+        "additions": 32,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/server.rs"
+      }
+    ],
+    "headRefName": "pr/3233",
+    "headRefOid": "f64130df6b0d849171997ef4022bd91ffdb62cdd",
+    "labels": [],
+    "mergedAt": "2023-07-06T19:23:29Z",
+    "number": 3261,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "fix(http1): http1 server graceful shutdown fix",
+    "url": "https://github.com/hyperium/hyper/pull/3261"
+  }
+}

@@ -1,0 +1,58 @@
+version = "risk-signal-agent-aggregate.v1"
+reviewed_at = "2026-05-13"
+case_count = 5
+freeze_ready_count = 4
+needs_more_context_count = 1
+reject_count = 0
+
+[[cases]]
+id = "tokio-rs-tokio-8001"
+decision = "freeze_ready"
+confidence = "high"
+accepted_signals = ["non_happy_path", "state_transition", "error_propagation"]
+gate_reason = "Follow-up issue #8000 resolves the OS/readiness uncertainty for a scoped Linux UDP recv claim."
+must_have_reason = "Connected UDP send to a closed port leaves SO_ERROR pending; Tokio recv waited only for READABLE and could hang instead of surfacing ConnectionRefused."
+limitations = ["Scope to Linux UDP recv error-readiness", "Do not generalize to all socket readiness, platforms, send, poll_recv, or UnixDatagram paths"]
+evidence_refs = ["https://github.com/tokio-rs/tokio/issues/8000", "https://github.com/tokio-rs/tokio/pull/8001"]
+
+[[cases]]
+id = "hyper-3977"
+decision = "freeze_ready"
+confidence = "medium"
+accepted_signals = ["concurrency_ordering", "state_transition"]
+gate_reason = "Follow-up captures the original #3952 wakeup fix and #3976 production CPU reports that caused the revert."
+must_have_reason = "HTTP/1 poll-loop write/flush readiness coordination caused production 100% CPU reports after #3952 and was reverted in #3977."
+limitations = ["No minimal deterministic local regression test", "Do not generalize to all HTTP/1 wakeup fixes", "Do not use revert alone as ground truth"]
+evidence_refs = ["https://github.com/hyperium/hyper/pull/3952", "https://github.com/hyperium/hyper/issues/3976", "https://github.com/hyperium/hyper/pull/3977"]
+
+[[cases]]
+id = "hyper-4038"
+decision = "freeze_ready"
+confidence = "high"
+accepted_signals = ["assumption_boundary", "non_happy_path", "external_contract"]
+gate_reason = "Follow-up issue #4033 gives concrete NULL FFI repro and aligns with PR #4038 files and functions."
+must_have_reason = "Three exported FFI entrypoints dereferenced NULL handles before validation."
+limitations = ["No local regression test", "Scope to named FFI entrypoints", "Do not claim whole FFI layer is unsafe"]
+evidence_refs = ["https://github.com/hyperium/hyper/issues/4033", "https://github.com/hyperium/hyper/pull/4038"]
+
+[[cases]]
+id = "hyper-3185"
+decision = "freeze_ready"
+confidence = "medium"
+accepted_signals = ["lifecycle_ordering", "external_contract", "non_happy_path"]
+gate_reason = "Follow-up issue #3178 confirms user-visible HTTP/1 header timeout start semantics, while preserving scope caveats."
+must_have_reason = "HTTP/1 header read timeout started only after first header bytes, leaving newly accepted idle connections open contrary to user expectation."
+limitations = ["Do not claim confirmed security vulnerability", "Do not conflate header timeout with generic idle timeout", "Scope to HTTP/1 initial header-read timeout start semantics"]
+evidence_refs = ["https://github.com/hyperium/hyper/issues/3178", "https://github.com/hyperium/hyper/pull/3185"]
+
+[[cases]]
+id = "serde-rs-json-265"
+decision = "needs_more_context"
+confidence = "medium"
+accepted_signals = ["risk_path_test_gap", "state_transition"]
+rejected_signals = ["non_happy_path"]
+gate_reason = "Follow-up issue #256 is the feature request, not the implementation diff that introduced the regression."
+must_have_reason = "PR #265 states that the prior change caused incorrect parses and performance regression, but the original diff is still missing."
+limitations = ["Correctness and performance mechanisms are mixed", "Original implementation diff missing", "Do not claim non_happy_path yet"]
+required_follow_up = ["Capture #256 implementation diff or equivalent patch hunk", "Choose correctness regression or performance regression as frozen claim"]
+evidence_refs = ["https://github.com/serde-rs/json/issues/256", "https://github.com/serde-rs/json/pull/265"]

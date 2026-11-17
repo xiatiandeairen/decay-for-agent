@@ -1,0 +1,112 @@
+{
+  "candidate": {
+    "id": "BurntSushi-ripgrep-554",
+    "repo": "BurntSushi/ripgrep",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/554"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "1c032989035c042d01485f2313dc85d41e3bdf1c",
+    "body": "In `matched_path_or_any_parents()` implementation, we missed the point\r\nthat when we start walking up the tree, we have to set `is_dir` to\r\n`true`, so path `ROOT/a/b/c` matches pattern `/a/`, although the\r\noriginal path is not a dir.",
+    "comments": [
+      {
+        "author": {
+          "login": "behnam"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "I didn't test this diff locally (because I did this on a different machine than the Cargo patch) and the bug was revealed in my tests for the cargo patch. Fortunately, it doesn't involve API breaking changes.\r\n\r\nSorry for making more release work for you, @BurntSushi, and thanks in advance. :)",
+        "createdAt": "2017-07-13T04:08:53Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDMxNDk2NTE1OA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/554#issuecomment-314965158",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "BurntSushi"
+        },
+        "authorAssociation": "OWNER",
+        "body": "Nice find! If you do need to make a breaking API change, then I expect we could get away with a yank. :)\r\n\r\nI'll cut a release when I'm at my computer next.",
+        "createdAt": "2017-07-13T12:45:19Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDMxNTA2Njc5Nw==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/554#issuecomment-315066797",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "behnam"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Just a friendly reminder to publish `ignore:0.2.2`, as the current one is buggy. :)",
+        "createdAt": "2017-07-17T21:23:20Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDMxNTg4ODkzNQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/554#issuecomment-315888935",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "BurntSushi"
+        },
+        "authorAssociation": "OWNER",
+        "body": "Ah right, I was on vacation and forgot. `ignore 0.2.2` should now be on crates.io!",
+        "createdAt": "2017-07-17T21:59:16Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDMxNTg5NzU3OQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/554#issuecomment-315897579",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 8,
+        "changeType": "MODIFIED",
+        "deletions": 6,
+        "path": "ignore/src/gitignore.rs"
+      },
+      {
+        "additions": 132,
+        "changeType": "MODIFIED",
+        "deletions": 98,
+        "path": "ignore/tests/gitignore_matched_path_or_any_parents_tests.rs"
+      }
+    ],
+    "headRefName": "ignore",
+    "headRefOid": "b2b75235b6e7f0e76552da23c31539cce3814330",
+    "labels": [],
+    "mergedAt": "2017-07-13T12:44:10Z",
+    "number": 554,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "[ignore] Fix matched_path_or_any_parents() for patterns ending in slash",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/554"
+  }
+}

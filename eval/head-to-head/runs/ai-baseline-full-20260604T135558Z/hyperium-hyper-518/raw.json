@@ -1,0 +1,12 @@
+{
+  "case_id": "hyperium-hyper-518",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"hyperium-hyper-518\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"external_contract\",\"subject\":\"src/net.rs:NetworkConnector\",\"evidence_refs\":[\"fn set_ssl_verifier(&mut self, verifier: ContextVerifier);\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Adds a required method to the public NetworkConnector trait with no default impl; every downstream implementor must add set_ssl_verifier or fail to compile.\"},{\"rank\":2,\"risk_signal\":\"state_transition\",\"subject\":\"src/client/mod.rs:Client::set_ssl_verifier\",\"evidence_refs\":[\"self.connector = with_connector(Pool::with_connector(\",\"self.connector.set_ssl_verifier(verifier);\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Old behavior replaced the connector with a fresh Pool<HttpConnector>, discarding any user-supplied connector and pooled conns; new behavior mutates the existing connector in place.\"},{\"rank\":3,\"risk_signal\":\"assumption_boundary\",\"subject\":\"src/net.rs:HttpConnector::set_ssl_verifier\",\"evidence_refs\":[\"self.0 = Some(verifier);\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"Assignment unconditionally overwrites any previously installed ContextVerifier with no warning or composition; repeated calls silently drop the prior closure.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

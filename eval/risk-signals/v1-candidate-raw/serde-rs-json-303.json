@@ -1,0 +1,117 @@
+{
+  "candidate": {
+    "id": "serde-rs-json-303",
+    "repo": "serde-rs/json",
+    "url": "https://github.com/serde-rs/json/pull/303"
+  },
+  "pr": {
+    "baseRefName": "1.0",
+    "baseRefOid": "a22a06f74faf8bff4e474968d4a6d666125af54b",
+    "body": "Fixes #183.\r\n\r\nThe byte offset is the number of bytes so far deserialized into a successful `T`. If a stream deserializer returns an EOF error, new data can be joined to `old_data[stream.byte_offset()..]` to try again.\r\n\r\n```rust\r\nlet data = b\"[0] [1] [\";\r\n\r\nlet de = serde_json::Deserializer::from_slice(data);\r\nlet mut stream = de.into_iter::<Vec<i32>>();\r\nassert_eq!(0, stream.byte_offset());\r\n\r\nprintln!(\"{:?}\", stream.next()); // [0]\r\nassert_eq!(3, stream.byte_offset());\r\n\r\nprintln!(\"{:?}\", stream.next()); // [1]\r\nassert_eq!(7, stream.byte_offset());\r\n\r\nprintln!(\"{:?}\", stream.next()); // error\r\nassert_eq!(8, stream.byte_offset());\r\n\r\n// If err.is_eof(), can join the remaining data to new data and continue.\r\nlet remaining = &data[stream.byte_offset()..];\r\n```\r\n\r\ncc @vorner @ShepMaster who were interested in #212.",
+    "comments": [
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "I will also add a link to #70 saying that in the future I would like to change this method to return the number of bytes so far deserialized into a successful `T` *or* syntactically valid JSON skipped over due to a type error. I do not consider that a breaking change.\r\n\r\n```rust\r\nlet data = b\"[0] {\"k\":\"v\"} [\";\r\n\r\nlet de = serde_json::Deserializer::from_slice(data);\r\nlet mut stream = de.into_iter::<Vec<i32>>();\r\nassert_eq!(0, stream.byte_offset());\r\n\r\nprintln!(\"{:?}\", stream.next()); // [0]\r\nassert_eq!(3, stream.byte_offset());\r\n\r\nprintln!(\"{:?}\", stream.next()); // type error\r\nassert_eq!(13, stream.byte_offset());\r\n```",
+        "createdAt": "2017-04-12T17:38:52Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5MzY1MzQzMQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/303#issuecomment-293653431",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "vorner"
+        },
+        "authorAssociation": "NONE",
+        "body": "As I'm one of the potential users of this, I can probably comment on the interface. I believe this would solve my use case (or make it significantly easier to solve, the `is_eof` was the crucial part and the number of bytes could be extracted by using a custom iterator ‒ possible, but complex and tedious).\r\n\r\nOne question, though. If I hit the EOF, I can take the remainder of the data, append more to it and create a new deserializer on top of it (obviously). But is there a way to reuse the existing one? Or is the deserializer lightweight enough so the creation of a new one doesn't matter?",
+        "createdAt": "2017-04-13T08:31:50Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5MzgyNzAwNw==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/303#issuecomment-293827007",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Constructing a deserializer is lightweight enough.\r\n\r\nIn the future I see this being used in something like [`tokio-serde-json`](https://github.com/carllerche/tokio-serde-json) which would handle the EOF checking and juggling of the deserializer for you. For serde_json I would like to focus on providing the foundational pieces to make something like that possible.",
+        "createdAt": "2017-04-13T14:42:55Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5MzkxNTcwMg==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/303#issuecomment-293915702",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 50,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "src/de.rs"
+      },
+      {
+        "additions": 19,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "src/iter.rs"
+      },
+      {
+        "additions": 25,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "src/read.rs"
+      },
+      {
+        "additions": 109,
+        "changeType": "ADDED",
+        "deletions": 0,
+        "path": "tests/stream.rs"
+      },
+      {
+        "additions": 0,
+        "changeType": "MODIFIED",
+        "deletions": 52,
+        "path": "tests/test.rs"
+      }
+    ],
+    "headRefName": "offset",
+    "headRefOid": "4e44e6c73d3ec7326dd9a6d6353ba3299e91c979",
+    "labels": [],
+    "mergedAt": "2017-04-13T16:33:43Z",
+    "number": 303,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "oli-obk"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Impl looks good to me. Needs tests. API-wise, we need comments from potential users.",
+        "commit": {
+          "oid": "b2e3c3ce678751ee9668497019f00f93b8babf7d"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MzI0NDAyMTk=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2017-04-12T17:22:07Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "Expose number of bytes processed by StreamDeserializer",
+    "url": "https://github.com/serde-rs/json/pull/303"
+  }
+}

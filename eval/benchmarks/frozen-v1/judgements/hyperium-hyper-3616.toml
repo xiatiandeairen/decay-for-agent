@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "hyperium-hyper-3616"
+repo = "hyperium/hyper"
+pr = 3616
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Graceful shutdown after upgrade panic."
+
+[fact_only]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "True risk is graceful_shutdown panic after HTTP/1 upgrade. Fact output only reports generic prod_change_with_tests on the right file."
+
+[semantic_filtered]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "Semantic says behavior invariants and regression coverage, but misses upgrade lifecycle panic."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = false
+notes = "No material improvement."

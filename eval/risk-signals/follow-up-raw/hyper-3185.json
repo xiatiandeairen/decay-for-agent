@@ -1,0 +1,292 @@
+{
+  "case_id": "hyper-3185",
+  "refs": [
+    {
+      "detail": {
+        "body": "There doesn't seem a way to specify, on a server, after a client connection has been accepted, a read timeout so as to close the client connection after a while when no client headers have been sent at all. See for instance the [ReadTimeout](https://blog.cloudflare.com/exposing-go-on-the-internet/#timeouts) from GoLang’s HTTP Server class where you can configure this.\r\n\r\nThe http1_header_read_timeout method only starts the timer when the first line of the http1 header is sent. So if I just netcat into my hyper http server and don't send anything, the connection is kept open forever.  ",
+        "closedAt": "2024-06-03T19:18:15Z",
+        "comments": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Hm, I see that in #2675, it originally started the timer immediately, but it was suggested it should wait because some clients make connections eagerly. While there may be clients that do that, it does seem like the timer should probably start right away anyways. The servers resources are more constrained than a client.\r\n\r\n@paolobarbolini or @silence-coding, any thoughts?",
+            "createdAt": "2023-03-20T15:46:49Z",
+            "id": "IC_kwDOAWaYQc5YAVT6",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 3
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/3178#issuecomment-1476482298",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "SylvainGarrigues"
+            },
+            "authorAssociation": "NONE",
+            "body": "If the timer doesn't start immediately (for h1 & h2 at least for now), I am reluctant to expose my rust's hyper server to the internet (without a reverse-proxy), since I can't see a way to setup an initial connection timeout, to prevent malicious people to open multiple (millions) sockets to my server (and therefore multiple file descriptors) without any way for me to close them.\r\n\r\nIs this a feature or some sort of bug / security issue?",
+            "createdAt": "2023-03-22T15:10:58Z",
+            "id": "IC_kwDOAWaYQc5YMyoh",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/3178#issuecomment-1479748129",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "paolobarbolini"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Sorry I missed the original notification. At the time this was originally implemented there was a feeling of: let's do the bare minimum in hyper and then let's have the user do everything else.\r\nWhat this meant is that hyper itself has to enforce an header read timeout, because it can't be efficiently done outside of it, while a connection idle timeout wouldn't need to be handled by hyper because it could be implemented by a wrapper around the connection. This isn't perfect, because it means that your crate is vulnerable by default to DoS attacks, but that's probably something that could be handled a different way, like a second crate? But then having good defaults would be nice?\r\nI remember @silence-coding didn't like that in my initial PR it was handled like #3185 does because then browsers couldn't preconnect because the connect would be shutdown a few seconds later because of the header timeout.\r\nWhat do we think about this?",
+            "createdAt": "2023-03-24T21:09:46Z",
+            "id": "IC_kwDOAWaYQc5Yawii",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3178#issuecomment-1483409570",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "SylvainGarrigues"
+            },
+            "authorAssociation": "NONE",
+            "body": "Thanks a lot for taking this into consideration. Will https://github.com/hyperium/hyper/pull/3185 also allow to have a proper read timeout for h2 / h3 only servers or is it just for http1 servers?",
+            "createdAt": "2023-03-25T00:06:55Z",
+            "id": "IC_kwDOAWaYQc5Ybijg",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3178#issuecomment-1483614432",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "SylvainGarrigues"
+            },
+            "authorAssociation": "NONE",
+            "body": "> I remember @silence-coding didn't like that in my initial PR it was handled like #3185 does because then browsers couldn't preconnect because the connect would be shutdown a few seconds later because of the header timeout.\r\n> What do we think about this?\r\n \r\nCouldn’t we consider it is the hyper server’s owner responsibility to figure out a suitable header read timeout value, long enough to allow the legitimate browser pre-connect use case, but short enough to prevent DoS attacks?\r\n\r\nFor the sake of this issue, as long as I can set up a value, I am happy. I am more worried now that the fix only allows mitigating attacks for http1 hyper servers, not h2 nor h3 ones (and did not find the proper variable to set that yet). \r\n",
+            "createdAt": "2023-03-25T00:20:34Z",
+            "id": "IC_kwDOAWaYQc5YblQQ",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3178#issuecomment-1483625488",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "paolobarbolini"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "> Thanks a lot for taking this into consideration. Will #3185 also allow to have a proper read timeout for h2 / h3 only servers or is it just for http1 servers?\r\n\r\nJust h1\r\n\r\n> For the sake of this issue, as long as I can set up a value, I am happy.\r\n\r\nIt's not right forcing everyone to set the same value for both timeouts though. If hyper really has to handle this it should be a separate timeout.",
+            "createdAt": "2023-03-25T05:50:54Z",
+            "id": "IC_kwDOAWaYQc5Yb_7D",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3178#issuecomment-1483734723",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "SylvainGarrigues"
+            },
+            "authorAssociation": "NONE",
+            "body": "> > Thanks a lot for taking this into consideration. Will #3185 also allow to have a proper read timeout for h2 / h3 only servers or is it just for http1 servers?\r\n> \r\n> Just h1\r\n\r\nHow can I prevent DoS attacks (multiple idle opened connections with no headers sent) to my rust hyper h2 server, if I expose it directly to the internet?",
+            "createdAt": "2023-03-25T08:06:41Z",
+            "id": "IC_kwDOAWaYQc5YcF7J",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3178#issuecomment-1483759305",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "paolobarbolini"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Disable h2 or have someone implement timeouts for it too",
+            "createdAt": "2023-03-25T08:21:38Z",
+            "id": "IC_kwDOAWaYQc5YcGnI",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "CONFUSED",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/3178#issuecomment-1483762120",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "So, @programatik29 recently shared this with me: https://gist.github.com/programatik29/36d371c657392fd7f322e7342957b6d1\r\n\r\nThe idea there is to share a timer between the `AsyncRead` and the `Service`. Then it can coordinate that \"headers\" are received to the `Service` some certain amount of time after a `poll_read` has been called.",
+            "createdAt": "2023-05-08T16:18:30Z",
+            "id": "IC_kwDOAWaYQc5btlXt",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3178#issuecomment-1538676205",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "rwthompsonii"
+            },
+            "authorAssociation": "NONE",
+            "body": "This really should just have a default timeout in hyper. Many crates use hyper as their server base. At this point it's starting to become the base implementation for the majority of web traffic in Rust. It shouldn't be the case that you can by-default DDOS web traffic. If we want to provide an override so that pre connect can be customized, sure, but we definitely should fix this. ",
+            "createdAt": "2023-07-21T17:47:40Z",
+            "id": "IC_kwDOAWaYQc5iHK9u",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 14
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/3178#issuecomment-1646047086",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "josecelano"
+            },
+            "authorAssociation": "NONE",
+            "body": "> So, @programatik29 recently shared this with me: https://gist.github.com/programatik29/36d371c657392fd7f322e7342957b6d1\r\n> \r\n> The idea there is to share a timer between the `AsyncRead` and the `Service`. Then it can coordinate that \"headers\" are received to the `Service` some certain amount of time after a `poll_read` has been called.\r\n\r\nHi, @seanmonstar. Is that included in the [hyper 1.0 roadmap](https://github.com/hyperium/hyper/blob/master/docs/ROADMAP.md)?",
+            "createdAt": "2023-11-07T09:10:00Z",
+            "id": "IC_kwDOAWaYQc5rLLH7",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3178#issuecomment-1798091259",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "It is not a requirement for 1.0, but it could be added at any time.",
+            "createdAt": "2023-11-07T19:30:33Z",
+            "id": "IC_kwDOAWaYQc5rRi4u",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/3178#issuecomment-1799761454",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "cbiffle"
+            },
+            "authorAssociation": "NONE",
+            "body": "> Then it can coordinate that \"headers\" are received to the `Service` some certain amount of time after a `poll_read` has been called.\r\n\r\n@seanmonstar, is it just me, or does that implementation potentially fail to work on http2 if the first stream issues prompt headers but the others don't? I'm not super familiar with axum, but it looks like Accept is at the _connection_ level, so the state transitions it's detecting are across all streams?\r\n\r\n(I'm attempting to mitigate http2 slow header attacks in my server and found this bug when looking for suggestions. It looks like in 1.1 there are still no mitigations built into hyper, so an approach like this one would be useful... if it works.)\r\n\r\n**Edit:** Basically, I'm having a hard time convincing myself that this shouldn't have e.g. a counting semaphore for tracking whether something is currently in header/trailer transfer state, rather than two booleans per connection.",
+            "createdAt": "2024-01-28T17:51:18Z",
+            "id": "IC_kwDOAWaYQc5yEFc1",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3178#issuecomment-1913673525",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "@cbiffle I'm curious about your case. HTTP2 is different, so feel free to open another issue, with more details of what you're trying to stop.",
+            "createdAt": "2024-01-28T21:20:32Z",
+            "id": "IC_kwDOAWaYQc5yESIH",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3178#issuecomment-1913725447",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "josecelano"
+            },
+            "authorAssociation": "NONE",
+            "body": "Hi, @seanmonstar. This feature was not included in version 1.0. Right? \r\n\r\nI'm trying to implement it on the Axum server level.\r\n\r\nI've created a sample repo:\r\n\r\nhttps://github.com/josecelano/axum-server-timeout\r\n\r\nI've only set the timeout for `http1_header_read_timeout`\r\n\r\nIn case other people are looking for the same, this is supposed to be the way to do it (but not tested):\r\n\r\nhttps://gist.github.com/programatik29/36d371c657392fd7f322e7342957b6d1\r\n\r\nI think including a default timeout for \"waiting for headers\" would be a good security patch. Does anybody agree? Or are there some cases where you might not want it?",
+            "createdAt": "2024-04-17T12:04:32Z",
+            "id": "IC_kwDOAWaYQc562e-r",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3178#issuecomment-2061103019",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2023-03-18T11:58:37Z",
+        "labels": [
+          {
+            "color": "f9d0c4",
+            "description": "Category: feature. This is adding a new feature.",
+            "id": "MDU6TGFiZWw2OTQ0OTY1OTg=",
+            "name": "C-feature"
+          }
+        ],
+        "number": 3178,
+        "state": "CLOSED",
+        "title": "timeout while waiting for headers",
+        "url": "https://github.com/hyperium/hyper/issues/3178"
+      },
+      "target": {
+        "number": 3178,
+        "reason": "Original user report and timeout expectation.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    }
+  ]
+}

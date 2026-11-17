@@ -1,0 +1,84 @@
+{
+  "case_id": "BurntSushi-ripgrep-3174",
+  "refs": [
+    {
+      "detail": {
+        "body": "### Please tick this box to confirm you have reviewed the above.\n\n- [x] I have a different issue.\n\n### What version of ripgrep are you using?\n\n```\nripgrep 14.1.1\n\nfeatures:+pcre2\nsimd(compile):+SSE2,-SSSE3,-AVX2\nsimd(runtime):+SSE2,+SSSE3,+AVX2\n\nPCRE2 10.43 is available (JIT is available)\n```\n\n### How did you install ripgrep?\n\ndnf\n```\nrpm -q ripgrep  \nripgrep-14.1.1-1.el8.x86_64\n```\n\n### What operating system are you using ripgrep on?\n\nRocky Linux 8.10 (Green Obsidian)\n\n### Describe your bug.\n\nWhen the current directory is passed to ripgrep as `.`, hidden-but-whitelisted files that are immediate children of the current directory are not searched.  This does not happen if no directory argument is provided, or if the directory is provided as `./.` instead.\n\n(For extra context, the Emacs [consult](https://github.com/minad/consult) package always passes a `.` argument to ripgrep when searching under the current working directory, which is how I discovered this.)\n\n### What are the steps to reproduce the behavior?\n\n```sh\ncd \"$(mktemp -d)\"\nmkdir subdir\necho \"foo text\" >subdir/.foo.txt\ncat <<EOF >.ignore\n!.foo.txt\nEOF\n\nrg -l 'text' . # finds subdir/.foo.txt\ncd subdir\n\n# STEP 1\nrg -l 'text'     # finds .foo.txt as expected\nrg -l 'text' .   # bad: no results\nrg -l 'text' ./. # finds ././.foo.txt as expected\n\nmkdir subsubdir\necho \"foo text\" >subsubdir/.foo.txt\n\n# STEP 2\nrg -l 'text'     # finds both .foo.txt and subsubdir/.foo.txt\nrg -l 'text' .   # only finds ./subsubdir/.foo.txt\nrg -l 'text' ./. # finds both ././.foo.txt and ././subsubdir/.foo.txt\n```\n\n### What is the actual behavior?\n\n## At STEP 1 in above example\n\n```\n+ rg --debug -l text\nrg: DEBUG|rg::flags::parse|crates/core/flags/parse.rs:97: no extra arguments found from configuration file\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1083: number of paths given to search: 0\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1108: using heuristics to determine whether to read from stdin or search ./ (is_readable_stdin=false, stdin_consumed=false, mode=Search(FilesWithMatches))\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1118: heuristic chose to search ./\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1269: found hostname for hyperlink configuration: igm-qws-u12685a\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1279: hyperlink format: \"\"\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:174: using 12 thread(s)\nrg: DEBUG|grep_regex::config|/builddir/build/BUILD/ripgrep-14.1.1/vendor/grep-regex-0.1.13/src/config.rs:175: assembling HIR from 1 fixed string literals\nrg: DEBUG|globset|/builddir/build/BUILD/ripgrep-14.1.1/vendor/globset-0.4.15/src/lib.rs:453: built glob set; 0 literals, 0 basenames, 12 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\nrg: DEBUG|ignore::gitignore|/builddir/build/BUILD/ripgrep-14.1.1/vendor/ignore-0.4.23/src/gitignore.rs:393: opened gitignore file: /home/azeng/.cvsignore\nrg: DEBUG|globset|/builddir/build/BUILD/ripgrep-14.1.1/vendor/globset-0.4.15/src/lib.rs:453: built glob set; 0 literals, 3 basenames, 0 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\nrg: DEBUG|ignore::gitignore|/builddir/build/BUILD/ripgrep-14.1.1/vendor/ignore-0.4.23/src/gitignore.rs:393: opened gitignore file: /tmp/tmp.dUv7poBlXQ/.ignore\nrg: DEBUG|globset|/builddir/build/BUILD/ripgrep-14.1.1/vendor/globset-0.4.15/src/lib.rs:453: built glob set; 0 literals, 1 basenames, 0 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\nrg: DEBUG|ignore::walk|/builddir/build/BUILD/ripgrep-14.1.1/vendor/ignore-0.4.23/src/walk.rs:1802: whitelisting ./.foo.txt: Whitelist(IgnoreMatch(Gitignore(Glob { from: Some(\"/tmp/tmp.dUv7poBlXQ/.ignore\"), original: \"!.foo.txt\", actual: \"**/.foo.txt\", is_whitelist: true, is_only_dir: false })))\n.foo.txt\n+ rg --debug -l text .\nrg: DEBUG|rg::flags::parse|crates/core/flags/parse.rs:97: no extra arguments found from configuration file\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1083: number of paths given to search: 1\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1094: is_one_file? false\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1269: found hostname for hyperlink configuration: igm-qws-u12685a\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1279: hyperlink format: \"\"\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:174: using 12 thread(s)\nrg: DEBUG|grep_regex::config|/builddir/build/BUILD/ripgrep-14.1.1/vendor/grep-regex-0.1.13/src/config.rs:175: assembling HIR from 1 fixed string literals\nrg: DEBUG|globset|/builddir/build/BUILD/ripgrep-14.1.1/vendor/globset-0.4.15/src/lib.rs:453: built glob set; 0 literals, 0 basenames, 12 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\nrg: DEBUG|ignore::gitignore|/builddir/build/BUILD/ripgrep-14.1.1/vendor/ignore-0.4.23/src/gitignore.rs:393: opened gitignore file: /home/azeng/.cvsignore\nrg: DEBUG|globset|/builddir/build/BUILD/ripgrep-14.1.1/vendor/globset-0.4.15/src/lib.rs:453: built glob set; 0 literals, 3 basenames, 0 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\nrg: DEBUG|ignore::gitignore|/builddir/build/BUILD/ripgrep-14.1.1/vendor/ignore-0.4.23/src/gitignore.rs:393: opened gitignore file: /tmp/tmp.dUv7poBlXQ/.ignore\nrg: DEBUG|globset|/builddir/build/BUILD/ripgrep-14.1.1/vendor/globset-0.4.15/src/lib.rs:453: built glob set; 0 literals, 1 basenames, 0 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\nrg: DEBUG|ignore::walk|/builddir/build/BUILD/ripgrep-14.1.1/vendor/ignore-0.4.23/src/walk.rs:1799: ignoring ./.foo.txt: Ignore(IgnoreMatch(Hidden))\n```\n\n## At STEP 2 in above example\n\n```\n+ rg --debug -l text\nrg: DEBUG|rg::flags::parse|crates/core/flags/parse.rs:97: no extra arguments found from configuration file\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1083: number of paths given to search: 0\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1108: using heuristics to determine whether to read from stdin or search ./ (is_readable_stdin=false, stdin_consumed=false, mode=Search(FilesWithMatches))\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1118: heuristic chose to search ./\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1269: found hostname for hyperlink configuration: igm-qws-u12685a\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1279: hyperlink format: \"\"\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:174: using 12 thread(s)\nrg: DEBUG|grep_regex::config|/builddir/build/BUILD/ripgrep-14.1.1/vendor/grep-regex-0.1.13/src/config.rs:175: assembling HIR from 1 fixed string literals\nrg: DEBUG|globset|/builddir/build/BUILD/ripgrep-14.1.1/vendor/globset-0.4.15/src/lib.rs:453: built glob set; 0 literals, 0 basenames, 12 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\nrg: DEBUG|ignore::gitignore|/builddir/build/BUILD/ripgrep-14.1.1/vendor/ignore-0.4.23/src/gitignore.rs:393: opened gitignore file: /home/azeng/.cvsignore\nrg: DEBUG|globset|/builddir/build/BUILD/ripgrep-14.1.1/vendor/globset-0.4.15/src/lib.rs:453: built glob set; 0 literals, 3 basenames, 0 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\nrg: DEBUG|ignore::gitignore|/builddir/build/BUILD/ripgrep-14.1.1/vendor/ignore-0.4.23/src/gitignore.rs:393: opened gitignore file: /tmp/tmp.nwh74HI5Fg/.ignore\nrg: DEBUG|globset|/builddir/build/BUILD/ripgrep-14.1.1/vendor/globset-0.4.15/src/lib.rs:453: built glob set; 0 literals, 1 basenames, 0 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\nrg: DEBUG|ignore::walk|/builddir/build/BUILD/ripgrep-14.1.1/vendor/ignore-0.4.23/src/walk.rs:1802: whitelisting ./.foo.txt: Whitelist(IgnoreMatch(Gitignore(Glob { from: Some(\"/tmp/tmp.nwh74HI5Fg/.ignore\"), original: \"!.foo.txt\", actual: \"**/.foo.txt\", is_whitelist: true, is_only_dir: false })))\nrg: DEBUG|ignore::walk|/builddir/build/BUILD/ripgrep-14.1.1/vendor/ignore-0.4.23/src/walk.rs:1802: whitelisting ./subsubdir/.foo.txt: Whitelist(IgnoreMatch(Gitignore(Glob { from: Some(\"/tmp/tmp.nwh74HI5Fg/.ignore\"), original: \"!.foo.txt\", actual: \"**/.foo.txt\", is_whitelist: true, is_only_dir: false })))\n.foo.txt\nsubsubdir/.foo.txt\n+ rg --debug -l text .\nrg: DEBUG|rg::flags::parse|crates/core/flags/parse.rs:97: no extra arguments found from configuration file\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1083: number of paths given to search: 1\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1094: is_one_file? false\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1269: found hostname for hyperlink configuration: igm-qws-u12685a\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1279: hyperlink format: \"\"\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:174: using 12 thread(s)\nrg: DEBUG|grep_regex::config|/builddir/build/BUILD/ripgrep-14.1.1/vendor/grep-regex-0.1.13/src/config.rs:175: assembling HIR from 1 fixed string literals\nrg: DEBUG|globset|/builddir/build/BUILD/ripgrep-14.1.1/vendor/globset-0.4.15/src/lib.rs:453: built glob set; 0 literals, 0 basenames, 12 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\nrg: DEBUG|ignore::gitignore|/builddir/build/BUILD/ripgrep-14.1.1/vendor/ignore-0.4.23/src/gitignore.rs:393: opened gitignore file: /home/azeng/.cvsignore\nrg: DEBUG|globset|/builddir/build/BUILD/ripgrep-14.1.1/vendor/globset-0.4.15/src/lib.rs:453: built glob set; 0 literals, 3 basenames, 0 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\nrg: DEBUG|ignore::gitignore|/builddir/build/BUILD/ripgrep-14.1.1/vendor/ignore-0.4.23/src/gitignore.rs:393: opened gitignore file: /tmp/tmp.nwh74HI5Fg/.ignore\nrg: DEBUG|globset|/builddir/build/BUILD/ripgrep-14.1.1/vendor/globset-0.4.15/src/lib.rs:453: built glob set; 0 literals, 1 basenames, 0 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\nrg: DEBUG|ignore::walk|/builddir/build/BUILD/ripgrep-14.1.1/vendor/ignore-0.4.23/src/walk.rs:1799: ignoring ./.foo.txt: Ignore(IgnoreMatch(Hidden))\nrg: DEBUG|ignore::walk|/builddir/build/BUILD/ripgrep-14.1.1/vendor/ignore-0.4.23/src/walk.rs:1802: whitelisting ./subsubdir/.foo.txt: Whitelist(IgnoreMatch(Gitignore(Glob { from: Some(\"/tmp/tmp.nwh74HI5Fg/.ignore\"), original: \"!.foo.txt\", actual: \"**/.foo.txt\", is_whitelist: true, is_only_dir: false })))\n```\n\n### What is the expected behavior?\n\nIn step 1, ripgrep should have printed one result regardless of whether it was invoked as `rg -l text` or `rg -l text .`.\n\nIn step 2, ripgrep should have printed two results, regardless of path arguments.",
+        "closedAt": "2025-10-09T01:17:00Z",
+        "comments": [
+          {
+            "author": {
+              "login": "huonw"
+            },
+            "authorAssociation": "NONE",
+            "body": "This has been bugging me and my use of `M-x consult-ripgrep` too.\n\nI initially wondered if #2933 / 14f4957b3d605f14ad58bc67e54197a3084fef5a may address it, but I think I could still reproduce the issue with the latest master (bb88a1ac45c70bef97e0d6ccd6e91595610de860)... although I'm not 100% sure I tested the right thing, and ran of out time for my experiments.\n\nThe `./.` workaround is nifty, and can be used in an advice:\n\n```elisp\n(defun advice/consult--ripgrep-make-builder/workaround-rg-3173 (args)\n  \"Workaround https://github.com/BurntSushi/ripgrep/issues/3173: `rg .'\ndoesn't follow inverse .ignores properly, while `rg ./.' does.\"\n  ;; consult--ripgrep-make-builder accepts one arg: `paths'\n  (pcase-let ((`(,paths) args))\n    (list\n     (mapcar (lambda (path) (if (equal path \".\") \"./.\" path)) paths))))\n\n(advice-add 'consult--ripgrep-make-builder :filter-args #'advice/consult--ripgrep-make-builder/workaround-rg-3173)\n```",
+            "createdAt": "2025-10-09T00:23:44Z",
+            "id": "IC_kwDOAzJbyc7Jrjzr",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/3173#issuecomment-3383639275",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "It looks like this is still present on `master` yeah.\n\nAnd it looks like you can just do `./` to work around this. You don't need `./.`.",
+            "createdAt": "2025-10-09T00:39:36Z",
+            "id": "IC_kwDOAzJbyc7JrpiE",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "HEART",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/3173#issuecomment-3383662724",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "bcc32"
+            },
+            "authorAssociation": "NONE",
+            "body": "Thank you for looking at this!",
+            "createdAt": "2025-10-09T18:14:00Z",
+            "id": "IC_kwDOAzJbyc7J4Z97",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/3173#issuecomment-3387006843",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2025-10-08T19:16:44Z",
+        "labels": [
+          {
+            "color": "fc2929",
+            "description": "A bug.",
+            "id": "MDU6TGFiZWwzMzk3MjE2Nzg=",
+            "name": "bug"
+          }
+        ],
+        "number": 3173,
+        "state": "CLOSED",
+        "title": "hidden files whitelisted by ancestor .ignore are not searched when . is directory argument",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/3173"
+      },
+      "target": {
+        "number": 3173,
+        "reason": "Whitelisted hidden files search bug report.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    }
+  ]
+}

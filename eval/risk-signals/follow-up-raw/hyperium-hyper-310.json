@@ -1,0 +1,498 @@
+{
+  "case_id": "hyperium-hyper-310",
+  "refs": [
+    {
+      "detail": {
+        "body": "I'm finding the following in my server logs with some frequency:\n\n```\nERROR:hyper::server: request error = HttpMethodError\n```\n\nAfter spending some time on this, I've found a simple reproduction that seems to hinge on requests with a chunked transfer encoding, though I couldn't tell if it was the hyper client or the server that was incorrect. Wireshark hinted that it may be the client, but I believe that I've encountered this log message in the wild and not just when testing the hyper server with the hyper client.\n\nThe log message is produced when the server is trying to read the http method of a request but encounters unexpected characters. In the case of the error reproduction below, the server appears to be trying to read for a second request on the connection, and it encounters \\r\\n instead of the expected http method.\n\n``` rust\nextern crate test;\nextern crate hyper;\n\nuse std::io;\nuse std::rand;\nuse hyper::method::Method;\nuse hyper::client::Request;\nuse hyper::server;\nuse hyper::status::StatusCode;\n\n#[test]\nfn http_method_error_is_logged() {\n    let ts = TestServer::new();\n    Request::new(Method::Post, ts.get_url())\n        .unwrap().start().unwrap().send().unwrap();\n    io::stdio::stderr().write_line(\n        \"^^^^^^^     That ERROR log message there     ^^^^^^^\").unwrap();\n\n    // I couldn't work out how to capture the error logs, stdio::set_stderr()\n    // only catches messages sent with panic! I think. As a result this \"test\" \n    // doesn't assert, you just have to look at the printed output.\n\n    // Things which cause this error to not reproduce:\n    //   * changing the request to one with no body, like a GET\n    //   * providing a Content-Length on the request\n}\n\nfn hello(_: server::Request, mut res: server::Response) {\n    *res.status_mut() = StatusCode::Ok;\n    let mut res = res.start().unwrap();\n    res.write(b\"Hello World!\").unwrap();\n    res.end().unwrap();\n}\n\n\nstruct TestServer {\n    listen_serv : hyper::server::Listening,\n    port : u16,\n}\n\nimpl TestServer {\n    fn new() -> TestServer {\n        let host = from_str(\"127.0.0.1\").unwrap();\n        // Try to guess a free port that we can bind to:\n        for _ in range(0, 100u) {\n            let port = rand::random();\n            let server = hyper::server::Server::http(host, port);\n\n            match server.listen(hello) {\n                Ok(listening) => {\n                    return TestServer {\n                        listen_serv: listening,\n                        port: port\n                    }\n                },\n                Err(_) => (),\n            };\n        }\n\n        panic!(\"Could not find a port to bind the test server to!\");\n    }\n\n    fn get_url(&self) -> hyper::Url {\n        let mut url = \"http://127.0.0.1:\".to_string();\n        url.push_str(self.port.to_string().as_slice());\n        url.push_str(\"/\");\n        hyper::Url::parse(url.as_slice()).unwrap()\n    }\n}\n\nimpl Drop for TestServer {\n    fn drop(&mut self) {\n        self.listen_serv.close().unwrap();\n    }\n}\n```\n",
+        "closedAt": "2015-02-14T22:36:46Z",
+        "comments": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "It seems the error is 2-fold:\n1. Most all clients don't send a chunked message when there really isn't a body. The client interface was trying to guess if it was chunked. The newer `Client` struct should properly set `Content-Length: 0` when there is no body.\n2. Even so, if the server handler does not read the whole request body (if a client did POST data), and ignores it, then the data will still be in the pipe. The keep alive loop will read on the socket again to see if the connection has continue, and will find the rest of the POST body. This part means that the server perhaps needs to be adjusted somehow to make sure the full request is read, even if the `Handler` doesn't do it.\n",
+            "createdAt": "2014-12-13T21:01:06Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDY2ODkxMjg5",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/197#issuecomment-66891289",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "reem"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "We could call the appropriate reading/writing functions in `Drop`, thereby ensuring we always read or write even if the Handler does nothing.\n",
+            "createdAt": "2014-12-13T21:12:31Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDY2ODkxNzAx",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/197#issuecomment-66891701",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2014-12-13T18:23:03Z",
+        "labels": [
+          {
+            "color": "d93f0b",
+            "description": "Category: bug. Something is wrong. This is bad!",
+            "id": "MDU6TGFiZWwxMjU3MTAxOTc=",
+            "name": "C-bug"
+          },
+          {
+            "color": "fbca04",
+            "description": "Area: server.",
+            "id": "MDU6TGFiZWwxMjgzOTk3OTc=",
+            "name": "A-server"
+          }
+        ],
+        "number": 197,
+        "state": "CLOSED",
+        "title": "`request error = HttpMethodError` logs",
+        "url": "https://github.com/hyperium/hyper/issues/197"
+      },
+      "target": {
+        "number": 197,
+        "reason": "Original drain/drop request lifecycle issue.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    },
+    {
+      "detail": {
+        "body": "The framing of a HTTP request doesn't depend on the method [1], so any request with a non-zero Content-Length has a corresponding body. This does not change in the case of idempotent methods like GET; what is different is that for such methods it is incorrect for the server's response to depend on the content of this body.\n\nAt the moment GET and HEAD are incorrectly special cased in hyper [2] leading to problems if you send a GET request with a body (the unread body bleeds into the following request unless the connection is closed). In these cases the body data, if any, must be read from the network but could be discarded and not made avaliable through the request API.\n\n[1] https://tools.ietf.org/html/rfc7230#section-3.3\n[2] https://github.com/hyperium/hyper/blob/master/src/server/request.rs#L42\n",
+        "closedAt": "2016-05-24T18:55:55Z",
+        "comments": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Good catch. I've also noticed that for requests that should have a body, such as POST, and the user doesn't read it out, it bleeds into the next request also. \n",
+            "createdAt": "2015-02-13T17:49:41Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDc0Mjk1MjQ3",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-74295247",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "reem"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "We could write a Drop impl for Request that tries to read out the remainder of the body.\n",
+            "createdAt": "2015-02-13T18:50:54Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDc0MzA1MzI2",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-74305326",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "cc #197 \n",
+            "createdAt": "2015-02-14T02:39:02Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDc0MzU4MDA1",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-74358005",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "The patch was reverted, so not fixed. \n",
+            "createdAt": "2015-02-27T16:21:43Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDc2NDIxODAx",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-76421801",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "reem"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "If we are going to do this, it has to be configurable (the max amount we read before shutting down the connection).\n",
+            "createdAt": "2015-02-27T20:57:32Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDc2NDcwMzY3",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-76470367",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "durka"
+            },
+            "authorAssociation": "NONE",
+            "body": "We should fix this, or advertise the behavior in blinking red marquee in the documentation. I had no idea where to start when I ended up with order-dependent 404 errors in my application (because one POST form submission had content, and the next one had an invalid HTTP method due to this bug).\n\nWhat scenarios motivate not wanting to read the entire request out of the network buffer?\n",
+            "createdAt": "2015-07-31T19:29:05Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDEyNjc5MDc5NQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-126790795",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "SergioBenitez"
+            },
+            "authorAssociation": "NONE",
+            "body": "I just ran into this issue. This is a rather major issue as it completely breaks Hyper's abstraction over HTTP. That is, it breaks Hyper. If it's not going to be fixed, at least place a warning in the documentation as @durka notes.\n",
+            "createdAt": "2016-03-30T03:15:34Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDIwMzIyNzI3OQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-203227279",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "The approach I've taken in the async branch is that if a request claims a body, such as using a `Content-Length` header, you can read it. If a request claims a body, and you have not read it, then the socket will not be marked keep-alive (as the unread body ruins parsing the next request). The body will **not** be automatically read, so as to give the option to the user.\n",
+            "createdAt": "2016-03-30T17:44:59Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDIwMzU0NzgxNg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-203547816",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "SergioBenitez"
+            },
+            "authorAssociation": "NONE",
+            "body": "Does simply _not_ marking a socket keep-alive solve the issue? My main grievance is not based on whether Hyper should or should not read any remaining data, it's that Hyper fails to parse the next HTTP request correctly, resulting in bogus structures. I don't believe _not_ marking the socket keep-alive prevents this from happening. If that's the case, then this isn't any better than the status-quo. If it does prevent this from happening, then it seems like this issue can be closed.\n\nCan you explain why this can happen at all? Why not fast-forward the stream until after the previous request's content? That is, if a request has been dropped and a new request is reusing that old request's socket, advance the stream by `old_Content-Length - (current_read_position - old_headers_size)` bytes.\n",
+            "createdAt": "2016-03-30T18:10:31Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDIwMzU2MDUwOA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-203560508",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "In HTTP/1.x, keep-alive determines whether an additional request/response can occur on the same socket. So, if hyper decides that a connection should not be kept alive, then it will close the socket after the last response is written. A client would then have to arrange a new connection to send another message.\n\n---\n\nThe stream isn't necessarily read yet. hyper doesn't perform tcp reads until the user asks for it, when calling `request.read()`. So when a request is dropped, hyper can check to see if the amount of bytes that have been read from the socket match the `Content-Length` header. If it does not, then there are still bytes _on the wire_. Reading until the end would require more socket reads. And what if the `Content-Length` is something ridiculous, like 2GB. If the user didn't want to read that data, then it's a complete waste of time and bandwidth for hyper to read 2 gigs of bytes to be dropped into the ether.\n\nSo then you're left with wondering what is the correct limit that hyper should use to decide if it can \"fast forward\" or not? Likely, that would be up to the user. Now we have yet another knob to fiddle with. Better to stay explicit: if the user doesn't read the data, hyper doesn't read.\n",
+            "createdAt": "2016-03-30T18:52:30Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDIwMzU3NzI3OA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-203577278",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "matt2xu"
+            },
+            "authorAssociation": "NONE",
+            "body": "For what it's worth, I've been bitten by this bug too: https://github.com/matt2xu/edge-rs/blob/master/src/lib.rs#L175 :smile: \n\nI agree that your approach is sensible, and all that's missing is documenting this behavior. Frameworks on top of Hyper (or code using Hyper directly) can then decide whether closing the connection or reading the request's body. Ideally I would suggest that in the description of the Request a line be added \"It is the user's responsibility to handle the request's body by either reading it or discarding it and closing the connection. Note that by default, Hyper uses a pool of connections with keep-alive behavior, which means that if a request has a body that is not read, the socket is reused and the next request is parsed incorrectly.\". What do you think?\n",
+            "createdAt": "2016-03-30T19:59:11Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDIwMzYwODM5MA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-203608390",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "> It is the user's responsibility to handle the request's body by either reading it or discarding it and closing the connection. Note that by default, Hyper uses a pool of connections with keep-alive behavior, which means that if a request has a body that is not read, the socket is reused and the next request is parsed incorrectly.\n\nWhile that's true in the current blocking IO code, but it is not that way in the async branch. If a request body is not completely read (in async branch), hyper will drop the socket, not try to parse a new one on it.\n",
+            "createdAt": "2016-03-30T20:17:32Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDIwMzYxNDMwNA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-203614304",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "matt2xu"
+            },
+            "authorAssociation": "NONE",
+            "body": "Ok, good. So we change the text a bit :smile: I still think that this deserves a few words in the documentation so people aren't surprised by this. I look forward to using the async branch by the way, when I have the time I'll update my code.\n",
+            "createdAt": "2016-03-30T20:24:35Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDIwMzYxNjgzOQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-203616839",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "durka"
+            },
+            "authorAssociation": "NONE",
+            "body": "I'm thinking maybe I should publish my [`Drain` adapter](https://github.com/haptics-nri/nri/blob/3156f621868de95aea4170ffd381025ebbda8fa7/src/web/mod.rs#L441-L469) as a mini-crate! It's an Iron middleware that reads out an unread request so that the socket can be reused, up to some limit, and if the limit is reached and there's still more data then it closes the socket.\n",
+            "createdAt": "2016-03-30T20:46:32Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDIwMzYyOTY4NA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-203629684",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "SergioBenitez"
+            },
+            "authorAssociation": "NONE",
+            "body": "@seanmonstar \n\n> While that's true in the current blocking IO code, but it is not that way in the async branch. If a request body is not completely read (in async branch), hyper will drop the socket, not try to parse a new one on it.\n\nExcellent. That solves the issue for me.\n",
+            "createdAt": "2016-03-30T20:57:30Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDIwMzYzMzkwNg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-203633906",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "reem"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Just came across this PR as an example of things that can go wrong from closing the socket if the body is not completely read - https://github.com/google/go-github/pull/317. Not necessarily saying we shouldn't go that way but it's something to keep in mind.\n",
+            "createdAt": "2016-04-01T03:35:27Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDIwNDIzMjczNg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-204232736",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "reem"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "@durka definitely release that as its own crate :)\n",
+            "createdAt": "2016-04-01T03:36:19Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDIwNDIzMzExNg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-204233116",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "durka"
+            },
+            "authorAssociation": "NONE",
+            "body": "@reem [done](https://crates.io/crates/iron-drain)\n",
+            "createdAt": "2016-04-02T07:07:04Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDIwNDY2MTg1OA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-204661858",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "This has been solved in master.\n",
+            "createdAt": "2016-05-24T18:55:55Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDIyMTM2ODgzOQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-221368839",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "untitaker"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "@seanmonstar Could you specify the version or commit in which this has been fixed?\n",
+            "createdAt": "2016-08-24T14:19:13Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI0MjA4MTUyMw==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-242081523",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "@untitaker this was part of the \"async\" commit, https://github.com/hyperium/hyper/commit/d35992d0198d733c251e133ecc35f2bca8540d96\n\nThe specific logic is here: https://github.com/hyperium/hyper/blob/d35992d0198d733c251e133ecc35f2bca8540d96/src/http/conn.rs#L623-L629\n",
+            "createdAt": "2016-08-24T19:10:14Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI0MjE3NTgzNg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-242175836",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "golddranks"
+            },
+            "authorAssociation": "NONE",
+            "body": "Has this fix included in any release yet? I'm encountering the bug with 0.9.10.\n",
+            "createdAt": "2016-09-15T17:01:17Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI0NzM4Nzc2MQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-247387761",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Fixing this in 0.9 wasn't wasy to figure out, thanks to the internal design. The rewrite that is included in (not release) 0.10 made fixing this possible.\n",
+            "createdAt": "2016-09-15T17:30:06Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI0NzM5NTUzNQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-247395535",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "golddranks"
+            },
+            "authorAssociation": "NONE",
+            "body": "Allright, thanks for the info :)\n",
+            "createdAt": "2016-09-15T17:38:55Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI0NzM5Nzc2OA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-247397768",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "sapsan4eg"
+            },
+            "authorAssociation": "NONE",
+            "body": "Guys, issue was open in Feb 2015, almost two years. In hyper 0.10  the problem does not repeat itself, but when the scheduled release? As I understand 0.9x is not compatible with 0.10. And this does not solve the current problem with 0.9x. ",
+            "createdAt": "2016-12-09T12:09:48Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI2NTk5OTY5MQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-265999691",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "matthauck"
+            },
+            "authorAssociation": "NONE",
+            "body": "_ping_. Has this change been released yet?",
+            "createdAt": "2017-03-17T00:31:37Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI4NzIzMzE3OA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/309#issuecomment-287233178",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2015-02-13T12:03:28Z",
+        "labels": [
+          {
+            "color": "d93f0b",
+            "description": "Category: bug. Something is wrong. This is bad!",
+            "id": "MDU6TGFiZWwxMjU3MTAxOTc=",
+            "name": "C-bug"
+          },
+          {
+            "color": "fbca04",
+            "description": "Area: server.",
+            "id": "MDU6TGFiZWwxMjgzOTk3OTc=",
+            "name": "A-server"
+          }
+        ],
+        "number": 309,
+        "state": "CLOSED",
+        "title": "Read body for all requests with a Content-Length header",
+        "url": "https://github.com/hyperium/hyper/issues/309"
+      },
+      "target": {
+        "number": 309,
+        "reason": "Related drain/drop request lifecycle issue.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    }
+  ]
+}

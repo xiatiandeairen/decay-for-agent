@@ -1,0 +1,320 @@
+{
+  "case_id": "hyperium-hyper-3261",
+  "refs": [
+    {
+      "detail": {
+        "baseRefName": "master",
+        "baseRefOid": "d92d3917d950e4c61c37c2170f3ce273d2a0f7d1",
+        "body": "fix issue in the graceful shutdown logic\r\nwhich causes the connection future to hang\r\nwhen graceful shutdown is called prior to any\r\nrequests being  made. This fix checks to see\r\nif the connection is still in its initial state\r\nwhen disable_keep_alive is called, and starts the\r\nshutdown process if it is.\r\n\r\nThis addresses issue #2730\r\n\r\n",
+        "comments": [
+          {
+            "author": {
+              "login": "rob2244"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "I'm not sure if this is the best solution or not, it feels like it's catering a little too much to this one edge case if you know what I mean. But it does pass all the tests. Let me know if there's a better way to do this.",
+            "createdAt": "2023-05-23T05:38:54Z",
+            "id": "IC_kwDOAWaYQc5c5bmG",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/pull/3233#issuecomment-1558559110",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "rob2244"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Actually, it seems like the tests failed on mac-OS. I think this solution may introduce a race condition.",
+            "createdAt": "2023-05-23T15:08:10Z",
+            "id": "IC_kwDOAWaYQc5c9iFi",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/pull/3233#issuecomment-1559634274",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Ok, after taking a look: the problem is that the connection is closing on all platforms, but macOS is triggering an error trying to write the second half of the request.\r\n\r\n@sfackler in your mind, what behavior did you expect? If the request has already _started_, as in we've received some of the bytes, but not the full headers, should that be allowed to continue? Or should that be closed, and we only allow requests to continue if they are streaming their body?\r\n\r\nI think the goal was to prevent pre-emptive idle connections from keeping the server alive, not to interrupt new connections that had their headers split between packets, right?",
+            "createdAt": "2023-07-06T15:07:30Z",
+            "id": "IC_kwDOAWaYQc5gyfi7",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/pull/3233#issuecomment-1623849147",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Fixed this up in #3261.",
+            "createdAt": "2023-07-06T19:23:52Z",
+            "id": "IC_kwDOAWaYQc5gz06o",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/pull/3233#issuecomment-1624198824",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "sfackler"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Yeah, I would expect that the idle timer would start counting as soon as the connection is created, and stop as soon as the first byte of the headers are received. The header timeout should handle the second case I think.",
+            "createdAt": "2023-07-06T23:39:03Z",
+            "id": "IC_kwDOAWaYQc5g0u3r",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/pull/3233#issuecomment-1624436203",
+            "viewerDidAuthor": false
+          }
+        ],
+        "files": [
+          {
+            "additions": 5,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "src/proto/h1/conn.rs"
+          },
+          {
+            "additions": 5,
+            "changeType": "MODIFIED",
+            "deletions": 1,
+            "path": "src/proto/h1/dispatch.rs"
+          },
+          {
+            "additions": 26,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "tests/server.rs"
+          }
+        ],
+        "headRefName": "graceful-shutdown-fix",
+        "headRefOid": "45c80212383c7b9e0963d0ffd039303f66d3cdd3",
+        "labels": [],
+        "mergedAt": null,
+        "number": 3233,
+        "reviewDecision": "REVIEW_REQUIRED",
+        "reviews": [],
+        "state": "CLOSED",
+        "title": "fix(http1): http1 server graceful shutdown fix",
+        "url": "https://github.com/hyperium/hyper/pull/3233"
+      },
+      "target": {
+        "number": 3233,
+        "reason": "Original graceful shutdown fix and failing test context.",
+        "repo": "hyperium/hyper",
+        "type": "pr"
+      }
+    },
+    {
+      "detail": {
+        "body": "**Version**\r\nhyper 0.14.16\r\n\r\n**Platform**\r\nLinux DESKTOP-DHO88R7 4.19.104-microsoft-standard #1 SMP Wed Feb 19 06:37:35 UTC 2020 x86_64 x86_64 x86_64 GNU/Linux\r\n\r\n**Description**\r\nIf you gracefully shut down a server connection future before the first request, Hyper will not actually shut the connection down until a request is processed:\r\n\r\n```rust\r\nuse hyper::server::conn::Http;\r\nuse hyper::Response;\r\nuse tokio::io::AsyncReadExt;\r\nuse tokio::net::{TcpListener, TcpStream};\r\nuse tokio::pin;\r\n\r\n#[tokio::main]\r\nasync fn main() {\r\n    let listener = TcpListener::bind(\"127.0.0.1:0\").await.unwrap();\r\n    let addr = listener.local_addr().unwrap();\r\n\r\n    tokio::spawn(server(listener));\r\n\r\n    let mut stream = TcpStream::connect(addr).await.unwrap();\r\n    println!(\"connected\");\r\n    let mut buf = vec![];\r\n    stream.read_to_end(&mut buf).await.unwrap();\r\n}\r\n\r\nasync fn server(listener: TcpListener) {\r\n    let socket = listener.accept().await.unwrap().0;\r\n\r\n    let service = hyper::service::service_fn(|_: hyper::Request<hyper::Body>| async {\r\n        Err::<Response<hyper::Body>, _>(\"no\")\r\n    });\r\n\r\n    let future = Http::new()\r\n        .http1_only(true)\r\n        .serve_connection(socket, service);\r\n    pin!(future);\r\n    future.as_mut().graceful_shutdown();\r\n\r\n    future.await.unwrap();\r\n}\r\n```\r\n\r\nI would expect this program to exit almost instantly since there is no request being processed when the graceful_shutdown is invoked. However, it instead blocks forever waiting on the client to send headers.\r\n\r\nThe behavior actually appears to be that the shutdown is processed immediately after the first request is fully handled.",
+        "closedAt": "2023-07-06T19:23:30Z",
+        "comments": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Yea, I think this is behavior is currently on purpose. Whether it _should_ be is a fair question. I think at the time, I assumed that a _new_ connection would usually have a request incoming ASAP, whereas an idle connection might not, and so it was better to allow that request to come in.\r\n\r\nWe could alter that behavior, if we document a good reason for _why_ we're making that change. Also, I imagine using the `http1_header_read_timeout` option could help here.",
+            "createdAt": "2022-01-03T19:57:15Z",
+            "id": "IC_kwDOAWaYQc473Lo5",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2730#issuecomment-1004321337",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "sfackler"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "I agree that it's *more likely* for the first request to show up than a follow up request, but it seems weird to bake that assumption into graceful_shutdown IMO. For reference, I'm using graceful_shutdown in some logic to shut down connections after a certain period of idleness (I can't just terminate the connection future since I want the TLS session to shut down cleanly for session reuse). Right now, the current behavior will miss connections that are opened and never make a request.\r\n\r\nDoes `http1_header_read_timeout` start counting immediately or just once the first byte of the header is received? In any case, I don't think that'd help for an h2 connection, right?",
+            "createdAt": "2022-01-03T20:09:19Z",
+            "id": "IC_kwDOAWaYQc473NbS",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2730#issuecomment-1004328658",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "kestrel-x86"
+            },
+            "authorAssociation": "NONE",
+            "body": "Any progress on this? I was trying to figure out why my program wasn't exiting when I expected it to and found this issue. If I send the graceful shutdown signal the server will process one more request before actually exiting. So a user sending the shutdown command through a web app won't actually be shutting anything down.",
+            "createdAt": "2022-07-25T01:57:15Z",
+            "id": "IC_kwDOAWaYQc5HIuu_",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2730#issuecomment-1193470911",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "bossmc"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "> Does http1_header_read_timeout start counting immediately or just once the first byte of the header is received? In any case, I don't think that'd help for an h2 connection, right?\r\n\r\nFrom some testing just now, the answer to the first part is \"no\".  If I start-up an `http1::Connection` with a header timeout configured and connect to it simply with `nc` then the connection stays up indefinitely.  Once I send any data (even a blank line) the timer starts counting and the connection is closed as expected after the timeout.",
+            "createdAt": "2022-11-03T00:42:00Z",
+            "id": "IC_kwDOAWaYQc5Nk7Xb",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2730#issuecomment-1301525979",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "This seems like a thing to slide into RC2 or RC3.\r\n\r\n> I can't just terminate the connection future since I want the TLS session to shut down cleanly for session reuse\r\n\r\n@sfackler Does this mean you'd have the connection write out a 408 response and then finish? Or simply calling `poll_shutdown` and then return the future like if it were in keep-alive state? I guess calling shutdown will make the TLS shutdown start, right?\r\n",
+            "createdAt": "2022-12-15T16:09:29Z",
+            "id": "IC_kwDOAWaYQc5Qqjgm",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2730#issuecomment-1353332774",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "sfackler"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Yeah it just needs to call shutdown on the underlying IO object, which will handle the SSL shutdown protocol.",
+            "createdAt": "2022-12-15T16:51:35Z",
+            "id": "IC_kwDOAWaYQc5Qqx7K",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2730#issuecomment-1353391818",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "rob2244"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "I think I can take this one.",
+            "createdAt": "2023-05-13T03:12:58Z",
+            "id": "IC_kwDOAWaYQc5cLdrQ",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2730#issuecomment-1546509008",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "rob2244"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "@seanmonstar so the issue right now is this: \r\n\r\nif we try to control this using the keep_alive state (which is what we're currently doing) it introduces a race condition of sorts.\r\nIf keep_alive is initially **Idle**, when disable_keep_alive() is called (either directly or through graceful_shutdown) the connection will shut down before servicing **any** requests. This seems like incorrect behavior, it breaks some unit tests and I would expect that the connection would respond to one request before shutting down.\r\n\r\nIf keep_alive is initially **Busy** then the connection will wait forever on the read of the initial request.\r\n\r\nI think we have two options here: either we keep the initial state as Busy and add some sort of read timeout somewhere, or we keep the initial state as Idle and do a peek on the underlying io stream and process any data found there before closing the connection.\r\n\r\n**edit**:\r\nActually I found another way to do it I think. Let me see if it works. Not sure I'm super happy with it thought because it feels a little like catering to an edge case too much",
+            "createdAt": "2023-05-21T21:23:28Z",
+            "id": "IC_kwDOAWaYQc5cwy-D",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2730#issuecomment-1556295555",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "> If keep_alive is initially Idle, when disable_keep_alive() is called (either directly or through graceful_shutdown) the connection will shut down before servicing any requests.\r\n\r\nThat seems like the desired outcome of this issue, no? Or do you mean the request was already received, and the connection just aborts abruptly?",
+            "createdAt": "2023-05-23T22:28:06Z",
+            "id": "IC_kwDOAWaYQc5c_ua8",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2730#issuecomment-1560209084",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "rob2244"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "@seanmonstar yeah so essentially if a http1 server conn is created with .keep_alive(false) the server shuts down without servicing any requests. Is that the behavior we want? I would think you would want the server to service one request to see if that request wants to keep the connection alive or not.\r\n\r\nThe following two tests fail when the initial keep alive state is set to idle:\r\n\r\n![image](https://github.com/hyperium/hyper/assets/26353604/a13d1e30-19e5-4af3-82f5-84178a9b4920)\r\n\r\n\r\n![image](https://github.com/hyperium/hyper/assets/26353604/61856a98-2176-4f7a-bc8a-efaefcc38690)\r\n\r\n\r\nThe read_to_end in both cases returns an empty array because the server shut down before processing anything. ",
+            "createdAt": "2023-05-24T00:36:03Z",
+            "id": "IC_kwDOAWaYQc5dADuC",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2730#issuecomment-1560296322",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2022-01-01T16:00:06Z",
+        "labels": [
+          {
+            "color": "d93f0b",
+            "description": "Category: bug. Something is wrong. This is bad!",
+            "id": "MDU6TGFiZWwxMjU3MTAxOTc=",
+            "name": "C-bug"
+          },
+          {
+            "color": "fbca04",
+            "description": "Area: server.",
+            "id": "MDU6TGFiZWwxMjgzOTk3OTc=",
+            "name": "A-server"
+          },
+          {
+            "color": "c2e0c6",
+            "description": "Effort: medium. Some knowledge of how hyper internal works would be useful.",
+            "id": "MDU6TGFiZWw2OTQ0OTY3OTk=",
+            "name": "E-medium"
+          },
+          {
+            "color": "1d76db",
+            "description": "Blocked: this is an \"API breaking change\".",
+            "id": "MDU6TGFiZWwxMzYxNTYzNjIz",
+            "name": "B-breaking-change"
+          }
+        ],
+        "number": 2730,
+        "state": "CLOSED",
+        "title": "Connection::graceful_shutdown always waits for the first request.",
+        "url": "https://github.com/hyperium/hyper/issues/2730"
+      },
+      "target": {
+        "number": 2730,
+        "reason": "HTTP/1 graceful shutdown hang report.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    }
+  ]
+}

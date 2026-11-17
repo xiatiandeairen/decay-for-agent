@@ -1,0 +1,5 @@
+{
+  "case_id": "hyperium-hyper-4069",
+  "reason": "judgement_drafts.ai_baseline: 'notes' length 358 exceeds max 300",
+  "status": "judge-failed"
+}

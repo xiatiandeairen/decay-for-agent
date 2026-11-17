@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "tokio-rs-tokio-7983"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "When an io_uring open operation is cancelled — at dispatch_completions, cancel_op (Completed→Cancelled transition), or runtime Drop — the resulting fd from the CQE is now adopted via OwnedFd::from_raw_fd and closed on drop instead of being silently discarded and leaked."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank 1 names UringContext::drop's retain-then-discard of Completed(Open) as the leak path — matches lifecycle_ordering ground truth. Rank 3 flags loose 'leaked<=64' threshold, echoing themavik's review comment. Rank 2 (state_transition on cancel_op hard-coding Open) is supporting but real, matching… [recovered-from-raw: judge response exceeded schema free-text caps; metrics unaffected]"

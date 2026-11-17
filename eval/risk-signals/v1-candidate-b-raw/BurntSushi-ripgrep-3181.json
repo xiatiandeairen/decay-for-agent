@@ -1,0 +1,31 @@
+{
+  "candidate": {
+    "id": "BurntSushi-ripgrep-3181",
+    "repo": "BurntSushi/ripgrep",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3181"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "5c42c8c48f4163ba7c0662cb70dbf61f9d670d9a",
+    "body": "Building it can consume resources. In particular, on Windows, the\nvarious binaries are eagerly resolved.\n\nI think this originally wasn't done. The eager resolution was added\nlater for security purposes. But the \"eager\" part isn't actually\nnecessary.\n\nIt would probably be better to change the decompression reader to do\nlazy resolution only when the binary is needed. But this will at least\navoid doing anything when the `-z/--search-zip` flag isn't used. But\nwhen it is, ripgrep will still eagerly resolve all possible binaries.\n\nFixes #2111\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 21,
+        "changeType": "MODIFIED",
+        "deletions": 18,
+        "path": "crates/core/search.rs"
+      }
+    ],
+    "headRefName": "ag/skip-binary-resolution-windows",
+    "headRefOid": "e4f0d40056b7438f00cc6dc3a092cf775e5801b2",
+    "labels": [],
+    "mergedAt": "2025-10-12T20:31:20Z",
+    "number": 3181,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "core: don't build decompression reader unless we intend to use it",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3181"
+  }
+}

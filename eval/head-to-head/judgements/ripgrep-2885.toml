@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "ripgrep-2885"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "Fix union() to set prefix=true only when both unioned sequences have prefix=true, preventing incorrect cross-product literal extraction that produced false negatives (e.g. `(?i:e.x|ex)` failed to match `e-x`). Also force choose() to mark both candidates inexact before returning, since picking one means rejecting the other."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Top1 directly identifies the union `seq1.prefix = seq1.prefix && seq2.prefix` change as the key mechanism (matches ground truth). Top2 catches choose make_inexact semantic shift (the secondary fix). Top3 tests/util.rs is supporting only. Rationale on top1 slightly off (frames as assertion risk vs c… [recovered-from-raw: judge response exceeded schema free-text caps; metrics unaffected]"

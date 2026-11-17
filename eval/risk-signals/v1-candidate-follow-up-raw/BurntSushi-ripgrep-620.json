@@ -1,0 +1,60 @@
+{
+  "case_id": "BurntSushi-ripgrep-620",
+  "refs": [
+    {
+      "detail": {
+        "body": "I think `--after-context` (`-A`) and `--context` (`-C`) should have the same precedence as `--before-context` (`-B`), when being combined with `--max-count` (`-m`), but they do not:\r\n\r\n```bash\r\n$ cat > rgtest.txt <<EOF\r\n> a\r\n> b\r\n> c\r\n> d\r\n> e\r\n> EOF\r\n$ rg -B2 c rgtest.txt\r\n1-a\r\n2-b\r\n3:c\r\n$ rg -C2 c rgtest.txt\r\n1-a\r\n2-b\r\n3:c\r\n4-d\r\n5-e\r\n$ rg -A2 c rgtest.txt\r\n3:c\r\n4-d\r\n5-e\r\n$ # and now with --max-count:\r\n$ rg -B2 c -m1 rgtest.txt\r\n1-a\r\n2-b\r\n3:c\r\n$ rg -C2 c -m1 rgtest.txt\r\n1-a\r\n2-b\r\n3:c\r\n$ rg -A2 c -m1 rgtest.txt\r\n3:c\r\n```\r\n\r\nFrom my expectations, `-B` works correctly, `-C` works like `-B` which is unexpected, and `-A` has no effect at all.\r\n\r\nMy use case is to show a colleague one instance of many repeated matches, but also with some context. If `-A` combined with `-m` would yield the same result as with `-B`, then my use case would have been fulfilled.\r\n\r\nI am using ripgrep-0.3.2-1.fc24.x86_64, packaged for Fedora through copr (by carlgeorge-ripgrep).\r\n\r\nThanks for a great program! (edit: removed trailing whitespace in code block)",
+        "closedAt": "2017-10-08T12:10:36Z",
+        "comments": [
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "Thanks for the bug report. This is definitely a bug. But I don't think it has anything to do with *precedence* specifically. For example:\r\n\r\n```\r\n[andrew@Cheetah ripgrep-402] cat > rgtest.txt <<EOF\r\n> a\r\n> b\r\n> c\r\n> d\r\n> e\r\n> a\r\n> b\r\n> c\r\n> d\r\n> e\r\n> EOF\r\n[andrew@Cheetah ripgrep-402] rg -C2 c -m1 rgtest.txt\r\n1-a\r\n2-b\r\n3:c\r\n[andrew@Cheetah ripgrep-402] rg -C2 c -m2 rgtest.txt\r\n1-a\r\n2-b\r\n3:c\r\n4-d\r\n5-e\r\n6-a\r\n7-b\r\n8:c\r\n```\r\n\r\nNotice that in the last example, the \"after\" context for the first match is printed correctly. Only the last match loses it.\r\n\r\nThis is probably just a bug in the search code where it neglects to print the context after the last match if it decides to quit early. I'll note that `grep` handles this correctly:\r\n\r\n```\r\n[andrew@Cheetah ripgrep-402] grep -C2 c -m2 rgtest.txt\r\na\r\nb\r\nc\r\nd\r\ne\r\na\r\nb\r\nc\r\nd\r\ne\r\n```\r\n\r\nThis _could_ be a little tricky to fix. Not sure.",
+            "createdAt": "2017-03-10T11:54:34Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI4NTY1MDk4NQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 3
+                }
+              }
+            ],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/402#issuecomment-285650985",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2017-03-10T08:52:56Z",
+        "labels": [
+          {
+            "color": "fc2929",
+            "description": "A bug.",
+            "id": "MDU6TGFiZWwzMzk3MjE2Nzg=",
+            "name": "bug"
+          },
+          {
+            "color": "e99695",
+            "description": "An issue related to modularizing ripgrep into libraries.",
+            "id": "MDU6TGFiZWw1MTU3MTk5NzQ=",
+            "name": "libripgrep"
+          }
+        ],
+        "number": 402,
+        "state": "CLOSED",
+        "title": "--max-count has precedence over --after-context and --context",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/402"
+      },
+      "target": {
+        "number": 402,
+        "reason": "Context after max-count early return report.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    }
+  ]
+}

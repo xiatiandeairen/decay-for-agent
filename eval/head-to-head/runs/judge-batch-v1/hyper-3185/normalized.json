@@ -1,0 +1,42 @@
+{
+  "case_id": "hyper-3185",
+  "ground_truth_draft": {
+    "expected_behavior": "http1_header_read_timeout now starts immediately when the connection is established (in poll_read_head before parsing), instead of only after the first header bytes arrive in parse_headers. A client that opens a TCP connection and sends nothing is now closed after the configured timeout.",
+    "high_value": true,
+    "primary_signal_ids": [
+      "lifecycle_ordering"
+    ],
+    "rationale_from_pr_metadata": "PR title 'fix(server): start header read timeout immediately' and body 'used to start once there was a single read of headers. This change makes it start the timer immediately, right when the connection is established. Closes #3178'. jeromegn comment: 'hyper is vulnerable to malicious actors who may just open connections and never send anything.' New test header_read_timeout_starts_immediately asserts EOF after timeout with zero bytes sent \u2014 anchors the fix as a connection-lifetime/timer-arming ordering change.",
+    "subject_files": [
+      "src/proto/h1/conn.rs"
+    ]
+  },
+  "judgement_drafts": {
+    "ai_baseline": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "Top-1 nails lifecycle_ordering exactly \u2014 'timer arming moved... deadline now starts before any IO/leading-line consumption'. Top-2 raises a plausible error-path cleanup concern (stale armed timer on Err return). Top-3 supporting test-gap. Baseline saw the real mechanism from the diff alone.",
+      "top3_total": 3,
+      "top3_useful": 2,
+      "weak_only_top_risk_count": 0
+    },
+    "fact_only": {
+      "actionable": true,
+      "missed_high_risk_count": 1,
+      "notes": "Top-1 flags poll_read_head complexity worsened (direct) \u2014 same function as the real fix but does not name the lifecycle_ordering mechanism. Top-2 prod_change_with_tests is supporting. A reviewer would look at poll_read_head but the timer-arming ordering wouldn't be highlighted.",
+      "top3_total": 2,
+      "top3_useful": 1,
+      "weak_only_top_risk_count": 0
+    },
+    "semantic_filtered": {
+      "actionable": true,
+      "missed_high_risk_count": 1,
+      "notes": "Single finding restates the complexity regression on poll_read_head with explicit limitation that no semantic-pattern evidence exists. Right function, wrong reason \u2014 does not identify the timer-arming lifecycle change. Reviewer is pointed at the file but not the mechanism.",
+      "top3_total": 1,
+      "top3_useful": 1,
+      "weak_only_top_risk_count": 0
+    }
+  },
+  "manifest_hash": "06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208",
+  "model": "claude-opus-4-7"
+}

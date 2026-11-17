@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyper-4042"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "When the client drops the response future, send_task detects cancellation via poll_canceled and signals pipe_task through a new oneshot channel; pipe_task then calls send_reset(h2::Reason::CANCEL) on the SendStream so RST_STREAM is sent to the server and flow-control window capacity is freed instead of being held forever."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank 1 flags lifecycle_ordering panic risk in PipeMap::poll after take(); rank 2 flags concurrency_ordering dependency on executor still polling pipe_task after oneshot signal — both match ground truth. Rank 3 test_gap is supporting and a fair concern about the matches! arm."

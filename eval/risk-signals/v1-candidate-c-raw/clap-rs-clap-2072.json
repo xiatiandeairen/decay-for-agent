@@ -1,0 +1,187 @@
+{
+  "candidate": {
+    "id": "clap-rs-clap-2072",
+    "repo": "clap-rs/clap",
+    "url": "https://github.com/clap-rs/clap/pull/2072"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "5cf782afc0d6624f75b169e010fe5290a7b6718a",
+    "body": "While working on another issue I was completely puzzled by the `yaml_opt_str!`, as it immediately starts with `$v.is_null()` and then uses `as_str()` on a `YAML::Null` value. While trying to get to the root of the issue, I've noticed that this bug will only manifest itself in `default_value_if` when compiled with `yaml` support.\r\n\r\nI've added some integration tests for the YAML part and also noticed that `null` was misspelled in the fixture, which kept the bug hidden. If you don't apply `e20cc1c` from the set of commits, you'll notice that *all* `yaml` tests break down due to `[flag, null, some]`.\r\n\r\n**Please note that this is my first non-documentation Rust pull request ever and I'm happy about any feedback and criticism.**\r\n\r\nI wasn't sure about the commit message style, as the recent commits didn't use the style mentioned in the contributing guide. I've tried to emulate the style from the recent commits. Also wasn't sure whether you want to have a single squashed commit, or three atomic changes/additions, but I'll happily change the messages/squash the commits if necessary.",
+    "comments": [
+      {
+        "author": {
+          "login": "bors"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": ":clock1: Waiting for PR status (Github check) to be set, probably by CI. Bors will automatically try to run when all required PR statuses are set.",
+        "createdAt": "2020-08-14T16:17:03Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDY3NDE1MTMxOA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/2072#issuecomment-674151318",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "pksunkara"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> I wasn't sure about the commit message style, as the recent commits didn't use the style mentioned in the contributing guide. I've tried to emulate the style from the recent commits.\r\n\r\nYeah, we haven't been following conventional commit style since we are working on v3. We will probably decide on this after v3 is released.\r\n\r\n> Also wasn't sure whether you want to have a single squashed commit, or three atomic changes/additions, but I'll happily change the messages/squash the commits if necessary.\r\n\r\nYour commits are pretty good. They each deal with different stuff and your messages are self-explanatory. I think it's okay to have them like. I find that it's always a balancing issue.\r\n\r\nBut if you have some tests failing, you will probably need to fix that tests by amending the relevant commit.\r\n",
+        "createdAt": "2020-08-14T16:19:22Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDY3NDE1MjI1Nw==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/2072#issuecomment-674152257",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "bkaestner"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "> Your commits are pretty good. \r\n\r\nThank you!\r\n\r\n> But if you have some tests failing, you will probably need to fix that tests by amending the relevant commit.\r\n\r\nYeah, just noticed that and completely messed that up by testing two things at once, my bad. I missed the `ArgRequiredElseHelp` in the YAML while I simultaneously hit the `Null` issue in the fixtures and added another WRONG test for that. I removed the bad test (and this time also checked the correct commit locally).\r\n\r\nSorry about the wrong test :/ ",
+        "createdAt": "2020-08-14T16:34:39Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDY3NDE1ODcxMQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/2072#issuecomment-674158711",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "pksunkara"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "bors r+",
+        "createdAt": "2020-08-14T16:39:46Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDY3NDE2MDg4MA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/2072#issuecomment-674160880",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "bors"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": ":clock1: Waiting for PR status (Github check) to be set, probably by CI. Bors will automatically try to run when all required PR statuses are set.",
+        "createdAt": "2020-08-14T16:39:48Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDY3NDE2MDg5NA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/2072#issuecomment-674160894",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "bors"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Build succeeded:\n  * [CI](https://github.com/clap-rs/clap/runs/985936110)\n  * [clap-rs.clap](https://github.com/clap-rs/clap/runs/985855679)\n  * [continuous-integration/travis-ci/push](https://travis-ci.org/github/clap-rs/clap/builds/717984918?utm_source=github_status&utm_medium=notification)",
+        "createdAt": "2020-08-14T17:36:50Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDY3NDE4NDg2Mg==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/2072#issuecomment-674184862",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "bkaestner"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "@pksunkara I just noticed that [`v2-master` also contains this bug](https://github.com/clap-rs/clap/blob/v2-master/src/args/macros.rs#L68). I can backport the fix as well as the test cases into v2 if necessary.",
+        "createdAt": "2020-08-15T07:12:44Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDY3NDM2MDgwNA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/2072#issuecomment-674360804",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "pksunkara"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "We only do security fixes for v2",
+        "createdAt": "2020-08-15T07:36:46Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDY3NDM2Mjk5OA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/clap-rs/clap/pull/2072#issuecomment-674362998",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/build/macros.rs"
+      },
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "tests/fixtures/app.yaml"
+      },
+      {
+        "additions": 45,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/yaml.rs"
+      }
+    ],
+    "headRefName": "fix-yaml-default-value-if",
+    "headRefOid": "15c441708b26f43914a26a77f004e21147b75605",
+    "labels": [],
+    "mergedAt": "2020-08-14T17:36:50Z",
+    "number": 2072,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "pksunkara"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "bors r+",
+        "commit": {
+          "oid": "414c22a1f187a4c65f0b948144d49dc2e97a2efd"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3NDY3NzAzNDMx",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2020-08-14T16:17:00Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "Fix YAML's default_value_if handling",
+    "url": "https://github.com/clap-rs/clap/pull/2072"
+  }
+}

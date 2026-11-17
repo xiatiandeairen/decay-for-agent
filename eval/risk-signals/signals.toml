@@ -1,0 +1,68 @@
+# M3.1 transferable risk signal catalog.
+# These signals are review-evidence targets, not bug claims or merge decisions.
+
+version = "risk-signals.v1"
+
+[[signals]]
+id = "assumption_boundary"
+name = "Implicit assumption boundary"
+goal = "Detect diffs that add, strengthen, or rely on preconditions without enough boundary protection."
+positive_indicators = ["assert/expect/unwrap added near input or state boundary", "special values such as zero/empty/closed/invalid change behavior", "PR context names panic or incorrect assumption"]
+negative_boundaries = ["internal invariant with exhaustive caller proof", "test-only assertion", "defensive check that weakens an assumption"]
+expected_finding_shape = "Name the strengthened assumption, the trigger boundary, supporting code facts, and the missing or added boundary test."
+
+[[signals]]
+id = "non_happy_path"
+name = "Non-happy-path change"
+goal = "Detect diffs touching error, invalid input, fallback, cleanup, shutdown, or closed-state paths."
+positive_indicators = ["invalid/malformed input branch changed", "error or fallback branch changed", "closed/shutdown path changed"]
+negative_boundaries = ["main-path refactor with unchanged error handling", "docs-only mention of error behavior", "test fixture cleanup with no production path"]
+expected_finding_shape = "Describe the non-happy path, how it changed, why happy-path tests are insufficient, and what regression evidence is needed."
+
+[[signals]]
+id = "state_transition"
+name = "State transition change"
+goal = "Detect diffs that alter state-machine transitions, terminal states, recovery paths, or wakeup conditions."
+positive_indicators = ["state enum/flag/condition changed", "parser or protocol transition changed", "poll/wake/ready condition changed"]
+negative_boundaries = ["renamed state with identical transitions", "logging-only state observation", "dead code state branch removal with proof"]
+expected_finding_shape = "Identify the before/after transition, affected state invariant, source facts, and reviewer invariant to check."
+
+[[signals]]
+id = "error_propagation"
+name = "Error propagation chain change"
+goal = "Detect diffs that alter how lower-level errors are surfaced, mapped, ignored, defaulted, or early-returned."
+positive_indicators = ["Result/Option mapping changed", "error readiness or error flag changed", "ignored error/default fallback changed"]
+negative_boundaries = ["error message text only", "test assertion wording only", "mapping to equivalent public error with compatibility evidence"]
+expected_finding_shape = "Name the error source, propagation break or mapping change, caller-visible behavior, and required error-path test."
+
+[[signals]]
+id = "lifecycle_ordering"
+name = "Lifecycle ordering change"
+goal = "Detect diffs that change create, hold, drop, close, shutdown, upgrade, cancel, spawn, or join ordering."
+positive_indicators = ["shutdown/drop/close path changed", "upgrade/cancel interaction changed", "resource owner or cleanup ordering changed"]
+negative_boundaries = ["local variable reorder with no lifetime effect", "test teardown-only change", "pure naming cleanup"]
+expected_finding_shape = "Describe lifecycle stages, changed order, possible double action or missing cleanup, and evidence to review."
+
+[[signals]]
+id = "concurrency_ordering"
+name = "Concurrency ordering change"
+goal = "Detect diffs that alter shared-state, lock, channel, waker, task handoff, or thread-pool happens-before assumptions."
+positive_indicators = ["lock/atomic/channel/waker path changed", "spawn/join/task handoff changed", "loom or race context appears"]
+negative_boundaries = ["single-threaded local refactor", "test sleep duration tweak only", "comment-only concurrency note"]
+expected_finding_shape = "Name shared state, ordering assumption, changed synchronization point, and required concurrency regression evidence."
+
+[[signals]]
+id = "external_contract"
+name = "External contract change"
+goal = "Detect diffs changing public API, feature flags, default config, dependency behavior, serialization, CLI, or protocol contract."
+positive_indicators = ["public signature/type/default changed", "dependency upgrade changes API behavior", "feature flag or config semantics changed"]
+negative_boundaries = ["private helper rename", "internal-only type change with no exported path", "dependency dev-only update"]
+expected_finding_shape = "Name the contract surface, compatibility impact, migration or regression evidence, and limitations."
+
+[[signals]]
+id = "risk_path_test_gap"
+name = "Risk-path test gap"
+goal = "Detect diffs where a risk path changed without matching boundary, platform, protocol, or concurrency tests."
+positive_indicators = ["production risk path changed with no test files", "PR mentions missing coverage", "test added only after reported bug"]
+negative_boundaries = ["test-only PR", "production change with direct regression test", "generated test fixture update"]
+expected_finding_shape = "Bind the risk path to test evidence, name the missing test type, and avoid treating generic test absence as a bug."

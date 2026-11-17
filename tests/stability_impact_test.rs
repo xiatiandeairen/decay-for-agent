@@ -108,6 +108,57 @@ pub fn parse(input: &str, strict: bool) -> usize {
 }
 
 #[test]
+fn public_function_addition_in_existing_file_is_stability_evidence() {
+    let before = r#"
+pub fn parse(input: &str) -> usize {
+    input.len()
+}
+"#;
+    let after = r#"
+pub fn parse(input: &str) -> usize {
+    input.len()
+}
+
+pub fn http10_disable_keep_alive(disable: bool) -> bool {
+    disable
+}
+"#;
+
+    let records = detect(
+        "src/lib.rs",
+        Some(before),
+        Some(after),
+        &[],
+        &["pub fn http10_disable_keep_alive"],
+    );
+
+    assert_eq!(records.len(), 1);
+    assert_eq!(records[0].kind, "public_api_function_added");
+    assert_eq!(records[0].file, "src/lib.rs");
+    assert_eq!(records[0].subject, "http10_disable_keep_alive");
+    assert_eq!(records[0].source, "stability");
+}
+
+#[test]
+fn public_function_addition_in_new_file_stays_quiet() {
+    let after = r#"
+pub fn http10_disable_keep_alive(disable: bool) -> bool {
+    disable
+}
+"#;
+
+    let records = detect(
+        "src/http1.rs",
+        None,
+        Some(after),
+        &[],
+        &["pub fn http10_disable_keep_alive"],
+    );
+
+    assert!(records.is_empty());
+}
+
+#[test]
 fn unsafe_evidence_only_reports_added_unsafe_not_untouched_old_unsafe() {
     let before = r#"
 pub fn old_path(ptr: *const u8) -> u8 {

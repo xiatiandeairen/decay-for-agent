@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "ripgrep-3195"
+repo = "BurntSushi/ripgrep"
+pr = 3195
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Line-buffered searcher buffering regression."
+
+[fact_only]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 3
+notes = "True risk is line-buffered searcher buffering regression. Fact top3 focuses on hyperlink aliases broad/test-gap noise and misses line_buffer/searcher buffering behavior."
+
+[semantic_filtered]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "Semantic keeps only hyperlink alias test-gap, still unrelated to line-buffered buffering regression."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = true
+semantic_introduced_noise = false
+notes = "Semantic reduces broad noise but remains on the wrong risk."

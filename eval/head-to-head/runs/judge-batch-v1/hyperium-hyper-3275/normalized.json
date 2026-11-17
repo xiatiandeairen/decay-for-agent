@@ -1,0 +1,43 @@
+{
+  "case_id": "hyperium-hyper-3275",
+  "ground_truth_draft": {
+    "expected_behavior": "In Incoming::poll_frame, h2 body errors whose reason is NO_ERROR or CANCEL are now mapped to Poll::Ready(None) (end-of-stream) instead of being surfaced as crate::Error::new_body. This handles the case where an HTTP/2 server sends an early response and RST_STREAMs the request body without the client treating it as a body error.",
+    "high_value": true,
+    "primary_signal_ids": [
+      "error_propagation"
+    ],
+    "rationale_from_pr_metadata": "PR title 'fix(client): early server response shouldn't propagate NO_ERROR' and body 'Closes #2872' anchor the intent. The added test http2_responds_before_consuming_request_body explicitly comments 'Test that a early-response from server works correctly (request body wasn't fully consumed)'. Reviewer nox: 'Seems good to me given we already do something similar for streams upgraded from HTTP/2.' Approved by seanmonstar (MEMBER).",
+    "subject_files": [
+      "src/body/incoming.rs",
+      "tests/client.rs"
+    ]
+  },
+  "judgement_drafts": {
+    "ai_baseline": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "Rank 1 names error_propagation on poll_frame with the exact match arm cited \u2014 direct hit. Rank 2 raises a legitimate non_happy_path concern that the new branch skips data_done/trailers. Rank 3 is supporting test-gap evidence.",
+      "top3_total": 3,
+      "top3_useful": 2,
+      "weak_only_top_risk_count": 0
+    },
+    "fact_only": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "Top-3 all on incoming.rs. Rank 2 (semantic error_propagation_changed) directly names the mechanism; rank 1 (boundary_expression_changed) points at the same match arm. Rank 3 (complexity worsened on poll_frame) is on the right function but does not capture the mechanism.",
+      "top3_total": 3,
+      "top3_useful": 2,
+      "weak_only_top_risk_count": 0
+    },
+    "semantic_filtered": {
+      "actionable": false,
+      "missed_high_risk_count": 1,
+      "notes": "Filtering dropped the boundary_expression_changed and error_propagation_changed findings, leaving only complexity-regression + prod_change_with_tests. Neither identifies the NO_ERROR/CANCEL silencing mechanism; reviewer would not be steered to the real bug.",
+      "top3_total": 2,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 1
+    }
+  },
+  "manifest_hash": "06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208",
+  "model": "claude-opus-4-7"
+}

@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "BurntSushi-ripgrep-620"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "When the main search loop terminates early (e.g. max_count reached) with after_context_remaining > 0, run a post-loop cleanup that refills the buffer if needed and flushes the remaining after-context lines so context output matches grep behavior on early termination."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 0
+notes = "Rank1 and Rank2 point at the new post-loop block in run() and the new fill() call — exactly the diff that fixes the bug. Signal labels (state_transition, lifecycle_ordering) overlap ground truth; non_happy_path label missing but mechanism captured. [mechanical-flag: ai_baseline: ai=2, mechanical=1]"

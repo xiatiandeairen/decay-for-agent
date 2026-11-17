@@ -1,0 +1,12 @@
+{
+  "case_id": "ripgrep-3154",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"ripgrep-3154\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"assumption_boundary\",\"subject\":\"crates/printer/src/summary.rs:matched\",\"evidence_refs\":[\"count.max(1)\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Floors sink_match_count to >=1 even when find_iter_at_in_context yields 0; this value flows into stats.add_matches, so --count output can be inflated for multi-line look-around patterns where the re-scan finds no submatches.\"},{\"rank\":2,\"risk_signal\":\"test_gap_for_risk_path\",\"subject\":\"tests/regression.rs:r3139_multiline_lookahead_files_with_matches\",\"evidence_refs\":[\"\\\"--files-with-matches\\\",\\n                r\\\"(?s)Start(?=.*thing2)\\\"\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"New regression test only exercises --files-with-matches (binary path presence) for the multi-line PCRE2 look-around case; the --count summary kind that directly consumes the new count.max(1) value via stats.add_matches is not covered.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

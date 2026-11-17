@@ -1,0 +1,44 @@
+{
+  "case_id": "hyper-4042",
+  "ground_truth_draft": {
+    "expected_behavior": "When the client drops the response future, send_task detects cancellation via poll_canceled and signals pipe_task through a new oneshot channel; pipe_task then calls send_reset(h2::Reason::CANCEL) on the SendStream so RST_STREAM is sent to the server and flow-control window capacity is freed instead of being held forever.",
+    "high_value": true,
+    "primary_signal_ids": [
+      "lifecycle_ordering",
+      "concurrency_ordering"
+    ],
+    "rationale_from_pr_metadata": "PR title 'fix(http2): cancel pipe_task and send RST_STREAM on response future drop' and body explicitly describe the bug ('send_task detects the cancellation but does not notify pipe_task ... preventing a RST_STREAM from being sent and keeping flow-control window capacity locked') and the fix (oneshot channel between send_task and pipe_task; pipe_task calls send_reset(CANCEL)). Closes #4040. Review state APPROVED by maintainer seanmonstar.",
+    "subject_files": [
+      "src/proto/h2/client.rs",
+      "src/client/dispatch.rs"
+    ]
+  },
+  "judgement_drafts": {
+    "ai_baseline": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "Rank 1 flags lifecycle_ordering panic risk in PipeMap::poll after take(); rank 2 flags concurrency_ordering dependency on executor still polling pipe_task after oneshot signal \u2014 both match ground truth. Rank 3 test_gap is supporting and a fair concern about the matches! arm.",
+      "top3_total": 3,
+      "top3_useful": 2,
+      "weak_only_top_risk_count": 0
+    },
+    "fact_only": {
+      "actionable": false,
+      "missed_high_risk_count": 2,
+      "notes": "Without semantic, top items are quality mixed_concerns / prod_change_with_tests (supporting/context, confidence=low) and history recently_bugfixed_area (context). None identify the cancel\u2192RST_STREAM mechanism or the oneshot handoff.",
+      "top3_total": 3,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 1
+    },
+    "semantic_filtered": {
+      "actionable": true,
+      "missed_high_risk_count": 1,
+      "notes": "Rank 1 lifecycle_ordering_changed on send_reset(CANCEL) directly matches the fix's terminal-path reset. Ranks 2-3 are boundary_expression_changed on the new cancel_rx poll arms \u2014 they point at the right code but do not frame the concurrency/handoff risk; concurrency_ordering missed.",
+      "top3_total": 3,
+      "top3_useful": 1,
+      "weak_only_top_risk_count": 0
+    }
+  },
+  "manifest_hash": "06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208",
+  "model": "claude-opus-4-7"
+}

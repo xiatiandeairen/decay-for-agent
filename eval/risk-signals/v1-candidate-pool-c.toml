@@ -1,0 +1,80 @@
+# Third working pool for filling the final frozen-v1 gap.
+#
+# These are not accepted cases. They are selected from the remaining scored
+# semantic candidate pool after excluding already frozen aliases and obvious
+# build/docs/release-only records.
+
+[[cases]]
+id = "hyperium-hyper-4019"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/4019"
+
+[[cases]]
+id = "hyperium-hyper-3952"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3952"
+
+[[cases]]
+id = "hyperium-hyper-1159"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/1159"
+
+[[cases]]
+id = "hyperium-hyper-3242"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3242"
+
+[[cases]]
+id = "hyperium-hyper-3820"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3820"
+
+[[cases]]
+id = "tokio-rs-tokio-8076"
+repo = "tokio-rs/tokio"
+url = "https://github.com/tokio-rs/tokio/pull/8076"
+
+[[cases]]
+id = "tokio-rs-tokio-2804"
+repo = "tokio-rs/tokio"
+url = "https://github.com/tokio-rs/tokio/pull/2804"
+
+[[cases]]
+id = "BurntSushi-ripgrep-3174"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/3174"
+
+[[cases]]
+id = "BurntSushi-ripgrep-3190"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/3190"
+
+[[cases]]
+id = "BurntSushi-ripgrep-801"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/801"
+
+[[cases]]
+id = "BurntSushi-ripgrep-2000"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/2000"
+
+[[cases]]
+id = "clap-rs-clap-2072"
+repo = "clap-rs/clap"
+url = "https://github.com/clap-rs/clap/pull/2072"
+
+[[cases]]
+id = "serde-rs-json-314"
+repo = "serde-rs/json"
+url = "https://github.com/serde-rs/json/pull/314"
+
+[[cases]]
+id = "serde-rs-json-177"
+repo = "serde-rs/json"
+url = "https://github.com/serde-rs/json/pull/177"
+
+[[cases]]
+id = "serde-rs-json-267"
+repo = "serde-rs/json"
+url = "https://github.com/serde-rs/json/pull/267"

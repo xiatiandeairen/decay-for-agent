@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "hyper-4061"
+repo = "hyperium/hyper"
+pr = 4061
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "HTTP/2 flow-control capacity reservation deadlock."
+
+[fact_only]
+top3_total = 3
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "True risk is HTTP/2 flow-control capacity reservation deadlock. Fact output finds direct complexity in h2 poll and a panic-like addition, but not capacity reservation/deadlock semantics."
+
+[semantic_filtered]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 0
+notes = "Semantic usefully preserves the h2 poll complexity finding, but the panic-like claim appears generic and still misses the flow-control deadlock mechanism."
+
+[comparison]
+semantic_improved_ranking = true
+semantic_reduced_noise = true
+semantic_introduced_noise = false
+notes = "Semantic reduces one weak prod/test top risk but does not identify the central deadlock."

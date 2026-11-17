@@ -1,0 +1,12 @@
+{
+  "case_id": "ripgrep-2885",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"ripgrep-2885\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208\",\"ground_truth_draft\":{\"high_value\":true,\"primary_signal_ids\":[\"assumption_boundary\"],\"subject_files\":[\"crates/regex/src/literal.rs\"],\"expected_behavior\":\"Fix union() to set prefix=true only when both unioned sequences have prefix=true, preventing incorrect cross-product literal extraction that produced false negatives (e.g. `(?i:e.x|ex)` failed to match `e-x`). Also force choose() to mark both candidates inexact before returning, since picking one means rejecting the other.\",\"rationale_from_pr_metadata\":\"Title: 'regex: fix inner literal extraction that resulted in false negatives'. Body: 'two extracted literal sequences were unioned, we were incorrectly unioning their \\\"prefix\\\" attribute ... results in the union result having `prefix` set to `true`' \u2014 fix changes union to AND the prefix flags. Body also: 'fixed by making `choose` always return an inexact literal sequence'. Fixes #2884.\"},\"judgement_drafts\":{\"fact_only\":{\"top3_total\":2,\"top3_useful\":0,\"actionable\":false,\"missed_high_risk_count\":1,\"weak_only_top_risk_count\":1,\"notes\":\"Top1 flags choose complexity (statements 27->29, cognitive/cyclomatic unchanged); misses the real prefix-propagation bug in union. Top2 is generic prod_change_with_tests. Even though choose was touched, the rationale doesn't surface the make_inexact semantic shift or the union fix.\"},\"semantic_filtered\":{\"top3_total\":1,\"top3_useful\":0,\"actionable\":false,\"missed_high_risk_count\":1,\"weak_only_top_risk_count\":1,\"notes\":\"Same complexity claim on choose, only asks reviewer to verify regression tests cover changed path. Completely misses the union prefix=AND bug fix that is the headline change.\"},\"ai_baseline\":{\"top3_total\":3,\"top3_useful\":2,\"actionable\":true,\"missed_high_risk_count\":0,\"weak_only_top_risk_count\":0,\"notes\":\"Top1 directly identifies the union `seq1.prefix = seq1.prefix && seq2.prefix` change as the key mechanism (matches ground truth). Top2 catches choose make_inexact semantic shift (the secondary fix). Top3 tests/util.rs is supporting only. Rationale on top1 slightly off (frames as assertion risk vs correctness) but mechanism correctly localized.\"}}}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

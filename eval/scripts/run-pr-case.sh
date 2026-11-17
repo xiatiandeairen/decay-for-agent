@@ -2,7 +2,7 @@
 set -euo pipefail
 
 EVAL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CORPUS="$EVAL_ROOT/corpus/pr-cases.toml"
+CORPUS="${DECAY_EVAL_CORPUS:-$EVAL_ROOT/corpus/pr-cases.toml}"
 CASE_ID="${1:-}"
 
 if [[ -z "$CASE_ID" ]]; then
@@ -86,12 +86,14 @@ if ! grep -q "mode=git_ref" "$RAW_DIR/decay.stdout"; then
   exit 4
 fi
 
-for marker in "Diff context:" "Top risk findings:" "Complexity impact:" "Stability impact:" "Quality impact:" "Semantic impact:" "History impact:"; do
+for marker in "Diff context:" "Top risk findings:" "Complexity impact:" "Coverage impact:" "Stability impact:" "Quality impact:" "Semantic impact:" "History impact:"; do
   if ! grep -q "$marker" "$RAW_DIR/decay.stdout"; then
     echo "missing decay output marker '$marker' for $CASE_ID" >&2
     exit 4
   fi
 done
+
+python3 "$EVAL_ROOT/scripts/validate-decay-evidence.py" "$RAW_DIR/decay.stdout" >/dev/null
 
 cat > "$CASE_DIR/metadata.toml" <<EOF
 case_id = "$CASE_ID"
@@ -111,6 +113,7 @@ if [[ ! -f "$CASE_DIR/ground-truth.md" ]]; then
   cp "$EVAL_ROOT/templates/ground-truth.md" "$CASE_DIR/ground-truth.md"
 fi
 python3 "$EVAL_ROOT/scripts/write-decay-evidence.py" "$RAW_DIR/decay.stdout" "$CASE_DIR/decay-evidence.md"
+python3 "$EVAL_ROOT/scripts/build-semantic-prompt.py" "$RAW_DIR/decay.stdout" "$RAW_DIR/semantic-prompt.md"
 if [[ ! -f "$CASE_DIR/comparison.md" ]]; then
   cp "$EVAL_ROOT/templates/comparison.md" "$CASE_DIR/comparison.md"
 fi

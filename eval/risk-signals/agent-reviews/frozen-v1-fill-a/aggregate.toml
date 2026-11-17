@@ -1,0 +1,133 @@
+round = "frozen-v1-fill-a"
+reviewed_at = "2026-05-14"
+policy = "formal three-role review; skeptic blocker prevents freeze; duplicate aliases do not count toward the 40-case target"
+
+[[cases]]
+id = "BurntSushi-ripgrep-454"
+ground_truth_score = 5
+signal_fit_score = 4
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["state_transition", "external_contract", "risk_path_test_gap"]
+decision = "Freeze. Real issue, reproducible duplicate match output, production cursor/state change, and regression tests."
+limitations = "Use as match iteration state risk, not generic output formatting."
+
+[[cases]]
+id = "BurntSushi-ripgrep-620"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["non_happy_path", "state_transition", "external_contract"]
+decision = "Freeze. max-count early return lost pending context; issue, maintainer confirmation, and regression evidence are strong."
+limitations = "Use as early-return state flush risk, not a ripgrep flag-specific rule."
+
+[[cases]]
+id = "BurntSushi-ripgrep-762"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["external_contract", "state_transition", "risk_path_test_gap"]
+decision = "Freeze. gitignore slash-pattern behavior diverged from git; issue, review, and tests support the contract risk."
+limitations = "Use as external spec/matcher state risk, not concrete gitignore syntax memorization."
+
+[[cases]]
+id = "hyperium-hyper-2544"
+ground_truth_score = 4
+signal_fit_score = 5
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["assumption_boundary", "non_happy_path", "error_propagation"]
+decision = "Freeze. Malformed header input could panic and was converted to a parse/internal error."
+limitations = "Record as hyper malformed-input defensive boundary; do not claim dependency-only root cause."
+
+[[cases]]
+id = "hyperium-hyper-3275"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["error_propagation", "state_transition", "external_contract"]
+decision = "Freeze. HTTP/2 early response propagated NO_ERROR incorrectly; issue, pre-fix failing test claim, backport, and review are strong."
+limitations = "Use as protocol state/error propagation."
+
+[[cases]]
+id = "hyperium-hyper-3782"
+ground_truth_score = 4
+signal_fit_score = 4
+skeptic_blocker = true
+final_status = "needs_more_context"
+final_signal_ids = ["external_contract", "assumption_boundary", "risk_path_test_gap"]
+decision = "Do not freeze yet. The wrong parameter wiring is plausible, but DoS impact relies mostly on PR text and lacks regression or independent failure evidence."
+limitations = "Needs h2 behavior/test evidence before counting."
+
+[[cases]]
+id = "serde-rs-json-521"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["external_contract", "state_transition", "risk_path_test_gap"]
+decision = "Freeze. Clear version regression in adjacently tagged f32 roundtrip with repro, regression test, and release fix."
+limitations = "Use as serialization roundtrip contract regression."
+
+[[cases]]
+id = "tokio-rs-tokio-8021"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["state_transition", "concurrency_ordering", "assumption_boundary"]
+decision = "Freeze. Closed semaphore could reopen after forget_permits; issue, duplicate fix, review, and tests support terminal-state risk."
+limitations = "Use as concurrent primitive state-bit preservation."
+
+[[cases]]
+id = "tokio-rs-tokio-7983"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["lifecycle_ordering", "non_happy_path", "concurrency_ordering", "risk_path_test_gap"]
+decision = "Freeze. Cancelled io_uring open futures leaked file descriptors; issue, public report context, tests, and review are strong."
+limitations = "Platform-specific, but transferable as cancel/drop resource lifecycle risk."
+
+[[cases]]
+id = "hyperium-hyper-4043"
+ground_truth_score = 4
+signal_fit_score = 5
+skeptic_blocker = true
+final_status = "duplicate_alias"
+final_signal_ids = ["state_transition", "lifecycle_ordering", "external_contract"]
+decision = "Do not count. This risk already exists in frozen v1 as hyper-4043, and skeptic review also wanted independent context."
+limitations = "No duplicate counting."
+
+[[cases]]
+id = "hyperium-hyper-4069"
+ground_truth_score = 4
+signal_fit_score = 5
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["error_propagation", "lifecycle_ordering", "non_happy_path"]
+decision = "Freeze. Dispatcher dropped mid-body could return partial data instead of an error; issue and continuation context support the silent truncation risk."
+limitations = "Review signal is weak, so keep issue/test context attached."
+
+[[cases]]
+id = "BurntSushi-ripgrep-3189"
+ground_truth_score = 4
+signal_fit_score = 5
+skeptic_blocker = false
+final_status = "duplicate_alias"
+final_signal_ids = ["external_contract", "state_transition", "risk_path_test_gap"]
+decision = "Do not count. This risk already exists in frozen v1 as ripgrep-3189."
+limitations = "No duplicate counting."
+
+[[cases]]
+id = "BurntSushi-ripgrep-1065"
+ground_truth_score = 4
+signal_fit_score = 3
+skeptic_blocker = true
+final_status = "rejected"
+final_signal_ids = ["non_happy_path", "state_transition", "assumption_boundary", "risk_path_test_gap"]
+decision = "Reject as a single frozen case. The PR is a rollup with multiple unrelated bugs and cannot support one clean ground-truth judgement."
+limitations = "Can return only as split sub-cases tied to issue #1052 or #1064."

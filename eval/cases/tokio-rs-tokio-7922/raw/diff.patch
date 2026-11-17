@@ -1,0 +1,499 @@
+diff --git a/.github/labeler.yml b/.github/labeler.yml
+index 318dd468..da6ee527 100644
+--- a/.github/labeler.yml
++++ b/.github/labeler.yml
+@@ -1,25 +1,28 @@
++R-loom-blocking:
++- tokio/src/runtime/blocking/*
++- tokio/src/runtime/blocking/**/*
+ 
+ R-loom-sync:
+ - tokio/src/sync/*
+ - tokio/src/sync/**/*
+ 
+ R-loom-time-driver:
+ - tokio/src/runtime/time/*
+ - tokio/src/runtime/time/**/*
+ 
+ R-loom-current-thread:
+ - tokio/src/runtime/scheduler/*
+ - tokio/src/runtime/scheduler/current_thread/*
+ - tokio/src/runtime/task/*
+ - tokio/src/runtime/task/**
+ 
+ R-loom-multi-thread:
+ - tokio/src/runtime/scheduler/*
+ - tokio/src/runtime/scheduler/multi_thread/*
+ - tokio/src/runtime/scheduler/multi_thread/**
+ - tokio/src/runtime/task/*
+ - tokio/src/runtime/task/**
+ 
+ R-loom-util:
+ - tokio-util/src/*
+ - tokio-util/src/**/*
+diff --git a/.github/workflows/loom.yml b/.github/workflows/loom.yml
+index c400a28c..0799017a 100644
+--- a/.github/workflows/loom.yml
++++ b/.github/workflows/loom.yml
+@@ -1,105 +1,121 @@
+ on:
+   push:
+     branches: ["master", "tokio-*.x"]
+   pull_request:
+     types: [labeled, opened, synchronize, reopened]
+     branches: ["master", "tokio-*.x"]
+ 
+ name: Loom
+ 
+ concurrency:
+   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+   cancel-in-progress: true
+ 
+ env:
+   RUSTFLAGS: -Dwarnings --cfg loom --cfg tokio_unstable -C debug_assertions
+   LOOM_MAX_PREEMPTIONS: 2
+   LOOM_MAX_BRANCHES: 10000
+   RUST_BACKTRACE: 1
+   # Change to specific Rust release to pin
+   rust_stable: stable
+ 
+ permissions:
+   contents: read
+ 
+ jobs:
++  loom-blocking:
++    name: loom tokio::runtime::spawn_blocking
++    # base_ref is null when it's not a pull request
++    if: github.repository_owner == 'tokio-rs' && (contains(github.event.pull_request.labels.*.name, 'R-loom-blocking') || (github.base_ref == null))
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v5
++      - name: Install Rust ${{ env.rust_stable }}
++        uses: dtolnay/rust-toolchain@master
++        with:
++            toolchain: ${{ env.rust_stable }}
++      - uses: Swatinem/rust-cache@v2
++      - name: run tests
++        run: cargo test --lib --release --features full -- --nocapture loom_blocking
++        working-directory: tokio
++
+   loom-sync:
+     name: loom tokio::sync
+     # base_ref is null when it's not a pull request
+     if: github.repository_owner == 'tokio-rs' && (contains(github.event.pull_request.labels.*.name, 'R-loom-sync') || (github.base_ref == null))
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v5
+       - name: Install Rust ${{ env.rust_stable }}
+         uses: dtolnay/rust-toolchain@master
+         with:
+             toolchain: ${{ env.rust_stable }}
+       - uses: Swatinem/rust-cache@v2
+       - name: run tests
+         run: cargo test --lib --release --features full -- --nocapture sync::tests
+         working-directory: tokio
+ 
+   loom-time-driver:
+     name: loom time driver
+     # base_ref is null when it's not a pull request
+     if: github.repository_owner == 'tokio-rs' && (contains(github.event.pull_request.labels.*.name, 'R-loom-time-driver') || (github.base_ref == null))
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v5
+       - name: Install Rust ${{ env.rust_stable }}
+         uses: dtolnay/rust-toolchain@master
+         with:
+             toolchain: ${{ env.rust_stable }}
+       - uses: Swatinem/rust-cache@v2
+       - name: run tests
+         run: cargo test --lib --release --features full -- --nocapture runtime::time
+         working-directory: tokio
+ 
+   loom-current-thread:
+     name: loom current-thread scheduler
+     # base_ref is null when it's not a pull request
+     if: github.repository_owner == 'tokio-rs' && (contains(github.event.pull_request.labels.*.name, 'R-loom-current-thread') || (github.base_ref == null))
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v5
+       - name: Install Rust ${{ env.rust_stable }}
+         uses: dtolnay/rust-toolchain@master
+         with:
+             toolchain: ${{ env.rust_stable }}
+       - uses: Swatinem/rust-cache@v2
+       - name: run tests
+         run: cargo test --lib --release --features full -- --nocapture loom_current_thread
+         working-directory: tokio
+ 
+   loom-multi-thread:
+     name: loom multi-thread scheduler
+     # base_ref is null when it's not a pull request
+     if: github.repository_owner == 'tokio-rs' && (contains(github.event.pull_request.labels.*.name, 'R-loom-multi-thread') || (github.base_ref == null))
+     runs-on: ubuntu-latest
+     strategy:
+       matrix:
+         include:
+           - scope: loom_multi_thread::group_a
+           - scope: loom_multi_thread::group_b
+           - scope: loom_multi_thread::group_c
+           - scope: loom_multi_thread::group_d
+     steps:
+       - uses: actions/checkout@v5
+       - name: Install Rust ${{ env.rust_stable }}
+         uses: dtolnay/rust-toolchain@master
+         with:
+             toolchain: ${{ env.rust_stable }}
+       - uses: Swatinem/rust-cache@v2
+       - name: loom ${{ matrix.scope }}
+         run: cargo test --lib --release --features full -- --nocapture $SCOPE
+         working-directory: tokio
+         env:
+           SCOPE: ${{ matrix.scope }}
+ 
+   loom-util:
+     name: loom tokio-util
+     # base_ref is null when it's not a pull request
+     if: github.repository_owner == 'tokio-rs' && (contains(github.event.pull_request.labels.*.name, 'R-loom-util') || (github.base_ref == null))
+     runs-on: ubuntu-latest
+     steps:
+       - uses: actions/checkout@v5
+diff --git a/tokio/src/runtime/blocking/pool.rs b/tokio/src/runtime/blocking/pool.rs
+index 30934812..dae98bc9 100644
+--- a/tokio/src/runtime/blocking/pool.rs
++++ b/tokio/src/runtime/blocking/pool.rs
+@@ -430,171 +430,181 @@ impl Spawner {
+                         {
+                             // OS temporarily failed to spawn a new thread.
+                             // The task will be picked up eventually by a currently
+                             // busy thread.
+                         }
+                         Err(e) => {
+                             // The OS refused to spawn the thread and there is no thread
+                             // to pick up the task that has just been pushed to the queue.
+                             return Err(SpawnError::NoThreads(e));
+                         }
+                     }
+                 }
+             }
+         } else {
+             // Notify an idle worker thread. The notification counter
+             // is used to count the needed amount of notifications
+             // exactly. Thread libraries may generate spurious
+             // wakeups, this counter is used to keep us in a
+             // consistent state.
+             self.inner.metrics.dec_num_idle_threads();
+             shared.num_notify += 1;
+             self.inner.condvar.notify_one();
+         }
+ 
+         Ok(())
+     }
+ 
+     fn spawn_thread(
+         &self,
+         shutdown_tx: shutdown::Sender,
+         rt: &Handle,
+         id: usize,
+     ) -> io::Result<thread::JoinHandle<()>> {
+         let mut builder = thread::Builder::new().name((self.inner.thread_name)());
+ 
+         if let Some(stack_size) = self.inner.stack_size {
+             builder = builder.stack_size(stack_size);
+         }
+ 
+         let rt = rt.clone();
+ 
+         builder.spawn(move || {
+             // Only the reference should be moved into the closure
+             let _enter = rt.enter();
+             rt.inner.blocking_spawner().inner.run(id);
+             drop(shutdown_tx);
+         })
+     }
+ }
+ 
+ cfg_unstable_metrics! {
+     impl Spawner {
+         pub(crate) fn num_threads(&self) -> usize {
+             self.inner.metrics.num_threads()
+         }
+ 
+         pub(crate) fn num_idle_threads(&self) -> usize {
+             self.inner.metrics.num_idle_threads()
+         }
+ 
+         pub(crate) fn queue_depth(&self) -> usize {
+             self.inner.metrics.queue_depth()
+         }
+     }
+ }
+ 
+ // Tells whether the error when spawning a thread is temporary.
+ #[inline]
+ fn is_temporary_os_thread_error(error: &io::Error) -> bool {
+     matches!(error.kind(), io::ErrorKind::WouldBlock)
+ }
+ 
+ impl Inner {
+     fn run(&self, worker_thread_id: usize) {
+         if let Some(f) = &self.after_start {
+             f();
+         }
+ 
+         let mut shared = self.shared.lock();
+         let mut join_on_thread = None;
++        // is this thread currently counted in `num_idle_threads`?
++        let mut is_counted_idle;
+ 
+         'main: loop {
+             // BUSY
+             while let Some(task) = shared.queue.pop_front() {
+                 self.metrics.dec_queue_depth();
+                 drop(shared);
+                 task.run();
+ 
+                 shared = self.shared.lock();
+             }
+ 
+             // IDLE
+             self.metrics.inc_num_idle_threads();
++            // mark this thread as currently counted in `num_idle_threads`.
++            is_counted_idle = true;
+ 
+             while !shared.shutdown {
+                 let lock_result = self.condvar.wait_timeout(shared, self.keep_alive).unwrap();
+ 
+                 shared = lock_result.0;
+                 let timeout_result = lock_result.1;
+ 
+                 if shared.num_notify != 0 {
+                     // We have received a legitimate wakeup,
+                     // acknowledge it by decrementing the counter
+                     // and transition to the BUSY state.
+                     shared.num_notify -= 1;
++                    // since this is a legitimate wakeup,
++                    // the `Spawner::spawn_task` has already decremented `num_idle_threads`.
++                    is_counted_idle = false;
+                     break;
+                 }
+ 
+                 // Even if the condvar "timed out", if the pool is entering the
+                 // shutdown phase, we want to perform the cleanup logic.
+                 if !shared.shutdown && timeout_result.timed_out() {
+                     // We'll join the prior timed-out thread's JoinHandle after dropping the lock.
+                     // This isn't done when shutting down, because the thread calling shutdown will
+                     // handle joining everything.
+                     let my_handle = shared.worker_threads.remove(&worker_thread_id);
+                     join_on_thread = std::mem::replace(&mut shared.last_exiting_thread, my_handle);
+ 
+                     break 'main;
+                 }
+ 
+                 // Spurious wakeup detected, go back to sleep.
+             }
+ 
+             if shared.shutdown {
+                 // Drain the queue
+                 while let Some(task) = shared.queue.pop_front() {
+                     self.metrics.dec_queue_depth();
+                     drop(shared);
+ 
+                     task.shutdown_or_run_if_mandatory();
+ 
+                     shared = self.shared.lock();
+                 }
+ 
+                 break;
+             }
+         }
+ 
+         // Thread exit
+         self.metrics.dec_num_threads();
+ 
+-        // `num_idle_threads` should now be tracked exactly, panic
+-        // with a descriptive message if it is not the
+-        // case.
+-        let prev_idle = self.metrics.dec_num_idle_threads();
+-        assert_ne!(
+-            prev_idle, 0,
+-            "`num_idle_threads` underflowed on thread exit"
+-        );
++        // Is this thread currently counted in `num_idle_threads`?
++        if is_counted_idle {
++            // `num_idle_threads` should now be tracked exactly, panic
++            // with a descriptive message if it is not the
++            // case.
++            let prev_idle = self.metrics.dec_num_idle_threads();
++            assert_ne!(
++                prev_idle, 0,
++                "`num_idle_threads` underflowed on thread exit"
++            );
++        }
+ 
+         if shared.shutdown && self.metrics.num_threads() == 0 {
+             self.condvar.notify_one();
+         }
+ 
+         drop(shared);
+ 
+         if let Some(f) = &self.before_stop {
+             f();
+         }
+ 
+         if let Some(handle) = join_on_thread {
+             let _ = handle.join();
+         }
+     }
+ }
+ 
+ impl fmt::Debug for Spawner {
+     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+         fmt.debug_struct("blocking::Spawner").finish()
+     }
+ }
+diff --git a/tokio/src/runtime/tests/loom_blocking.rs b/tokio/src/runtime/tests/loom_blocking.rs
+index 5c4aeae3..ce1f2644 100644
+--- a/tokio/src/runtime/tests/loom_blocking.rs
++++ b/tokio/src/runtime/tests/loom_blocking.rs
+@@ -1,102 +1,140 @@
+ use crate::runtime::{self, Runtime};
+ 
+ use std::sync::Arc;
++use std::time::Duration;
+ 
+ #[test]
+ fn blocking_shutdown() {
+     loom::model(|| {
+         let v = Arc::new(());
+ 
+         let rt = mk_runtime(1);
+         {
+             let _enter = rt.enter();
+             for _ in 0..2 {
+                 let v = v.clone();
+                 crate::task::spawn_blocking(move || {
+                     assert!(1 < Arc::strong_count(&v));
+                 });
+             }
+         }
+ 
+         drop(rt);
+         assert_eq!(1, Arc::strong_count(&v));
+     });
+ }
+ 
+ #[test]
+ fn spawn_mandatory_blocking_should_always_run() {
+     use crate::runtime::tests::loom_oneshot;
+     loom::model(|| {
+         let rt = runtime::Builder::new_current_thread().build().unwrap();
+ 
+         let (tx, rx) = loom_oneshot::channel();
+         let _enter = rt.enter();
+         runtime::spawn_blocking(|| {});
+         runtime::spawn_mandatory_blocking(move || {
+             let _ = tx.send(());
+         })
+         .unwrap();
+ 
+         drop(rt);
+ 
+         // This call will deadlock if `spawn_mandatory_blocking` doesn't run.
+         let () = rx.recv();
+     });
+ }
+ 
+ #[test]
+ fn spawn_mandatory_blocking_should_run_even_when_shutting_down_from_other_thread() {
+     use crate::runtime::tests::loom_oneshot;
+     loom::model(|| {
+         let rt = runtime::Builder::new_current_thread().build().unwrap();
+         let handle = rt.handle().clone();
+ 
+         // Drop the runtime in a different thread
+         {
+             loom::thread::spawn(move || {
+                 drop(rt);
+             });
+         }
+ 
+         let _enter = handle.enter();
+         let (tx, rx) = loom_oneshot::channel();
+         let handle = runtime::spawn_mandatory_blocking(move || {
+             let _ = tx.send(());
+         });
+ 
+         // handle.is_some() means that `spawn_mandatory_blocking`
+         // promised us to run the blocking task
+         if handle.is_some() {
+             // This call will deadlock if `spawn_mandatory_blocking` doesn't run.
+             let () = rx.recv();
+         }
+     });
+ }
+ 
+ #[test]
+ fn spawn_blocking_when_paused() {
+-    use std::time::Duration;
+     loom::model(|| {
+         let rt = crate::runtime::Builder::new_current_thread()
+             .enable_time()
+             .start_paused(true)
+             .build()
+             .unwrap();
+         let handle = rt.handle();
+         let _enter = handle.enter();
+         let a = crate::task::spawn_blocking(|| {});
+         let b = crate::task::spawn_blocking(|| {});
+         rt.block_on(crate::time::timeout(Duration::from_millis(1), async move {
+             a.await.expect("blocking task should finish");
+             b.await.expect("blocking task should finish");
+         }))
+         .expect("timeout should not trigger");
+     });
+ }
+ 
++#[test]
++/// See <https://github.com/tokio-rs/tokio/pull/7922>
++fn spawn_blocking_then_shutdown() {
++    loom::model(|| {
++        let rt = crate::runtime::Builder::new_current_thread()
++            .max_blocking_threads(1)
++            .thread_keep_alive(Duration::from_secs(7200)) // don't let the thread exit on its own
++            .build()
++            .unwrap();
++        let rt_hdl = rt.handle().clone();
++
++        // Currently, there is no live blocking thread,
++        // so `spawn_blocking` will spawn a new blocking thread.
++        let jh0 = rt_hdl.spawn_blocking(|| {});
++        loom::future::block_on(jh0).unwrap();
++
++        // Now, there is a idle blocking threads park on the condvar,
++        // so the following `spawn_blocking` will decrease the `num_idle_threads`
++        // and then notify one of the idle threads to run the task.
++
++        // this will decrease the `num_idle_threads`
++        // and then notify one of the idle threads to run the task.
++        let jh3 = rt_hdl.spawn_blocking(|| {});
++
++        // shutdown the runtime, which also shutdown the blocking pool
++        drop(rt);
++
++        // loom will emulate two parrel operations:
++        //
++        // 1. the blocking thread is woken up on the condvar
++        // 2. the main thread is waiting for the blocking thread to finish the task
++        //
++        // So, if the `num_idle_threads` is not counted correctly,
++        // it will trigger the assertions inside the `Inner::run` function.
++        let _ = loom::future::block_on(jh3);
++    });
++}
++
+ fn mk_runtime(num_threads: usize) -> Runtime {
+     runtime::Builder::new_multi_thread()
+         .worker_threads(num_threads)
+         .build()
+         .unwrap()
+ }

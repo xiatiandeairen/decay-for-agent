@@ -1,0 +1,206 @@
+round = "frozen-v1-screen-a"
+reviewed_at = "2026-05-14"
+input_pool = "eval/risk-signals/v1-candidate-pool.toml"
+raw_dir = "eval/risk-signals/v1-candidate-raw"
+follow_up_dir = "eval/risk-signals/v1-candidate-follow-up-raw"
+policy = "strict screen; cases need strong ground truth, transferable risk signal, and no unresolved skeptic blocker before formal frozen review"
+
+[[cases]]
+id = "BurntSushi-ripgrep-454"
+ground_truth_score = 5
+signal_fit_score = 4
+skeptic_blocker = false
+screen_status = "promote_to_review"
+suggested_signal_ids = ["state_transition", "external_contract", "risk_path_test_gap"]
+decision = "Issue has a minimal repro and wrong output; PR fixes only-matching reiteration and includes regression tests."
+review_focus = "Confirm the value is output cursor/state risk, not low-value CLI formatting trivia."
+
+[[cases]]
+id = "BurntSushi-ripgrep-620"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+screen_status = "promote_to_review"
+suggested_signal_ids = ["non_happy_path", "state_transition", "external_contract"]
+decision = "Issue and PR show max-count early return dropping trailing context; maintainer confirmation and regression tests are present."
+review_focus = "Keep the abstraction at early-return/context-state risk instead of memorizing ripgrep flags."
+
+[[cases]]
+id = "BurntSushi-ripgrep-762"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+screen_status = "promote_to_review"
+suggested_signal_ids = ["external_contract", "state_transition", "risk_path_test_gap"]
+decision = "Issue captures a real gitignore compatibility gap; PR aligns slash-pattern matching with git behavior and includes tests."
+review_focus = "Check transferability as external contract/parser matching risk."
+
+[[cases]]
+id = "hyperium-hyper-2544"
+ground_truth_score = 4
+signal_fit_score = 5
+skeptic_blocker = false
+screen_status = "promote_to_review"
+suggested_signal_ids = ["assumption_boundary", "non_happy_path", "error_propagation"]
+decision = "Malformed header handling could panic; PR converts the path to a parse/internal error with review context."
+review_focus = "Verify the target risk is hyper's defensive parse boundary, not only a dependency bug already fixed elsewhere."
+
+[[cases]]
+id = "hyperium-hyper-3275"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+screen_status = "promote_to_review"
+suggested_signal_ids = ["error_propagation", "state_transition", "external_contract"]
+decision = "HTTP/2 early server response should not propagate NO_ERROR; issue, tests, review, and backport evidence are strong."
+review_focus = "Use as protocol state/error propagation case."
+
+[[cases]]
+id = "hyperium-hyper-3782"
+ground_truth_score = 4
+signal_fit_score = 5
+skeptic_blocker = false
+screen_status = "promote_to_review"
+suggested_signal_ids = ["external_contract", "error_propagation", "risk_path_test_gap"]
+decision = "Wrong h2 builder parameter wiring made max_local_error_reset_streams ineffective; source PR chain and DoS impact are traceable."
+review_focus = "Confirm this is not only one-line naming semantics and that current evidence can support configuration contract risk."
+
+[[cases]]
+id = "serde-rs-json-521"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+screen_status = "promote_to_review"
+suggested_signal_ids = ["state_transition", "external_contract", "risk_path_test_gap"]
+decision = "Clear version regression for adjacently tagged f32 roundtrip, with reproduction, regression test, and quick release fix."
+review_focus = "Keep as serialization state/roundtrip contract risk, not a serde-specific memorized case."
+
+[[cases]]
+id = "tokio-rs-tokio-8021"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+screen_status = "promote_to_review"
+suggested_signal_ids = ["state_transition", "concurrency_ordering", "assumption_boundary"]
+decision = "Closed semaphore can reopen after forget_permits; issue has repro and PR includes tests, with duplicate fix #8022 adding test context."
+review_focus = "Use as concurrent primitive state-bit preservation risk."
+
+[[cases]]
+id = "tokio-rs-tokio-7910"
+ground_truth_score = 4
+signal_fit_score = 4
+skeptic_blocker = true
+screen_status = "needs_more_context"
+suggested_signal_ids = ["lifecycle_ordering", "concurrency_ordering", "state_transition"]
+decision = "Issue #6439 confirms runtime metric double-increment during blocking pool shutdown, with bug labels and a regression test in the PR."
+review_focus = "Decide whether unstable metrics miscount is high-value enough for product-effect validation."
+
+[[cases]]
+id = "clap-rs-clap-4049"
+ground_truth_score = 5
+signal_fit_score = 4
+skeptic_blocker = true
+screen_status = "needs_more_context"
+suggested_signal_ids = ["external_contract", "assumption_boundary"]
+decision = "Issue has reproducible derive id behavior and PR adds tests, but the PR admits an undesired Command id side effect."
+review_focus = "Check whether the merged behavior is an accepted fix or an architectural compromise with unresolved follow-up."
+
+[[cases]]
+id = "serde-rs-json-187"
+ground_truth_score = 4
+signal_fit_score = 4
+skeptic_blocker = true
+screen_status = "needs_more_context"
+suggested_signal_ids = ["assumption_boundary", "error_propagation", "non_happy_path"]
+decision = "to_value panic risk is plausible and tests changed, but issue/review evidence is thin."
+review_focus = "Confirm pre-fix panic and production relevance before freeze."
+
+[[cases]]
+id = "BurntSushi-ripgrep-652"
+ground_truth_score = 3
+signal_fit_score = 4
+skeptic_blocker = true
+screen_status = "needs_more_context"
+suggested_signal_ids = ["state_transition", "external_contract"]
+decision = "Directory-only gitignore glob matching risk is plausible; issue #649 has now been collected, but the PR evidence needs final review."
+review_focus = "Confirm tests or a concrete pre-fix fail path."
+
+[[cases]]
+id = "BurntSushi-ripgrep-554"
+ground_truth_score = 3
+signal_fit_score = 4
+skeptic_blocker = true
+screen_status = "needs_more_context"
+suggested_signal_ids = ["state_transition", "external_contract"]
+decision = "Parent-path gitignore matching risk is plausible, but independent issue/repro evidence is missing."
+review_focus = "Find a real repro or reject."
+
+[[cases]]
+id = "clap-rs-clap-5836"
+ground_truth_score = 3
+signal_fit_score = 3
+skeptic_blocker = true
+screen_status = "reject"
+suggested_signal_ids = ["assumption_boundary", "external_contract", "risk_path_test_gap"]
+decision = "Debug-assert invariant case has tests but no issue or real user failure; production risk is too weak for frozen v1."
+review_focus = "Do not use to fill the 40-case target."
+
+[[cases]]
+id = "hyperium-hyper-3430"
+ground_truth_score = 2
+signal_fit_score = 2
+skeptic_blocker = true
+screen_status = "reject"
+suggested_signal_ids = ["external_contract", "lifecycle_ordering"]
+decision = "Looks like API completeness/backport parity for a documented method, not a risk validation case."
+review_focus = "Reject unless future context shows a real failure."
+
+[[cases]]
+id = "hyperium-hyper-3538"
+ground_truth_score = 2
+signal_fit_score = 3
+skeptic_blocker = true
+screen_status = "reject"
+suggested_signal_ids = ["external_contract", "concurrency_ordering"]
+decision = "Default stream limit tuning is resource/performance-shaped and lacks failure evidence."
+review_focus = "Current eval design excludes this without executable resource evidence."
+
+[[cases]]
+id = "hyperium-hyper-3557"
+ground_truth_score = 3
+signal_fit_score = 5
+skeptic_blocker = true
+screen_status = "reject"
+suggested_signal_ids = ["external_contract", "assumption_boundary", "lifecycle_ordering"]
+decision = "Safety/lifetime issue is real but the one-line signature change does not fit current function-level/product-effect validation well."
+review_focus = "Keep as future semantic/safety direction, not frozen v1."
+
+[[cases]]
+id = "serde-rs-json-303"
+ground_truth_score = 2
+signal_fit_score = 4
+skeptic_blocker = true
+screen_status = "reject"
+suggested_signal_ids = ["external_contract", "state_transition", "non_happy_path"]
+decision = "byte_offset is mainly feature/API extension, not a regression or stability risk case."
+review_focus = "Do not confuse real user need with high-risk diff evidence."
+
+[[cases]]
+id = "serde-rs-json-384"
+ground_truth_score = 2
+signal_fit_score = 4
+skeptic_blocker = true
+screen_status = "reject"
+suggested_signal_ids = ["state_transition", "external_contract", "error_propagation"]
+decision = "Top-level primitive support is feature expansion without clear failure or regression evidence."
+review_focus = "Reject for frozen v1 unless a bug report with concrete breakage is found."
+
+[[cases]]
+id = "serde-rs-json-770"
+ground_truth_score = 1
+signal_fit_score = 0
+skeptic_blocker = true
+screen_status = "reject"
+suggested_signal_ids = []
+decision = "OSS-Fuzz coverage build-only change, explicitly excluded by the frozen-v1 design."
+review_focus = "Reject."

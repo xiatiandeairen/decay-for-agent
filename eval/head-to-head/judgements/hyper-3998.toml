@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyper-3998"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "In Incoming::poll_frame's H2 branch, reading trailers must treat h2 RST_STREAM with NO_ERROR as a graceful end (Poll::Ready(None)) instead of surfacing it as a body error. The data-frame branch is also re-shaped so only NO_ERROR maps to Ready(None); CANCEL now propagates as an error."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank 2 nails the exact fix: trailers branch now swallows NO_ERROR via Ready(None). Rank 1 additionally catches the CANCEL narrowing side-effect. Rank 3 is a supporting test-gap observation."

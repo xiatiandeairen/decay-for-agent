@@ -1,0 +1,804 @@
+diff --git a/crates/regex/src/literal.rs b/crates/regex/src/literal.rs
+index a45f749..a33da2a 100644
+--- a/crates/regex/src/literal.rs
++++ b/crates/regex/src/literal.rs
+@@ -353,420 +353,426 @@ impl Extractor {
+     }
+ 
+     /// Returns true if the given Unicode class exceeds the configured limits
+     /// on this extractor.
+     fn class_over_limit_unicode(&self, cls: &hir::ClassUnicode) -> bool {
+         let mut count = 0;
+         for r in cls.iter() {
+             if count > self.limit_class {
+                 return true;
+             }
+             count += r.len();
+         }
+         count > self.limit_class
+     }
+ 
+     /// Returns true if the given byte class exceeds the configured limits on
+     /// this extractor.
+     fn class_over_limit_bytes(&self, cls: &hir::ClassBytes) -> bool {
+         let mut count = 0;
+         for r in cls.iter() {
+             if count > self.limit_class {
+                 return true;
+             }
+             count += r.len();
+         }
+         count > self.limit_class
+     }
+ 
+     /// Compute the cross product of the two sequences if the result would be
+     /// within configured limits. Otherwise, make `seq2` infinite and cross the
+     /// infinite sequence with `seq1`.
+     fn cross(&self, mut seq1: TSeq, mut seq2: TSeq) -> TSeq {
+         if !seq2.prefix {
+             return seq1.choose(seq2);
+         }
+         if seq1
+             .max_cross_len(&seq2)
+             .map_or(false, |len| len > self.limit_total)
+         {
+             seq2.make_infinite();
+         }
+         seq1.cross_forward(&mut seq2);
+         assert!(seq1.len().map_or(true, |x| x <= self.limit_total));
+         self.enforce_literal_len(&mut seq1);
+         seq1
+     }
+ 
+     /// Union the two sequences if the result would be within configured
+     /// limits. Otherwise, make `seq2` infinite and union the infinite sequence
+     /// with `seq1`.
+     fn union(&self, mut seq1: TSeq, seq2: &mut TSeq) -> TSeq {
+         if seq1.max_union_len(seq2).map_or(false, |len| len > self.limit_total)
+         {
+             // We try to trim our literal sequences to see if we can make
+             // room for more literals. The idea is that we'd rather trim down
+             // literals already in our sequence if it means we can add a few
+             // more and retain a finite sequence. Otherwise, we'll union with
+             // an infinite sequence and that infects everything and effectively
+             // stops literal extraction in its tracks.
+             //
+             // We do we keep 4 bytes here? Well, it's a bit of an abstraction
+             // leakage. Downstream, the literals may wind up getting fed to
+             // the Teddy algorithm, which supports searching literals up to
+             // length 4. So that's why we pick that number here. Arguably this
+             // should be a tuneable parameter, but it seems a little tricky to
+             // describe. And I'm still unsure if this is the right way to go
+             // about culling literal sequences.
+             seq1.keep_first_bytes(4);
+             seq2.keep_first_bytes(4);
+             seq1.dedup();
+             seq2.dedup();
+             if seq1
+                 .max_union_len(seq2)
+                 .map_or(false, |len| len > self.limit_total)
+             {
+                 seq2.make_infinite();
+             }
+         }
+         seq1.union(seq2);
+         assert!(seq1.len().map_or(true, |x| x <= self.limit_total));
++        seq1.prefix = seq1.prefix && seq2.prefix;
+         seq1
+     }
+ 
+     /// Applies the literal length limit to the given sequence. If none of the
+     /// literals in the sequence exceed the limit, then this is a no-op.
+     fn enforce_literal_len(&self, seq: &mut TSeq) {
+         seq.keep_first_bytes(self.limit_literal_len);
+     }
+ }
+ 
+ #[derive(Clone, Debug)]
+ struct TSeq {
+     seq: Seq,
+     prefix: bool,
+ }
+ 
+ #[allow(dead_code)]
+ impl TSeq {
+     fn empty() -> TSeq {
+         TSeq { seq: Seq::empty(), prefix: true }
+     }
+ 
+     fn infinite() -> TSeq {
+         TSeq { seq: Seq::infinite(), prefix: true }
+     }
+ 
+     fn singleton(lit: Literal) -> TSeq {
+         TSeq { seq: Seq::singleton(lit), prefix: true }
+     }
+ 
+     fn new<I, B>(it: I) -> TSeq
+     where
+         I: IntoIterator<Item = B>,
+         B: AsRef<[u8]>,
+     {
+         TSeq { seq: Seq::new(it), prefix: true }
+     }
+ 
+     fn literals(&self) -> Option<&[Literal]> {
+         self.seq.literals()
+     }
+ 
+     fn push(&mut self, lit: Literal) {
+         self.seq.push(lit);
+     }
+ 
+     fn make_inexact(&mut self) {
+         self.seq.make_inexact();
+     }
+ 
+     fn make_infinite(&mut self) {
+         self.seq.make_infinite();
+     }
+ 
+     fn cross_forward(&mut self, other: &mut TSeq) {
+         assert!(other.prefix);
+         self.seq.cross_forward(&mut other.seq);
+     }
+ 
+     fn union(&mut self, other: &mut TSeq) {
+         self.seq.union(&mut other.seq);
+     }
+ 
+     fn dedup(&mut self) {
+         self.seq.dedup();
+     }
+ 
+     fn sort(&mut self) {
+         self.seq.sort();
+     }
+ 
+     fn keep_first_bytes(&mut self, len: usize) {
+         self.seq.keep_first_bytes(len);
+     }
+ 
+     fn is_finite(&self) -> bool {
+         self.seq.is_finite()
+     }
+ 
+     fn is_empty(&self) -> bool {
+         self.seq.is_empty()
+     }
+ 
+     fn len(&self) -> Option<usize> {
+         self.seq.len()
+     }
+ 
+     fn is_exact(&self) -> bool {
+         self.seq.is_exact()
+     }
+ 
+     fn is_inexact(&self) -> bool {
+         self.seq.is_inexact()
+     }
+ 
+     fn max_union_len(&self, other: &TSeq) -> Option<usize> {
+         self.seq.max_union_len(&other.seq)
+     }
+ 
+     fn max_cross_len(&self, other: &TSeq) -> Option<usize> {
+         assert!(other.prefix);
+         self.seq.max_cross_len(&other.seq)
+     }
+ 
+     fn min_literal_len(&self) -> Option<usize> {
+         self.seq.min_literal_len()
+     }
+ 
+     fn max_literal_len(&self) -> Option<usize> {
+         self.seq.max_literal_len()
+     }
+ 
+     // Below are methods specific to a TSeq that aren't just forwarding calls
+     // to a Seq method.
+ 
+     /// Tags this sequence as "not a prefix." When this happens, this sequence
+     /// can't be crossed as a suffix of another sequence.
+     fn make_not_prefix(&mut self) {
+         self.prefix = false;
+     }
+ 
+     /// Returns true if it's believed that the sequence given is "good" for
+     /// acceleration. This is useful for determining whether a sequence of
+     /// literals has any shot of being fast.
+     fn is_good(&self) -> bool {
+         if self.has_poisonous_literal() {
+             return false;
+         }
+         let Some(min) = self.min_literal_len() else { return false };
+         let Some(len) = self.len() else { return false };
+         // If we have some very short literals, then let's require that our
+         // sequence is itself very small.
+         if min <= 1 {
+             return len <= 3;
+         }
+         min >= 2 && len <= 64
+     }
+ 
+     /// Returns true if it's believed that the sequence given is "really
+     /// good" for acceleration. This is useful for short circuiting literal
+     /// extraction.
+     fn is_really_good(&self) -> bool {
+         if self.has_poisonous_literal() {
+             return false;
+         }
+         let Some(min) = self.min_literal_len() else { return false };
+         let Some(len) = self.len() else { return false };
+         min >= 3 && len <= 8
+     }
+ 
+     /// Returns true if the given sequence contains a poisonous literal.
+     fn has_poisonous_literal(&self) -> bool {
+         let Some(lits) = self.literals() else { return false };
+         lits.iter().any(is_poisonous)
+     }
+ 
+-    /// Compare the two sequences and return the one that is believed to be best
+-    /// according to a hodge podge of heuristics.
++    /// Compare the two sequences and return the one that is believed to be
++    /// best according to a hodge podge of heuristics.
+     fn choose(self, other: TSeq) -> TSeq {
+-        let (seq1, seq2) = (self, other);
++        let (mut seq1, mut seq2) = (self, other);
++        // Whichever one we pick, by virtue of picking one, we choose
++        // to not take the other. So we must consider the result inexact.
++        seq1.make_inexact();
++        seq2.make_inexact();
++
+         if !seq1.is_finite() {
+             return seq2;
+         } else if !seq2.is_finite() {
+             return seq1;
+         }
+         if seq1.has_poisonous_literal() {
+             return seq2;
+         } else if seq2.has_poisonous_literal() {
+             return seq1;
+         }
+         let Some(min1) = seq1.min_literal_len() else { return seq2 };
+         let Some(min2) = seq2.min_literal_len() else { return seq1 };
+         if min1 < min2 {
+             return seq2;
+         } else if min2 < min1 {
+             return seq1;
+         }
+         // OK because we know both sequences are finite, otherwise they wouldn't
+         // have a minimum literal length.
+         let len1 = seq1.len().unwrap();
+         let len2 = seq2.len().unwrap();
+         if len1 < len2 {
+             return seq2;
+         } else if len2 < len1 {
+             return seq1;
+         }
+         // We could do extra stuff like looking at a background frequency
+         // distribution of bytes and picking the one that looks more rare, but for
+         // now we just pick one.
+         seq1
+     }
+ }
+ 
+ impl FromIterator<Literal> for TSeq {
+     fn from_iter<T: IntoIterator<Item = Literal>>(it: T) -> TSeq {
+         TSeq { seq: Seq::from_iter(it), prefix: true }
+     }
+ }
+ 
+ /// Returns true if it is believe that this literal is likely to match very
+ /// frequently, and is thus not a good candidate for a prefilter.
+ fn is_poisonous(lit: &Literal) -> bool {
+     use regex_syntax::hir::literal::rank;
+ 
+     lit.is_empty() || (lit.len() == 1 && rank(lit.as_bytes()[0]) >= 250)
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
+     fn e(pattern: impl AsRef<str>) -> Seq {
+         let pattern = pattern.as_ref();
+         let hir = regex_syntax::ParserBuilder::new()
+             .utf8(false)
+             .build()
+             .parse(pattern)
+             .unwrap();
+         Extractor::new().extract_untagged(&hir)
+     }
+ 
+     #[allow(non_snake_case)]
+     fn E(x: &str) -> Literal {
+         Literal::exact(x.as_bytes())
+     }
+ 
+     #[allow(non_snake_case)]
+     fn I(x: &str) -> Literal {
+         Literal::inexact(x.as_bytes())
+     }
+ 
+     fn seq<I: IntoIterator<Item = Literal>>(it: I) -> Seq {
+         Seq::from_iter(it)
+     }
+ 
+     fn inexact<I>(it: I) -> Seq
+     where
+         I: IntoIterator<Item = Literal>,
+     {
+         Seq::from_iter(it)
+     }
+ 
+     fn exact<B: AsRef<[u8]>, I: IntoIterator<Item = B>>(it: I) -> Seq {
+         Seq::new(it)
+     }
+ 
+     #[test]
+     fn various() {
+         assert_eq!(e(r"foo"), seq([E("foo")]));
+         assert_eq!(e(r"[a-z]foo[a-z]"), seq([I("foo")]));
+         assert_eq!(e(r"[a-z](foo)(bar)[a-z]"), seq([I("foobar")]));
+-        assert_eq!(e(r"[a-z]([a-z]foo)(bar[a-z])[a-z]"), seq([I("foobar")]));
++        assert_eq!(e(r"[a-z]([a-z]foo)(bar[a-z])[a-z]"), seq([I("foo")]));
+         assert_eq!(e(r"[a-z]([a-z]foo)([a-z]foo)[a-z]"), seq([I("foo")]));
+         assert_eq!(e(r"(\d{1,3}\.){3}\d{1,3}"), seq([I(".")]));
+         assert_eq!(e(r"[a-z]([a-z]foo){3}[a-z]"), seq([I("foo")]));
+         assert_eq!(e(r"[a-z](foo[a-z]){3}[a-z]"), seq([I("foo")]));
+         assert_eq!(e(r"[a-z]([a-z]foo[a-z]){3}[a-z]"), seq([I("foo")]));
+         assert_eq!(
+             e(r"[a-z]([a-z]foo){3}(bar[a-z]){3}[a-z]"),
+-            seq([I("foobar")])
++            seq([I("foo")])
+         );
+     }
+ 
+     // These test that some of our suspicious heuristics try to "pick better
+     // literals."
+     #[test]
+     fn heuristics() {
+         // Here, the first literals we stumble across are {ab, cd, ef}. But we
+         // keep going and our heuristics decide that {hiya} is better. (And it
+         // should be, since it's just one literal and it's longer.)
+         assert_eq!(e(r"[a-z]+(ab|cd|ef)[a-z]+hiya[a-z]+"), seq([I("hiya")]));
+         // But here, the first alternation becomes "good enough" that literal
+         // extraction short circuits early. {hiya} is probably still a better
+         // choice here, but {abc, def, ghi} is not bad.
+         assert_eq!(
+             e(r"[a-z]+(abc|def|ghi)[a-z]+hiya[a-z]+"),
+             seq([I("abc"), I("def"), I("ghi")])
+         );
+     }
+ 
+     #[test]
+     fn literal() {
+         assert_eq!(exact(["a"]), e("a"));
+         assert_eq!(exact(["aaaaa"]), e("aaaaa"));
+         assert_eq!(exact(["A", "a"]), e("(?i-u)a"));
+         assert_eq!(exact(["AB", "Ab", "aB", "ab"]), e("(?i-u)ab"));
+         assert_eq!(exact(["abC", "abc"]), e("ab(?i-u)c"));
+ 
+         assert_eq!(Seq::infinite(), e(r"(?-u:\xFF)"));
+         assert_eq!(exact([b"Z"]), e(r"Z"));
+ 
+         assert_eq!(exact(["☃"]), e("☃"));
+         assert_eq!(exact(["☃"]), e("(?i)☃"));
+         assert_eq!(exact(["☃☃☃☃☃"]), e("☃☃☃☃☃"));
+ 
+         assert_eq!(exact(["Δ"]), e("Δ"));
+         assert_eq!(exact(["δ"]), e("δ"));
+         assert_eq!(exact(["Δ", "δ"]), e("(?i)Δ"));
+         assert_eq!(exact(["Δ", "δ"]), e("(?i)δ"));
+ 
+         assert_eq!(exact(["S", "s", "ſ"]), e("(?i)S"));
+         assert_eq!(exact(["S", "s", "ſ"]), e("(?i)s"));
+         assert_eq!(exact(["S", "s", "ſ"]), e("(?i)ſ"));
+ 
+         let letters = "ͱͳͷΐάέήίΰαβγδεζηθικλμνξοπρςστυφχψωϊϋ";
+         assert_eq!(exact([letters]), e(letters));
+     }
+ 
+     #[test]
+     fn class() {
+         assert_eq!(exact(["a", "b", "c"]), e("[abc]"));
+         assert_eq!(exact(["a1b", "a2b", "a3b"]), e("a[123]b"));
+         assert_eq!(exact(["δ", "ε"]), e("[εδ]"));
+         assert_eq!(exact(["Δ", "Ε", "δ", "ε", "ϵ"]), e(r"(?i)[εδ]"));
+     }
+ 
+     #[test]
+     fn look() {
+         assert_eq!(exact(["ab"]), e(r"a\Ab"));
+         assert_eq!(exact(["ab"]), e(r"a\zb"));
+         assert_eq!(exact(["ab"]), e(r"a(?m:^)b"));
+         assert_eq!(exact(["ab"]), e(r"a(?m:$)b"));
+         assert_eq!(exact(["ab"]), e(r"a\bb"));
+         assert_eq!(exact(["ab"]), e(r"a\Bb"));
+         assert_eq!(exact(["ab"]), e(r"a(?-u:\b)b"));
+         assert_eq!(exact(["ab"]), e(r"a(?-u:\B)b"));
+ 
+         assert_eq!(exact(["ab"]), e(r"^ab"));
+         assert_eq!(exact(["ab"]), e(r"$ab"));
+         assert_eq!(exact(["ab"]), e(r"(?m:^)ab"));
+         assert_eq!(exact(["ab"]), e(r"(?m:$)ab"));
+         assert_eq!(exact(["ab"]), e(r"\bab"));
+         assert_eq!(exact(["ab"]), e(r"\Bab"));
+         assert_eq!(exact(["ab"]), e(r"(?-u:\b)ab"));
+         assert_eq!(exact(["ab"]), e(r"(?-u:\B)ab"));
+ 
+         assert_eq!(exact(["ab"]), e(r"ab^"));
+         assert_eq!(exact(["ab"]), e(r"ab$"));
+         assert_eq!(exact(["ab"]), e(r"ab(?m:^)"));
+         assert_eq!(exact(["ab"]), e(r"ab(?m:$)"));
+@@ -858,151 +864,158 @@ mod tests {
+         assert_eq!(exact(["abc", "MN", "xyz"]), e(r"abc|M[a&&b]*N|xyz"));
+ 
+         assert_eq!(exact(["aaa"]), e(r"(?:|aa)aaa"));
+         assert_eq!(Seq::infinite(), e(r"(?:|aa)(?:aaa)*"));
+         assert_eq!(Seq::infinite(), e(r"(?:|aa)(?:aaa)*?"));
+ 
+         assert_eq!(Seq::infinite(), e(r"a|b*"));
+         assert_eq!(inexact([E("a"), I("b")]), e(r"a|b+"));
+ 
+         assert_eq!(inexact([I("a"), E("b"), E("c")]), e(r"a*b|c"));
+ 
+         assert_eq!(Seq::infinite(), e(r"a|(?:b|c*)"));
+ 
+         assert_eq!(inexact([I("a"), I("b"), E("c")]), e(r"(a|b)*c|(a|ab)*c"));
+ 
+         assert_eq!(
+             exact(["abef", "abgh", "cdef", "cdgh"]),
+             e(r"(ab|cd)(ef|gh)")
+         );
+         assert_eq!(
+             exact([
+                 "abefij", "abefkl", "abghij", "abghkl", "cdefij", "cdefkl",
+                 "cdghij", "cdghkl",
+             ]),
+             e(r"(ab|cd)(ef|gh)(ij|kl)")
+         );
+     }
+ 
+     #[test]
+     fn impossible() {
+         // N.B. The extractor in this module "optimizes" the sequence and makes
+         // it infinite if it isn't "good." An empty sequence (generated by a
+         // concatenantion containing an expression that can never match) is
+         // considered "not good." Since infinite sequences are not actionably
+         // and disable optimizations, this winds up being okay.
+         //
+         // The literal extractor in regex-syntax doesn't combine these two
+         // steps and makes the caller choose to optimize. That is, it returns
+         // the sequences as they are. Which in this case, for some of the tests
+         // below, would be an empty Seq and not an infinite Seq.
+         assert_eq!(Seq::infinite(), e(r"[a&&b]"));
+         assert_eq!(Seq::infinite(), e(r"a[a&&b]"));
+         assert_eq!(Seq::infinite(), e(r"[a&&b]b"));
+         assert_eq!(Seq::infinite(), e(r"a[a&&b]b"));
+         assert_eq!(exact(["a", "b"]), e(r"a|[a&&b]|b"));
+         assert_eq!(exact(["a", "b"]), e(r"a|c[a&&b]|b"));
+         assert_eq!(exact(["a", "b"]), e(r"a|[a&&b]d|b"));
+         assert_eq!(exact(["a", "b"]), e(r"a|c[a&&b]d|b"));
+         assert_eq!(Seq::infinite(), e(r"[a&&b]*"));
+         assert_eq!(exact(["MN"]), e(r"M[a&&b]*N"));
+     }
+ 
+     // This tests patterns that contain something that defeats literal
+     // detection, usually because it would blow some limit on the total number
+     // of literals that can be returned.
+     //
+     // The main idea is that when literal extraction sees something that
+     // it knows will blow a limit, it replaces it with a marker that says
+     // "any literal will match here." While not necessarily true, the
+     // over-estimation is just fine for the purposes of literal extraction,
+     // because the imprecision doesn't matter: too big is too big.
+     //
+     // This is one of the trickier parts of literal extraction, since we need
+     // to make sure all of our literal extraction operations correctly compose
+     // with the markers.
+     //
+     // Note that unlike in regex-syntax, some of these have "inner" literals
+     // extracted where a prefix or suffix would otherwise not be found.
+     #[test]
+     fn anything() {
+         assert_eq!(Seq::infinite(), e(r"."));
+         assert_eq!(Seq::infinite(), e(r"(?s)."));
+         assert_eq!(Seq::infinite(), e(r"[A-Za-z]"));
+         assert_eq!(Seq::infinite(), e(r"[A-Z]"));
+         assert_eq!(Seq::infinite(), e(r"[A-Z]{0}"));
+         assert_eq!(Seq::infinite(), e(r"[A-Z]?"));
+         assert_eq!(Seq::infinite(), e(r"[A-Z]*"));
+         assert_eq!(Seq::infinite(), e(r"[A-Z]+"));
+         assert_eq!(seq([I("1")]), e(r"1[A-Z]"));
+         assert_eq!(seq([I("1")]), e(r"1[A-Z]2"));
+-        assert_eq!(seq([E("123")]), e(r"[A-Z]+123"));
++        assert_eq!(seq([I("123")]), e(r"[A-Z]+123"));
+         assert_eq!(seq([I("123")]), e(r"[A-Z]+123[A-Z]+"));
+         assert_eq!(Seq::infinite(), e(r"1|[A-Z]|3"));
+         assert_eq!(seq([E("1"), I("2"), E("3")]), e(r"1|2[A-Z]|3"),);
+         assert_eq!(seq([E("1"), I("2"), E("3")]), e(r"1|[A-Z]2[A-Z]|3"),);
+-        assert_eq!(seq([E("1"), E("2"), E("3")]), e(r"1|[A-Z]2|3"),);
++        assert_eq!(seq([E("1"), I("2"), E("3")]), e(r"1|[A-Z]2|3"),);
+         assert_eq!(seq([E("1"), I("2"), E("4")]), e(r"1|2[A-Z]3|4"),);
+-        assert_eq!(seq([E("2")]), e(r"(?:|1)[A-Z]2"));
++        assert_eq!(seq([I("2")]), e(r"(?:|1)[A-Z]2"));
+         assert_eq!(inexact([I("a")]), e(r"a.z"));
+     }
+ 
+     #[test]
+     fn empty() {
+         assert_eq!(Seq::infinite(), e(r""));
+         assert_eq!(Seq::infinite(), e(r"^"));
+         assert_eq!(Seq::infinite(), e(r"$"));
+         assert_eq!(Seq::infinite(), e(r"(?m:^)"));
+         assert_eq!(Seq::infinite(), e(r"(?m:$)"));
+         assert_eq!(Seq::infinite(), e(r"\b"));
+         assert_eq!(Seq::infinite(), e(r"\B"));
+         assert_eq!(Seq::infinite(), e(r"(?-u:\b)"));
+         assert_eq!(Seq::infinite(), e(r"(?-u:\B)"));
+     }
+ 
+     #[test]
+     fn crazy_repeats() {
+         assert_eq!(Seq::infinite(), e(r"(?:){4294967295}"));
+         assert_eq!(Seq::infinite(), e(r"(?:){64}{64}{64}{64}{64}{64}"));
+         assert_eq!(Seq::infinite(), e(r"x{0}{4294967295}"));
+         assert_eq!(Seq::infinite(), e(r"(?:|){4294967295}"));
+ 
+         assert_eq!(
+             Seq::infinite(),
+             e(r"(?:){8}{8}{8}{8}{8}{8}{8}{8}{8}{8}{8}{8}{8}{8}")
+         );
+         let repa = "a".repeat(100);
+         assert_eq!(
+             inexact([I(&repa)]),
+             e(r"a{8}{8}{8}{8}{8}{8}{8}{8}{8}{8}{8}{8}{8}{8}")
+         );
+     }
+ 
+     #[test]
+     fn optimize() {
+         // This gets a common prefix that isn't too short.
+         let s = e(r"foobarfoobar|foobar|foobarzfoobar|foobarfoobar");
+         assert_eq!(seq([I("foobar")]), s);
+ 
+         // This also finds a common prefix, but since it's only one byte, it
+         // prefers the multiple literals.
+         let s = e(r"abba|akka|abccba");
+         assert_eq!(exact(["abba", "akka", "abccba"]), s);
+ 
+         let s = e(r"sam|samwise");
+         assert_eq!(seq([E("sam")]), s);
+ 
+         // The empty string is poisonous, so our seq becomes infinite, even
+         // though all literals are exact.
+         let s = e(r"foobarfoo|foo||foozfoo|foofoo");
+         assert_eq!(Seq::infinite(), s);
+ 
+         // A space is also poisonous, so our seq becomes infinite. But this
+         // only gets triggered when we don't have a completely exact sequence.
+         // When the sequence is exact, spaces are okay, since we presume that
+         // any prefilter will match a space more quickly than the regex engine.
+         // (When the sequence is exact, there's a chance of the prefilter being
+         // used without needing the regex engine at all.)
+         let s = e(r"foobarfoo|foo| |foofoo");
+         assert_eq!(Seq::infinite(), s);
+     }
++
++    // Regression test for: https://github.com/BurntSushi/ripgrep/issues/2884
++    #[test]
++    fn case_insensitive_alternation() {
++        let s = e(r"(?i:e.x|ex)");
++        assert_eq!(s, seq([I("X"), I("x")]));
++    }
+ }
+diff --git a/tests/util.rs b/tests/util.rs
+index bac5f2e..07a1a78 100644
+--- a/tests/util.rs
++++ b/tests/util.rs
+@@ -207,199 +207,181 @@ impl Dir {
+     pub fn link_dir<S: AsRef<Path>, T: AsRef<Path>>(&self, src: S, target: T) {
+         use std::os::windows::fs::symlink_dir;
+         let src = self.dir.join(src);
+         let target = self.dir.join(target);
+         let _ = fs::remove_dir(&target);
+         nice_err(&target, symlink_dir(&src, &target));
+     }
+ 
+     /// Creates a file symlink to the src with the given target name
+     /// in this directory.
+     #[cfg(not(windows))]
+     pub fn link_file<S: AsRef<Path>, T: AsRef<Path>>(
+         &self,
+         src: S,
+         target: T,
+     ) {
+         self.link_dir(src, target);
+     }
+ 
+     /// Creates a file symlink to the src with the given target name
+     /// in this directory.
+     #[cfg(windows)]
+     #[allow(dead_code)] // unused on Windows
+     pub fn link_file<S: AsRef<Path>, T: AsRef<Path>>(
+         &self,
+         src: S,
+         target: T,
+     ) {
+         use std::os::windows::fs::symlink_file;
+         let src = self.dir.join(src);
+         let target = self.dir.join(target);
+         let _ = fs::remove_file(&target);
+         nice_err(&target, symlink_file(&src, &target));
+     }
+ }
+ 
+ /// A simple wrapper around a process::Command with some conveniences.
+ #[derive(Debug)]
+ pub struct TestCommand {
+     /// The dir used to launched this command.
+     dir: Dir,
+     /// The actual command we use to control the process.
+     cmd: Command,
+ }
+ 
+ impl TestCommand {
+     /// Returns a mutable reference to the underlying command.
+     pub fn cmd(&mut self) -> &mut Command {
+         &mut self.cmd
+     }
+ 
+     /// Add an argument to pass to the command.
+     pub fn arg<A: AsRef<OsStr>>(&mut self, arg: A) -> &mut TestCommand {
+         self.cmd.arg(arg);
+         self
+     }
+ 
+     /// Add any number of arguments to the command.
+     pub fn args<I, A>(&mut self, args: I) -> &mut TestCommand
+     where
+         I: IntoIterator<Item = A>,
+         A: AsRef<OsStr>,
+     {
+         self.cmd.args(args);
+         self
+     }
+ 
+     /// Set the working directory for this command.
+     ///
+     /// Note that this does not need to be called normally, since the creation
+     /// of this TestCommand causes its working directory to be set to the
+     /// test's directory automatically.
+     pub fn current_dir<P: AsRef<Path>>(&mut self, dir: P) -> &mut TestCommand {
+         self.cmd.current_dir(dir);
+         self
+     }
+ 
+     /// Runs and captures the stdout of the given command.
+     pub fn stdout(&mut self) -> String {
+         let o = self.output();
+-        let stdout = String::from_utf8_lossy(&o.stdout);
+-        match stdout.parse() {
+-            Ok(t) => t,
+-            Err(err) => {
+-                panic!(
+-                    "could not convert from string: {:?}\n\n{}",
+-                    err, stdout
+-                );
+-            }
+-        }
++        String::from_utf8_lossy(&o.stdout).into_owned()
+     }
+ 
+     /// Pipe `input` to a command, and collect the output.
+     pub fn pipe(&mut self, input: &[u8]) -> String {
+         self.cmd.stdin(process::Stdio::piped());
+         self.cmd.stdout(process::Stdio::piped());
+         self.cmd.stderr(process::Stdio::piped());
+ 
+         let mut child = self.cmd.spawn().unwrap();
+ 
+         // Pipe input to child process using a separate thread to avoid
+         // risk of deadlock between parent and child process.
+         let mut stdin = child.stdin.take().expect("expected standard input");
+         let input = input.to_owned();
+         let worker = thread::spawn(move || stdin.write_all(&input));
+ 
+         let output = self.expect_success(child.wait_with_output().unwrap());
+         worker.join().unwrap().unwrap();
+ 
+-        let stdout = String::from_utf8_lossy(&output.stdout);
+-        match stdout.parse() {
+-            Ok(t) => t,
+-            Err(err) => {
+-                panic!(
+-                    "could not convert from string: {:?}\n\n{}",
+-                    err, stdout
+-                );
+-            }
+-        }
++        String::from_utf8_lossy(&output.stdout).into_owned()
+     }
+ 
+     /// Gets the output of a command. If the command failed, then this panics.
+     pub fn output(&mut self) -> process::Output {
+         let output = self.raw_output();
+         self.expect_success(output)
+     }
+ 
+     /// Gets the raw output of a command after filtering nonsense like jemalloc
+     /// error messages from stderr.
+     pub fn raw_output(&mut self) -> process::Output {
+         let mut output = self.cmd.output().unwrap();
+         output.stderr = strip_jemalloc_nonsense(&output.stderr);
+         output
+     }
+ 
+     /// Runs the command and asserts that it resulted in an error exit code.
+     pub fn assert_err(&mut self) {
+         let o = self.raw_output();
+         if o.status.success() {
+             panic!(
+                 "\n\n===== {:?} =====\n\
+                  command succeeded but expected failure!\
+                  \n\ncwd: {}\
+                  \n\ndir list: {:?}\
+                  \n\nstatus: {}\
+                  \n\nstdout: {}\n\nstderr: {}\
+                  \n\n=====\n",
+                 self.cmd,
+                 self.dir.dir.display(),
+                 dir_list(&self.dir.dir),
+                 o.status,
+                 String::from_utf8_lossy(&o.stdout),
+                 String::from_utf8_lossy(&o.stderr)
+             );
+         }
+     }
+ 
+     /// Runs the command and asserts that its exit code matches expected exit
+     /// code.
+     pub fn assert_exit_code(&mut self, expected_code: i32) {
+         let code = self.cmd.output().unwrap().status.code().unwrap();
+         assert_eq!(
+             expected_code,
+             code,
+             "\n\n===== {:?} =====\n\
+              expected exit code did not match\
+              \n\ncwd: {}\
+              \n\ndir list: {:?}\
+              \n\nexpected: {}\
+              \n\nfound: {}\
+              \n\n=====\n",
+             self.cmd,
+             self.dir.dir.display(),
+             dir_list(&self.dir.dir),
+             expected_code,
+             code
+         );
+     }
+ 
+     /// Runs the command and asserts that something was printed to stderr.
+     pub fn assert_non_empty_stderr(&mut self) {
+         let o = self.cmd.output().unwrap();
+         if o.status.success() || o.stderr.is_empty() {
+             panic!(
+                 "\n\n===== {:?} =====\n\
+                  command succeeded but expected failure!\
+                  \n\ncwd: {}\
+                  \n\ndir list: {:?}\
+                  \n\nstatus: {}\
+                  \n\nstdout: {}\n\nstderr: {}\
+                  \n\n=====\n",
+                 self.cmd,
+                 self.dir.dir.display(),
+                 dir_list(&self.dir.dir),
+                 o.status,
+                 String::from_utf8_lossy(&o.stdout),
+                 String::from_utf8_lossy(&o.stderr)
+             );
+         }

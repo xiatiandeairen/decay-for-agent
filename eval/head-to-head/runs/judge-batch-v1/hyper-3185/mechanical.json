@@ -1,0 +1,25 @@
+{
+  "case_id": "hyper-3185",
+  "flags": [
+    "ai_baseline: ai=2, mechanical=1"
+  ],
+  "per_mode": {
+    "ai_baseline": {
+      "agree": false,
+      "ai_subjective": 2,
+      "mechanical": 1
+    },
+    "fact_only": {
+      "agree": null,
+      "ai_subjective": 1,
+      "mechanical": null,
+      "reason": "top3 list not provided"
+    },
+    "semantic_filtered": {
+      "agree": null,
+      "ai_subjective": 1,
+      "mechanical": null,
+      "reason": "top3 list not provided"
+    }
+  }
+}

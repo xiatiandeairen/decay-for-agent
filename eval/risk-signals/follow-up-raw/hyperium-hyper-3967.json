@@ -1,0 +1,43 @@
+{
+  "case_id": "hyperium-hyper-3967",
+  "refs": [
+    {
+      "detail": {
+        "body": "As noted in https://github.com/rust-lang/rust/issues/147588, the `H2Upgraded` type in hyper wrongly uses a `repr(transparent)` value on a stuct containing `enum Neutered {}`. It seems that this was making use of behavior of the current compiler that isn't specified, and would like to be changed.\n\nThat code should be refactored to no longer need such a `repr(transparent)` transmute.",
+        "closedAt": "2025-11-10T16:20:32Z",
+        "comments": [],
+        "createdAt": "2025-10-21T17:46:20Z",
+        "labels": [
+          {
+            "color": "d93f0b",
+            "description": "Category: bug. Something is wrong. This is bad!",
+            "id": "MDU6TGFiZWwxMjU3MTAxOTc=",
+            "name": "C-bug"
+          },
+          {
+            "color": "c2e0c6",
+            "description": "Effort: hard. Likely requires a deeper understanding of how hyper's internals work.",
+            "id": "MDU6TGFiZWw2OTQ1MDEyMTQ=",
+            "name": "E-hard"
+          },
+          {
+            "color": "fbca04",
+            "description": "Area: HTTP/2 specific.",
+            "id": "MDU6TGFiZWw5NTY3OTYxMjA=",
+            "name": "A-http2"
+          }
+        ],
+        "number": 3966,
+        "state": "CLOSED",
+        "title": "HTTP/2 Upgraded wrongly uses a transparent uninhabited type",
+        "url": "https://github.com/hyperium/hyper/issues/3966"
+      },
+      "target": {
+        "number": 3966,
+        "reason": "HTTP/2 CONNECT upgrade failure report.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "candidate": {
+    "id": "hyperium-hyper-4019",
+    "repo": "hyperium/hyper",
+    "url": "https://github.com/hyperium/hyper/pull/4019"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "dc9962e95c542538b806888e7da0002f659754ac",
+    "body": "",
+    "comments": [],
+    "files": [
+      {
+        "additions": 5,
+        "changeType": "MODIFIED",
+        "deletions": 5,
+        "path": "src/proto/h2/mod.rs"
+      }
+    ],
+    "headRefName": "panic",
+    "headRefOid": "a14f9f9556e861057b10047a3d430e5ceb38c828",
+    "labels": [],
+    "mergedAt": "2026-02-16T14:32:09Z",
+    "number": 4019,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "0x676e67"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "60108445af0510e2ba30bd97c706a21c146ee977"
+        },
+        "id": "PRR_kwDOAWaYQc7ivwix",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2026-02-15T09:40:40Z"
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "60108445af0510e2ba30bd97c706a21c146ee977"
+        },
+        "id": "PRR_kwDOAWaYQc7iyEaz",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-02-15T12:51:20Z"
+      },
+      {
+        "author": {
+          "login": "cuiweixie"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "60108445af0510e2ba30bd97c706a21c146ee977"
+        },
+        "id": "PRR_kwDOAWaYQc7iyLzp",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-02-15T13:24:02Z"
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "a14f9f9556e861057b10047a3d430e5ceb38c828"
+        },
+        "id": "PRR_kwDOAWaYQc7jB-zv",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2026-02-16T14:31:14Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix: non-utf8 char may cause panic when calling to_str",
+    "url": "https://github.com/hyperium/hyper/pull/4019"
+  }
+}

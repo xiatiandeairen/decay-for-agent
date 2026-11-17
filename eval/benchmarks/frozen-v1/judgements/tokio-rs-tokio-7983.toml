@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "tokio-rs-tokio-7983"
+repo = "tokio-rs/tokio"
+pr = 7983
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "io_uring open cancellation leaked file descriptors."
+
+[fact_only]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "True risk is io_uring open cancellation leaking file descriptors. Fact output flags unsafe additions in the io_uring driver, a relevant boundary-safety signal, but misses cancellation/fd leak semantics."
+
+[semantic_filtered]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 0
+notes = "Semantic gives a good unsafe-boundary review but still does not identify fd leak on cancellation."
+
+[comparison]
+semantic_improved_ranking = true
+semantic_reduced_noise = true
+semantic_introduced_noise = false
+notes = "Semantic improves explanation/ranking, not semantic recall."

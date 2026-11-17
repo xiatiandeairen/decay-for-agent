@@ -1,0 +1,62 @@
+{
+  "case_id": "serde-rs-json-521",
+  "refs": [
+    {
+      "detail": {
+        "body": "We need to roundtrip an enum that has an element `Float(f32)`. That used to work with 1.0.25, but fails with 1.0.38. [This gist](https://gist.github.com/lutter/2820e2c98331d5b5b6b95d62912e2e0f) has complete code that demonstrates the problem.\r\n\r\nWhat happens is that the enum can be turned into a `serde_json::Value`, but trying to get the enum back from that causes the error `invalid type: map, expected f32`.\r\n\r\nThis is somewhat urgent, as it keeps us from updating other dependencies that use newer versions of serde_json (and we really need to update those).\r\n\r\nFor completeness sake, here is the `serde_json::Value` that fails to parse back to a `Float(f32)` and the error from my test program:\r\n```\r\n[src/main.rs:20] serde_json::to_value(v).unwrap() = Object(\r\n    {\r\n        \"data\": Number(159.10000610351562),\r\n        \"type\": String(\r\n            \"Float\"\r\n        )\r\n    }\r\n)\r\n[src/main.rs:25] serde_json::from_value::<Value>(jv) = Err(\r\n    Error(\"invalid type: map, expected f32\", line: 0, column: 0)\r\n)\r\n```\r\n",
+        "closedAt": "2019-02-28T09:07:21Z",
+        "comments": [
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Sorry about the breakage! I released serde_json 1.0.39 with a fix.",
+            "createdAt": "2019-02-28T09:10:51Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDQ2ODE5NTMxNg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/520#issuecomment-468195316",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "lutter"
+            },
+            "authorAssociation": "NONE",
+            "body": "Thanks so much for the super-quick turnaround on this!",
+            "createdAt": "2019-02-28T16:44:54Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDQ2ODM0NTY3MQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/520#issuecomment-468345671",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2019-02-27T23:55:47Z",
+        "labels": [
+          {
+            "color": "fc2929",
+            "description": "",
+            "id": "MDU6TGFiZWwyMTM0OTkyNTc=",
+            "name": "bug"
+          }
+        ],
+        "number": 520,
+        "state": "CLOSED",
+        "title": "Error roundtripping (regression from 1.0.25 to 1.0.38)",
+        "url": "https://github.com/serde-rs/json/issues/520"
+      },
+      "target": {
+        "number": 520,
+        "reason": "Adjacently tagged f32 roundtrip regression report.",
+        "repo": "serde-rs/json",
+        "type": "issue"
+      }
+    }
+  ]
+}

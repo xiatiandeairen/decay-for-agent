@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "hyperium-hyper-3812"
+repo = "hyperium/hyper"
+pr = 3812
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Partial HTTP/1 header parsing panic."
+
+[fact_only]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "True risk is intermittent panic parsing partial HTTP/1 headers. Fact output only reports generic prod_change_with_tests on h1/io.rs."
+
+[semantic_filtered]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "Semantic asks for h1/io behavior review but misses partial header panic."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = false
+notes = "No material improvement."

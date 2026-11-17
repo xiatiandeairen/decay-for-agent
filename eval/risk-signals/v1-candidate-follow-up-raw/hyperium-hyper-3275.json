@@ -1,0 +1,188 @@
+{
+  "case_id": "hyperium-hyper-3275",
+  "refs": [
+    {
+      "detail": {
+        "body": "**Version**\r\n```\r\nhyper = \"0.14.18\"\r\nh2 = \"0.3.13\"\r\n```\r\n\r\n**Platform**\r\n```\r\n> uname -a\r\nLinux <REDACTED> 5.17.5-76051705-generic #202204271406~1651504840~22.04~63e51bd SMP PREEMPT Mon May 2 15: x86_64 x86_64 x86_64 GNU/Linux\r\n```\r\n\r\n**Description**\r\nI've found that Google Cloud Storage's API can respond with HTTP/2 `RST_STREAM` frame with `NO_ERROR` set for the reason, which appears to mean \"stop sending the request body and read my response\" according to https://datatracker.ietf.org/doc/html/rfc7540#section-8.1\r\n\r\n> A server can send a complete response prior to the client sending an entire\r\n   request if the response does not depend on any portion of the request\r\n   that has not been sent and received.  When this is true, a server MAY\r\n   request that the client abort transmission of a request without error\r\n   by sending a RST_STREAM with an error code of NO_ERROR after sending\r\n   a complete response (i.e., a frame with the END_STREAM flag).\r\n   Clients MUST NOT discard responses as a result of receiving such a\r\n   RST_STREAM, though clients can always discard responses at their\r\n   discretion for other reasons.\r\n\r\nI believe this is happening in response to a `PutObject` request when the bucket is being rate limited for writes. The server is trying to tell the client to stop sending the request body because it won't be processed, and instead it should immediately read the response to discover the `429 Too Many Requests` error code.\r\n\r\nHowever, Hyper's client implementation appears to just return the `RST_STREAM` message as an error and discards the response instead of handling it, which gives a hilariously confusing error message of:\r\n```\r\nerror reading a body from connection: stream error received: not a result of an error\r\n```\r\n\r\nTo be compliant with the spec, the implementation should stop sending the body and immediately read the response and return it.\r\n\r\nFor context, I'm using the Gcloud Storage API via https://crates.io/crates/aws-sdk-s3 (because the Gcloud Rust SDK doesn't support streaming bodies, but thankfully Gcloud Storage exposes an S3-compatible API), which uses Hyper internally. `aws-sdk-s3` appears to be returning the error from Hyper verbatim, however.",
+        "closedAt": "2023-07-26T19:47:08Z",
+        "comments": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Yea, I think we've talked about this in a previous issue, but don't remember where. `h2` is making the \"error\" (the reset) trump any other frames that have been received. It should likely be changed to return all other received frames, and *then* return the error.",
+            "createdAt": "2022-05-26T22:47:34Z",
+            "id": "IC_kwDOAWaYQc5D5aGR",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2872#issuecomment-1139122577",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "abonander"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "But _somewhere_ in the stack it should probably just suppress the `RST_STREAM(NO_ERROR)` and return the response, because the response is what's going to be meaningful to the user. The `RST_STREAM` here is just being used as a \"shut up and listen\" signal.",
+            "createdAt": "2022-05-26T22:54:04Z",
+            "id": "IC_kwDOAWaYQc5D5a0Q",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2872#issuecomment-1139125520",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Yes, it should return the response, that's why I mean. And then the body can return that there was a `NO_ERROR` error. It should still be given to the user, so they know something happened.",
+            "createdAt": "2022-05-26T23:02:00Z",
+            "id": "IC_kwDOAWaYQc5D5bpR",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2872#issuecomment-1139128913",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "slinkydeveloper"
+            },
+            "authorAssociation": "NONE",
+            "body": "Stumbled on this. How can I suppress the specific failure `RST_STREAM(NO_ERROR)` somehow? How can I workaround this? I'm also in for contributing this fix :)",
+            "createdAt": "2022-11-04T16:12:14Z",
+            "id": "IC_kwDOAWaYQc5NtrlU",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2872#issuecomment-1303820628",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "DDtKey"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "> And then the body can return that there was a NO_ERROR error. It should still be given to the user, so they know something happened.\r\n\r\nI don’t think it should be propagated at all:\r\nThe response body could be totally fine, there is no errors there, but `NO_ERROR` happened due to request body being dropped. It affects h2 stream status, but not the request result. So why we should to enrich the response body with the error? Only if something like “state” to check if there were underlying protocol errors, Idk\r\n\r\nThat’s actually legit scenario when body of request wasn’t consumed because server already responded back with valid response.And seems this behavior corresponds the H2 specification.\r\n\r\nThis is already long story, started here -  https://github.com/hyperium/h2/pull/600#issuecomment-1645579652, and then the behavior was changed [here](https://github.com/hyperium/h2/pull/634) (what is actually correct). And I just extended the test in h2 to make it more clear (https://github.com/hyperium/h2/pull/703)\r\n\r\nUPD: I've prepared the fix on hyper client level",
+            "createdAt": "2023-07-21T18:39:17Z",
+            "id": "IC_kwDOAWaYQc5iHX-X",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2872#issuecomment-1646100375",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "slinkydeveloper"
+            },
+            "authorAssociation": "NONE",
+            "body": "Hi, any chance we could get this in a release soon?",
+            "createdAt": "2023-10-12T13:13:06Z",
+            "id": "IC_kwDOAWaYQc5o4Ti2",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2872#issuecomment-1759590582",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2022-05-26T21:47:40Z",
+        "labels": [
+          {
+            "color": "d93f0b",
+            "description": "Category: bug. Something is wrong. This is bad!",
+            "id": "MDU6TGFiZWwxMjU3MTAxOTc=",
+            "name": "C-bug"
+          },
+          {
+            "color": "fbca04",
+            "description": "Area: HTTP/2 specific.",
+            "id": "MDU6TGFiZWw5NTY3OTYxMjA=",
+            "name": "A-http2"
+          }
+        ],
+        "number": 2872,
+        "state": "CLOSED",
+        "title": "Client: handle `RST_STREAM` with `NO_ERROR` set for the reason",
+        "url": "https://github.com/hyperium/hyper/issues/2872"
+      },
+      "target": {
+        "number": 2872,
+        "reason": "Early response NO_ERROR propagation report.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    },
+    {
+      "detail": {
+        "baseRefName": "0.14.x",
+        "baseRefOid": "d77c2599bc023b258b90a17f5b633c8b7b0cbd4b",
+        "body": "Closes #2872 for `0.14.x` version: **this is backport, see** #3275\r\n\r\nAdded test is failing against the current version (before the fix).\r\n\r\n",
+        "comments": [],
+        "files": [
+          {
+            "additions": 6,
+            "changeType": "MODIFIED",
+            "deletions": 1,
+            "path": "src/body/body.rs"
+          },
+          {
+            "additions": 1,
+            "changeType": "MODIFIED",
+            "deletions": 1,
+            "path": "src/proto/mod.rs"
+          },
+          {
+            "additions": 55,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "tests/client.rs"
+          }
+        ],
+        "headRefName": "fix-rst-stream-error-bakport-0.14",
+        "headRefOid": "86ae68b82849a079b1fe97b1ea7e0f8da76b23fd",
+        "labels": [],
+        "mergedAt": "2023-07-26T19:47:45Z",
+        "number": 3274,
+        "reviewDecision": "APPROVED",
+        "reviews": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "86ae68b82849a079b1fe97b1ea7e0f8da76b23fd"
+            },
+            "id": "PRR_kwDOAWaYQc5cTAKJ",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "APPROVED",
+            "submittedAt": "2023-07-26T19:47:23Z"
+          }
+        ],
+        "state": "MERGED",
+        "title": "fix(0.14.x): early server response shouldn't propagate NO_ERROR",
+        "url": "https://github.com/hyperium/hyper/pull/3274"
+      },
+      "target": {
+        "number": 3274,
+        "reason": "Backport with equivalent regression context.",
+        "repo": "hyperium/hyper",
+        "type": "pr"
+      }
+    }
+  ]
+}

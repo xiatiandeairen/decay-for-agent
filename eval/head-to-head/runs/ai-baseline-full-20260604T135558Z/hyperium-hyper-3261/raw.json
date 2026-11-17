@@ -1,0 +1,12 @@
+{
+  "case_id": "hyperium-hyper-3261",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"hyperium-hyper-3261\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"assumption_boundary\",\"subject\":\"src/proto/h1/conn.rs:has_initial_read_write_state\",\"evidence_refs\":[\"matches!(self.state.reading, Reading::Init)\\n            && matches!(self.state.writing, Writing::Init)\\n            && self.io.read_buf().is_empty()\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"'initial state' is inferred from empty read_buf; if client bytes are in flight but not yet polled into the buffer, mid-request shutdown will incorrectly close the connection.\"},{\"rank\":2,\"risk_signal\":\"state_transition\",\"subject\":\"src/proto/h1/dispatch.rs:disable_keep_alive\",\"evidence_refs\":[\"if self.conn.is_write_closed() || self.conn.has_initial_read_write_state() {\\n            self.close();\\n        }\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Expands close() trigger to a new state (idle pre-request) so graceful_shutdown now eagerly terminates instead of waiting for the first request to complete the lifecycle.\"},{\"rank\":3,\"risk_signal\":\"test_gap_for_risk_path\",\"subject\":\"tests/server.rs:disable_keep_alive_mid_request\",\"evidence_refs\":[\"req.write_all(b\\\"GET / HTTP/1.1\\\\r\\\\n\\\").unwrap();\\n+        thread::sleep(Duration::from_millis(10));\\n         tx1.send(()).unwrap();\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Test relies on a 10ms sleep so partial bytes land in read_buf before shutdown; the race where bytes have not yet arrived (read_buf still empty mid-request) is not covered.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

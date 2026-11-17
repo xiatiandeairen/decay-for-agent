@@ -1,0 +1,47 @@
+{
+  "case_id": "hyper-4056",
+  "refs": [
+    {
+      "detail": {
+        "body": "The [code](https://github.com/hyperium/hyper/blob/master/src%2Fproto%2Fh1%2Fdecode.rs#L155) in question:\n```\nlet to_read = *remaining as usize;\nlet buf = ready!(body.read_mem(cx, to_read))?;\nlet num = buf.as_ref().len() as u64;\n```\nHere, if it ever happens that *remaining is divisible by usize::MAX, to_read will become 0 and the code will return an error IncompleteBody, which is clearly wrong.\n\nMoreover, even in cases when remaining is not exactly divisible by usize::MAX, but has small remainder, this is suboptimal (and likely to produce remainder divisible by usize::MAX).\n\nMaybe it is worth to replace this with saturating cast?",
+        "closedAt": "2026-04-27T12:32:00Z",
+        "comments": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Thanks for the report, good catch. I've put up a fix in #4056.",
+            "createdAt": "2026-04-26T13:46:40Z",
+            "id": "IC_kwDOAWaYQc8AAAABAZ8Fhg",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "HEART",
+                "users": {
+                  "totalCount": 2
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/4055#issuecomment-4322166150",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2026-04-26T09:30:10Z",
+        "labels": [],
+        "number": 4055,
+        "state": "CLOSED",
+        "title": "u64->usize overflow in h1 decode on 32bit system ",
+        "url": "https://github.com/hyperium/hyper/issues/4055"
+      },
+      "target": {
+        "number": 4055,
+        "reason": "32-bit large-body reproduction or boundary report.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    }
+  ]
+}

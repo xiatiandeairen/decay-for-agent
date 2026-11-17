@@ -1,0 +1,208 @@
+version = "risk-signal-agent-aggregate.v1"
+reviewed_at = "2026-05-13"
+case_count = 8
+freeze_ready_count = 3
+needs_more_context_count = 5
+reject_count = 0
+
+[[cases]]
+id = "tokio-rs-tokio-7991"
+decision = "freeze_ready"
+confidence = "medium"
+accepted_signals = ["assumption_boundary", "non_happy_path", "risk_path_test_gap"]
+gate_reason = "All agents supported freeze_ready and all aggregation thresholds passed."
+must_have_reason = "Closed-channel recv_many edge path asserted the wrong caller-buffer condition and could panic; production code and regression test changed."
+limitations = ["Issue body not stored locally", "Do not generalize to all mpsc concurrency or close-path risks"]
+required_follow_up = ["Store issue #7990 reproduction if available", "Capture patch-level before/after assertion context"]
+
+[cases.agent_decisions]
+ground_truth = "freeze_ready"
+risk_signal = "freeze_ready"
+skeptic = "freeze_ready"
+
+[cases.scores]
+real_risk_clarity = 5
+evidence_strength = 5
+production_diff_relevance = 5
+transferability = 5
+signal_fit = 5
+skeptic_noise_risk = 1
+skeptic_evidence_gap = 2
+skeptic_missing_context_risk = 2
+
+[[cases]]
+id = "tokio-rs-tokio-8001"
+decision = "needs_more_context"
+confidence = "medium"
+accepted_signals = ["non_happy_path", "state_transition", "error_propagation"]
+gate_reason = "Ground Truth and Risk Signal agents favored freeze_ready, but Skeptic found high OS-specific and readiness-contract uncertainty."
+must_have_reason = "UDP recv omitted error readiness, so SO_ERROR could fail to wake and surface to callers."
+limitations = ["Linux-specific outlier", "Mio/Tokio Interest::ERROR contract unclear from local context", "Do not generalize to all socket error propagation"]
+required_follow_up = ["Store issue #8000 reproduction", "Capture platform/readiness contract notes", "Define eval claim as local UDP recv error-readiness risk only"]
+
+[cases.agent_decisions]
+ground_truth = "freeze_ready"
+risk_signal = "freeze_ready"
+skeptic = "needs_more_context"
+
+[cases.scores]
+real_risk_clarity = 5
+evidence_strength = 5
+production_diff_relevance = 5
+transferability = 5
+signal_fit = 5
+skeptic_noise_risk = 3
+skeptic_evidence_gap = 3
+skeptic_missing_context_risk = 4
+
+[[cases]]
+id = "hyper-3977"
+decision = "needs_more_context"
+confidence = "high"
+accepted_signals = ["concurrency_ordering", "state_transition"]
+gate_reason = "All agents require more context; revert evidence is strong but the exact failure mechanism is not locally established."
+must_have_reason = "Reverted a rare missed-write-wakeup fix after CPU reports."
+limitations = ["Issue #3976 missing", "Original PR #3952 mechanism missing", "Revert alone is not enough ground truth"]
+required_follow_up = ["Capture #3952 patch", "Capture #3976 report", "Compare reverted diff and high-CPU mechanism"]
+
+[cases.agent_decisions]
+ground_truth = "needs_more_context"
+risk_signal = "needs_more_context"
+skeptic = "needs_more_context"
+
+[cases.scores]
+real_risk_clarity = 3
+evidence_strength = 3
+production_diff_relevance = 4
+transferability = 4
+signal_fit = 3
+skeptic_noise_risk = 3
+skeptic_evidence_gap = 4
+skeptic_missing_context_risk = 5
+
+[[cases]]
+id = "hyper-4042"
+decision = "freeze_ready"
+confidence = "medium"
+accepted_signals = ["lifecycle_ordering", "state_transition"]
+rejected_signals = ["error_propagation"]
+gate_reason = "All agents supported freeze_ready for lifecycle/state signals; error_propagation is excluded."
+must_have_reason = "Dropping an HTTP/2 response future failed to notify pipe_task, preventing RST_STREAM and flow-control release."
+limitations = ["Issue #4040 not stored locally", "Do not claim all HTTP/2 cancellation paths are broken", "Do not claim memory leak"]
+required_follow_up = ["Store #4040 reproduction if available", "Capture test assertion for RST_STREAM or flow-control behavior"]
+
+[cases.agent_decisions]
+ground_truth = "freeze_ready"
+risk_signal = "freeze_ready"
+skeptic = "freeze_ready"
+
+[cases.scores]
+real_risk_clarity = 5
+evidence_strength = 4
+production_diff_relevance = 5
+transferability = 5
+signal_fit = 5
+skeptic_noise_risk = 1
+skeptic_evidence_gap = 2
+skeptic_missing_context_risk = 2
+
+[[cases]]
+id = "hyper-4038"
+decision = "needs_more_context"
+confidence = "medium"
+accepted_signals = ["assumption_boundary", "non_happy_path", "external_contract"]
+gate_reason = "Ground Truth and Risk Signal agents favored freeze_ready, but Skeptic found missing issue/test context and a production file mismatch."
+must_have_reason = "FFI functions dereferenced raw pointers before NULL validation."
+limitations = ["Candidate production_files path must be corrected", "No local issue #4033 or FFI repro", "No regression tests"]
+required_follow_up = ["Normalize production file to src/ffi/http_types.rs", "Capture #4033 or minimal NULL FFI repro", "Confirm patch order: dereference before validation"]
+
+[cases.agent_decisions]
+ground_truth = "freeze_ready"
+risk_signal = "freeze_ready"
+skeptic = "needs_more_context"
+
+[cases.scores]
+real_risk_clarity = 5
+evidence_strength = 4
+production_diff_relevance = 5
+transferability = 5
+signal_fit = 5
+skeptic_noise_risk = 2
+skeptic_evidence_gap = 3
+skeptic_missing_context_risk = 3
+
+[[cases]]
+id = "hyper-3185"
+decision = "needs_more_context"
+confidence = "medium"
+accepted_signals = ["lifecycle_ordering", "external_contract", "non_happy_path"]
+gate_reason = "Ground Truth and Risk Signal agents favored freeze_ready, but Skeptic identified unresolved API/product semantics around timeout meaning."
+must_have_reason = "HTTP/1 header read timeout start point affected idle/slow-client behavior and user expectations."
+limitations = ["Timeout semantics are contested", "Do not claim confirmed DoS vulnerability", "Do not claim separate idle-timeout design is wrong"]
+required_follow_up = ["Capture #3178 user report", "Capture docs/API contract for header_read_timeout", "Define eval claim as timeout lifecycle semantics, not vulnerability"]
+
+[cases.agent_decisions]
+ground_truth = "freeze_ready"
+risk_signal = "freeze_ready"
+skeptic = "needs_more_context"
+
+[cases.scores]
+real_risk_clarity = 5
+evidence_strength = 5
+production_diff_relevance = 5
+transferability = 5
+signal_fit = 4
+skeptic_noise_risk = 3
+skeptic_evidence_gap = 3
+skeptic_missing_context_risk = 4
+
+[[cases]]
+id = "BurntSushi-ripgrep-3182"
+decision = "freeze_ready"
+confidence = "medium"
+accepted_signals = ["assumption_boundary", "non_happy_path", "risk_path_test_gap"]
+gate_reason = "All agents supported freeze_ready and all aggregation thresholds passed."
+must_have_reason = "Replacement handling could panic when a look-around match range exceeded the expected replacement range."
+limitations = ["Issue #3180 not stored locally", "Do not generalize to all regex replacement or regex engine behavior"]
+required_follow_up = ["Store issue #3180 or minimal command-line repro", "Capture regression test content"]
+
+[cases.agent_decisions]
+ground_truth = "freeze_ready"
+risk_signal = "freeze_ready"
+skeptic = "freeze_ready"
+
+[cases.scores]
+real_risk_clarity = 5
+evidence_strength = 4
+production_diff_relevance = 5
+transferability = 4
+signal_fit = 4
+skeptic_noise_risk = 1
+skeptic_evidence_gap = 2
+skeptic_missing_context_risk = 2
+
+[[cases]]
+id = "serde-rs-json-265"
+decision = "needs_more_context"
+confidence = "medium"
+accepted_signals = ["risk_path_test_gap", "state_transition"]
+rejected_signals = ["non_happy_path"]
+gate_reason = "Ground Truth and Skeptic see strong follow-up evidence, but Risk Signal fit is below freeze threshold and the original #256 diff is missing."
+must_have_reason = "Follow-up PR fixed incorrect parses and performance regression introduced by #256."
+limitations = ["Correctness and performance are mixed", "Original #256 diff missing", "Do not collapse both regressions into one mechanism"]
+required_follow_up = ["Capture #256 diff", "Separate correctness-regression claim from performance-regression claim", "Decide which claim belongs in frozen eval"]
+
+[cases.agent_decisions]
+ground_truth = "freeze_ready"
+risk_signal = "needs_more_context"
+skeptic = "freeze_ready"
+
+[cases.scores]
+real_risk_clarity = 5
+evidence_strength = 5
+production_diff_relevance = 5
+transferability = 4
+signal_fit = 3
+skeptic_noise_risk = 1
+skeptic_evidence_gap = 2
+skeptic_missing_context_risk = 3

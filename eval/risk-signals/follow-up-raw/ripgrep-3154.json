@@ -1,0 +1,223 @@
+{
+  "case_id": "ripgrep-3154",
+  "refs": [
+    {
+      "detail": {
+        "body": "#### What version of ripgrep are you using?\r\n\r\n```\r\nripgrep 13.0.0\r\n-SIMD -AVX (compiled)\r\n+SIMD +AVX (runtime)\r\n```\r\n\r\n#### How did you install ripgrep?\r\n\r\nNixOS package.\r\n\r\n#### What operating system are you using ripgrep on?\r\n\r\nNixOS unstable\r\n\r\n#### Describe your bug.\r\n\r\nWhen I use PCRE 2 regex with `\\K` in multiline mode, it will print the whole line instead only the part after `\\K`.\r\n\r\n#### What are the steps to reproduce the behaviour?\r\n\r\nRun\r\n\r\n```\r\nprintf \"foo\\nbar\" | rg --multiline --pcre2 'foo\\nb\\K(a)'\r\n```\r\n\r\n#### What is the actual behaviour?\r\n\r\n```ShellSession\r\n$ printf \"foo\\nbar\" | rg --debug --multiline --pcre2 'foo\\nb\\K(a)'\r\nDEBUG|globset|crates/globset/src/lib.rs:421: built glob set; 0 literals, 0 basenames, 12 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\r\nDEBUG|globset|crates/globset/src/lib.rs:421: built glob set; 0 literals, 1 basenames, 0 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\r\nbar\r\n```\r\n\r\n#### What is the expected behavior?\r\n\r\nIt should print just `ar`.\r\n",
+        "closedAt": null,
+        "comments": [
+          {
+            "author": {
+              "login": "jtojnar"
+            },
+            "authorAssociation": "NONE",
+            "body": "If I add `--only-matching `, it will even preserve the part after the expression (`ar` instead of just `a`):\r\n\r\n```ShellSession\r\n$ printf \"foo\\nbar\" | rg --multiline --pcre2 --only-matching 'foo\\nb\\K(a)'\r\nbar\r\n```\r\n\r\n`--only-matching ` does work if I remove `\\K` but then it will also include the extra context (`foo\\nb`):\r\n\r\n```ShellSession\r\n$ printf \"foo\\nbar\" | rg --multiline --pcre2 --only-matching 'foo\\nb(a)'\r\nfoo\r\nba\r\n```\r\n\r\nIn some cases it could be worked around with negative look-behind but not always – in my full code I am getting:\r\n\r\n“lookbehind assertion is not fixed length”\r\n",
+            "createdAt": "2023-06-06T19:26:13Z",
+            "id": "IC_kwDOAzJbyc5eIqJv",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/2528#issuecomment-1579328111",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "jtojnar"
+            },
+            "authorAssociation": "NONE",
+            "body": "Looks like `\\K` also breaks another workaround using `--replace`:\r\n\r\n```ShellSession\r\n$ printf \"foo\\nbar\" | rg --multiline --pcre2 'foo\\nb\\K(a)' --replace '$1'\r\nbar\r\n```\r\n\r\nFortunately, here I can just drop `\\K` and use `--replace` in addition `--only-matching`:\r\n\r\n```ShellSession\r\n$ printf \"foo\\nbar\" | rg --multiline --pcre2 --only-matching 'foo\\nb(a)' --replace '$1'\r\na\r\n```",
+            "createdAt": "2023-06-06T19:28:54Z",
+            "id": "IC_kwDOAzJbyc5eIq2s",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/2528#issuecomment-1579330988",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "So at a high level, for this specific case, the `-r/--replace` flag is really what you ought to be using here IMO. And in your example, you don't even need PCRE2:\r\n\r\n```\r\n$ printf \"foo\\nbar\" | rg -Uor '$1' 'foo\\nb(a)'\r\na\r\n```\r\n\r\nOtherwise, `\\K` really messes with things. Your very first example is correct and intended behavior:\r\n\r\n```\r\n$ printf \"foo\\nbar\" | rg --multiline --pcre2 'foo\\nb\\K(a)'\r\nbar\r\n```\r\n\r\nUnless you give ripgrep a flag to tell it to do otherwise, it always prints matching lines. `bar` is a matching line, so the whole line is printed. `\\K` does and shouldn't have any impact on that.\r\n\r\nBut the output of `--only-matching` is wrong:\r\n\r\n```\r\n$ printf \"foo\\nbar\" | rg --multiline --pcre2 --only-matching 'foo\\nb\\K(a)'\r\nbar\r\n```\r\n\r\nThat really should just print `a`.\r\n\r\nThe problem here is that `\\K` breaks an invariant that ripgrep assumes to be true about regexes: that the regex engine can be re-run (roughly) starting at the beginning of a match and reproduce the matches found. But because of look-behind (which is basically what `\\K` is), you actually need to make the contents (potentially all of them) before the match available for the regex engine to see, otherwise the regex may not match because of look-around. This has led to kludges like this in ripgrep:\r\n\r\nhttps://github.com/BurntSushi/ripgrep/blob/4fcb1b2202b97c5a21894672232700225223a138/crates/printer/src/util.rs#L387-L442\r\n\r\nAt a more fundamental level, I fucked up the abstraction boundary between printing and searching, which makes this hard to fix properly. That abstraction boundary basically needs to go through a re-think.\r\n\r\nThat means I'll classify this as a bug, but don't hold your breath for it getting fixed any time soon.\r\n\r\nThe bug with `--replace` not working correctly with `\\K` is \"just\" a downstream effect of this.\r\n\r\n> “lookbehind assertion is not fixed length”\r\n\r\nThis is a PCRE2 limitation. Nothing I can do about that.",
+            "createdAt": "2023-06-06T21:14:12Z",
+            "id": "IC_kwDOAzJbyc5eJKlr",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 2
+                }
+              }
+            ],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/2528#issuecomment-1579460971",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "jtojnar"
+            },
+            "authorAssociation": "NONE",
+            "body": "> Otherwise, `\\K` really messes with things. Your very first example is correct and intended behavior:\r\n> \r\n> ```\r\n> $ printf \"foo\\nbar\" | rg --multiline --pcre2 'foo\\nb\\K(a)'\r\n> bar\r\n> ```\r\n\r\nYou are right. The issue here is actually that the match is not highlighted.\r\n\r\nI started with `--only-matching` but then noticed that it does not also do any match highlighting without `--only-matching` and forgot to mention that and did not update the expectations accordingly. Normally, the matched part would be highlighted in bold red.\r\n\r\nThanks for the informative response. Will use `--only-matching --replace` without `\\K` since it works okay.",
+            "createdAt": "2023-06-06T21:35:24Z",
+            "id": "IC_kwDOAzJbyc5eJPoq",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/2528#issuecomment-1579481642",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "Ah yeah, the lack of highlights are indeed caused by the same underlying problem plaguing `--only-matching` and `--replace`.",
+            "createdAt": "2023-06-06T21:41:22Z",
+            "id": "IC_kwDOAzJbyc5eJRN1",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/2528#issuecomment-1579488117",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2023-06-06T19:21:35Z",
+        "labels": [
+          {
+            "color": "fc2929",
+            "description": "A bug.",
+            "id": "MDU6TGFiZWwzMzk3MjE2Nzg=",
+            "name": "bug"
+          }
+        ],
+        "number": 2528,
+        "state": "OPEN",
+        "title": "\\K does not appear to work with --multiline",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/2528"
+      },
+      "target": {
+        "number": 2528,
+        "reason": "Underlying PCRE2 multiline look-around issue.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    },
+    {
+      "detail": {
+        "body": "### Please tick this box to confirm you have reviewed the above.\n\n- [x] I have a different issue.\n\n### What version of ripgrep are you using?\n\nripgrep 14.1.1\n\nfeatures:+pcre2\nsimd(compile):+SSE2,-SSSE3,-AVX2\nsimd(runtime):+SSE2,+SSSE3,+AVX2\n\nPCRE2 10.43 is available (JIT is available)\n\n### How did you install ripgrep?\n\ncargo install ripgrep --features pcre2\n\n\n\n### What operating system are you using ripgrep on?\n\nWindows 10 & 11\n\n### Describe your bug.\n\nOutput when using switch `--files-with-matches` appears to leave out files, that otherwise show matches when the switch is not present.\n\n### What are the steps to reproduce the behavior?\n\nCompare the output of these two commands on the attached files:\n\n`rg --pcre2 --iglob *.txt --multiline \"(?s)Start(?!.*thing1)(?=.*thing2)(?!.*thing3)\"`\n`rg --pcre2 --iglob *.txt --multiline \"(?s)Start(?!.*thing1)(?=.*thing2)(?!.*thing3)\" --files-with-matches`\n\n[issue.txt](https://github.com/user-attachments/files/22177751/issue.txt)\n[normal.txt](https://github.com/user-attachments/files/22177755/normal.txt)\n\nBase64-encoded version of issue.txt (just in case attachment mangles it):\n> U3RhcnQgCiAgIAoKICAgWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFgKICAgWVlZWVlZWVlZWVlZ\n> WVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZ\n> WVlZWVkKICAgCiAgICAgIHRoaW5nMiAKCgo=\n\nBase64 normal.txt:\n> U3RhcnQKCiAgdGhpbmcyIAoK\n\n### What is the actual behavior?\n\nWithout `--files-with-matches`:\n> normal.txt\n> 1:Start\n> \n> issue.txt\n> 1:Start\n\n(Note: When run in a console, the match for the match for normal.txt is colored red, but the match in issue.txt is not)\n\nWith `--files-with-matches`:\n> normal.txt\n\n### What is the expected behavior?\n\nI would expect the `--files-with-matches` version of the command to list both normal.txt and issue.txt",
+        "closedAt": "2025-09-22T13:12:17Z",
+        "comments": [
+          {
+            "author": {
+              "login": "F8enjoyer"
+            },
+            "authorAssociation": "NONE",
+            "body": "I can simplify the steps to reproduce - the negative lookaheads are not necessary to trigger the issue:\n\n`rg --pcre2 --iglob *.txt --multiline \"(?s)Start(?=.*thing2)\"`\n`rg --pcre2 --iglob *.txt --multiline \"(?s)Start(?=.*thing2)\" --files-with-matches`\n\nHowever, the positive lookahead is necessary; the following does _not_ trigger the issue:\n\n`rg --pcre2 --iglob *.txt --multiline \"(?s)Start.*thing2\" --files-with-matches`\n",
+            "createdAt": "2025-09-05T19:17:06Z",
+            "id": "IC_kwDOAzJbyc7CR6My",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/3139#issuecomment-3259474738",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "F8enjoyer"
+            },
+            "authorAssociation": "NONE",
+            "body": "I think I have bisected the issue down to a specific commit.\n\nThis version _does not_ have the issue:\nhttps://github.com/BurntSushi/ripgrep/commit/656aa126492b04f1ac8b0406f589b6de4c4b7d60\n\nThe next version _does_ have the issue:\nhttps://github.com/BurntSushi/ripgrep/commit/efd9cfb2fc1f0233de9eda4c03416d32ef2c3ce8\n\n(This commit message mentions both multiline and PCRE2, so it seems plausible?)\n**Edit:** This would make the first affected build v13.0.0",
+            "createdAt": "2025-09-06T23:08:25Z",
+            "id": "IC_kwDOAzJbyc7CgZ-Q",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/3139#issuecomment-3263274896",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "If that is indeed it, there is definitely an open issue for this somewhere. This sort of bug was known when I hacked around a different bug.\n\nAnyway, this bug is unlikely to be fixed any time soon.",
+            "createdAt": "2025-09-06T23:12:14Z",
+            "id": "IC_kwDOAzJbyc7CgaXy",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/3139#issuecomment-3263276530",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "F8enjoyer"
+            },
+            "authorAssociation": "NONE",
+            "body": "Ok, understood.\n\nMeanwhile, I've tried to express this as a regression test:\n```\nrgtest!(r3139_multiline_lookahead_files_with_matches, |dir: Dir, mut cmd: TestCommand| {\n\n    // Only PCRE2 supports look-around.\n    if !dir.is_pcre2() {\n        return;\n    }\n    dir.create(\"test\", \"Start \\n   \\n\\n   XXXXXXXXXXXXXXXXXXXXXXXXXX\\n   YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\\n   \\n      thing2 \\n\\n\");\n    \n    cmd\n        .args(&[\"--multiline\", \"--pcre2\", \"--files-with-matches\", r\"(?s)Start(?=.*thing2)\", \"test\"])\n        .assert_exit_code(0);\n        \n    eqnice!(\"test\\n\", cmd.stdout());\n});\n```\n\n",
+            "createdAt": "2025-09-06T23:47:18Z",
+            "id": "IC_kwDOAzJbyc7CgdnP",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "HEART",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/3139#issuecomment-3263289807",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "The issue I was referring to above was #2528.\n\nI managed to find a hacky fix for this _specific_ issue in #3154 without resolving the underlying problem identified in #2528.\n\nThank you for the nice regression test!",
+            "createdAt": "2025-09-21T18:03:01Z",
+            "id": "IC_kwDOAzJbyc7FqJSx",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/3139#issuecomment-3316159665",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2025-09-05T18:39:12Z",
+        "labels": [
+          {
+            "color": "fc2929",
+            "description": "A bug.",
+            "id": "MDU6TGFiZWwzMzk3MjE2Nzg=",
+            "name": "bug"
+          }
+        ],
+        "number": 3139,
+        "state": "CLOSED",
+        "title": "Inconsistent behaviour when using --files-with-matches vs without",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/3139"
+      },
+      "target": {
+        "number": 3139,
+        "reason": "Concrete files-with-matches regression report.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    }
+  ]
+}

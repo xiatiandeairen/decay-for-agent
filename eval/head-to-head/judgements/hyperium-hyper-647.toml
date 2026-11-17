@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyperium-hyper-647"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "On invalid Content-Length in get_incoming, restore the BufReader's inner stream back into self.stream before returning Err(Error::Header), so a subsequent close_connection / into_inner does not panic because the underlying NetworkStream was dropped on the error path."
+
+[ai_baseline]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank 1 directly identifies the stream restore before Err(Error::Header) and the close_connection / into_inner panic avoidance — matches PR intent. Rank 2 correctly tags the regression test as supporting. [mechanical-flag: ai_baseline: ai=1, mechanical=2]"

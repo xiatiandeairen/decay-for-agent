@@ -1,0 +1,40 @@
+{
+  "case_id": "tokio-rs-tokio-8076",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "assert_ne!(max_reads, 0, \"a RwLock may not be created with 0 readers\");"
+      ],
+      "rank": 1,
+      "rationale": "New precondition rejects max_reads=0; write()/try_write() acquire self.mr permits, so mr=0 would mean write acquires 0 permits and grants exclusive access while readers hold permits.",
+      "risk_signal": "assumption_boundary",
+      "subject": "tokio/src/sync/rwlock.rs:with_max_readers",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "assert!(max_reads != 0, \"a RwLock may not be created with 0 readers\");"
+      ],
+      "rank": 2,
+      "rationale": "Public const constructor adds new panic condition on max_reads=0; existing callers passing 0 (previously silently broken) will now panic at construction, a behavior change.",
+      "risk_signal": "external_contract",
+      "subject": "tokio/src/sync/rwlock.rs:const_with_max_readers",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "debug_assert_ne!(self.mr, 0);"
+      ],
+      "rank": 3,
+      "rationale": "debug_assert guards write/write_owned/try_write paths against mr=0, but no test exercises the write path with the new invariant; assertion is compiled out in release builds.",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tokio/src/sync/rwlock.rs:write",
+      "value": "supporting"
+    }
+  ]
+}

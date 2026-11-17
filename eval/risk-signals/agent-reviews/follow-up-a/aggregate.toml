@@ -1,0 +1,135 @@
+round = "follow-up-a"
+reviewed_at = "2026-05-14"
+policy = "freeze requires strong ground truth, transferable signal fit, current M3 eval fit, and no unresolved skeptic blocker"
+
+[[cases]]
+id = "hyper-3952"
+ground_truth_score = 5
+signal_fit_score = 4
+skeptic_blocker = false
+m3_eval_fit = false
+final_status = "rejected"
+final_signal_ids = ["concurrency_ordering", "state_transition"]
+decision = "Reject for current frozen eval. It is a strong double-edged follow-up case, but the original fix was reverted for CPU hot-polling risk."
+evidence_refs = ["hyperium/hyper#3952", "hyperium/hyper#3977", "hyperium/hyper#3976"]
+
+[[cases]]
+id = "ripgrep-3154"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+m3_eval_fit = true
+final_status = "freeze_ready"
+final_signal_ids = ["external_contract", "non_happy_path", "state_transition"]
+decision = "Freeze. The issue has a concrete --files-with-matches + PCRE2 multiline look-around repro and a bounded output-correctness scope."
+evidence_refs = ["BurntSushi/ripgrep#3154", "BurntSushi/ripgrep#3139", "BurntSushi/ripgrep#2528"]
+
+[[cases]]
+id = "ripgrep-2885"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+m3_eval_fit = true
+final_status = "freeze_ready"
+final_signal_ids = ["external_contract", "state_transition", "assumption_boundary"]
+decision = "Freeze. Minimal false-negative repro and maintainer diagnosis make it a strong optimizer invariant case."
+evidence_refs = ["BurntSushi/ripgrep#2885", "BurntSushi/ripgrep#2884"]
+
+[[cases]]
+id = "ripgrep-2692"
+ground_truth_score = 4
+signal_fit_score = 3
+skeptic_blocker = false
+m3_eval_fit = false
+final_status = "rejected"
+final_signal_ids = ["lifecycle_ordering", "assumption_boundary"]
+decision = "Reject for current frozen eval. The issue is primarily memory/performance evidence and belongs in a future resource-lifecycle track."
+evidence_refs = ["BurntSushi/ripgrep#2692", "BurntSushi/ripgrep#2690"]
+
+[[cases]]
+id = "hyperium-hyper-3394"
+ground_truth_score = 1
+signal_fit_score = 3
+skeptic_blocker = true
+m3_eval_fit = false
+final_status = "rejected"
+final_signal_ids = ["assumption_boundary", "external_contract", "risk_path_test_gap"]
+decision = "Reject. Linked issue is empty and the PR is feature/design-shaped rather than validated regression evidence."
+evidence_refs = ["hyperium/hyper#3394", "hyperium/hyper#3393"]
+
+[[cases]]
+id = "hyperium-hyper-310"
+ground_truth_score = 4
+signal_fit_score = 4
+skeptic_blocker = true
+m3_eval_fit = false
+final_status = "rejected"
+final_signal_ids = ["lifecycle_ordering", "non_happy_path", "assumption_boundary"]
+decision = "Reject. The underlying bug is real, but the PR direction was disputed for resource-exhaustion risk and later reverted."
+evidence_refs = ["hyperium/hyper#310", "hyperium/hyper#197", "hyperium/hyper#309"]
+
+[[cases]]
+id = "hyperium-hyper-518"
+ground_truth_score = 4
+signal_fit_score = 5
+skeptic_blocker = false
+m3_eval_fit = true
+final_status = "freeze_ready"
+final_signal_ids = ["external_contract", "lifecycle_ordering"]
+decision = "Freeze. set_ssl_verifier discarding connector state/pool config is a clear external API and lifecycle contract case."
+evidence_refs = ["hyperium/hyper#518", "hyperium/hyper#495"]
+
+[[cases]]
+id = "hyperium-hyper-3967"
+ground_truth_score = 2
+signal_fit_score = 2
+skeptic_blocker = true
+m3_eval_fit = false
+final_status = "rejected"
+final_signal_ids = ["state_transition", "lifecycle_ordering", "external_contract", "concurrency_ordering", "risk_path_test_gap"]
+decision = "Reject. Follow-up context is type-representation/API migration, not a validated runtime regression for current M3."
+evidence_refs = ["hyperium/hyper#3967", "hyperium/hyper#3966"]
+
+[[cases]]
+id = "tokio-rs-tokio-7638"
+ground_truth_score = 5
+signal_fit_score = 4
+skeptic_blocker = false
+m3_eval_fit = false
+final_status = "rejected"
+final_signal_ids = ["external_contract", "assumption_boundary"]
+decision = "Reject for current frozen eval. Macro hygiene is valuable but outside the current function-level decay scope."
+evidence_refs = ["tokio-rs/tokio#7638", "tokio-rs/tokio#7637"]
+
+[[cases]]
+id = "tokio-rs-tokio-8057"
+ground_truth_score = 5
+signal_fit_score = 4
+skeptic_blocker = false
+m3_eval_fit = false
+final_status = "rejected"
+final_signal_ids = ["concurrency_ordering", "lifecycle_ordering", "risk_path_test_gap"]
+decision = "Reject as a revert-only frozen target. The original regression PR #7757 should be collected if this scenario enters eval."
+evidence_refs = ["tokio-rs/tokio#8057", "tokio-rs/tokio#7757", "tokio-rs/tokio#8056"]
+
+[[cases]]
+id = "hyperium-hyper-3290"
+ground_truth_score = 4
+signal_fit_score = 5
+skeptic_blocker = true
+m3_eval_fit = true
+final_status = "needs_more_context"
+final_signal_ids = ["concurrency_ordering", "state_transition", "risk_path_test_gap"]
+decision = "Keep NMC. Double-poll panic is strong, but skeptic blocker remains because there is no stable repro/test and review questioned root-cause coverage."
+evidence_refs = ["hyperium/hyper#3290", "hyperium/hyper#3289"]
+
+[[cases]]
+id = "hyperium-hyper-3812"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+m3_eval_fit = true
+final_status = "freeze_ready"
+final_signal_ids = ["non_happy_path", "assumption_boundary", "state_transition"]
+decision = "Freeze. Partial 1xx HTTP/1 response panic has concrete issue evidence, regression-test path, and patch-release context."
+evidence_refs = ["hyperium/hyper#3812", "hyperium/hyper#3811"]

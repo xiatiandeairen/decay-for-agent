@@ -1,0 +1,92 @@
+{
+  "candidate": {
+    "id": "hyperium-hyper-3430",
+    "repo": "hyperium/hyper",
+    "url": "https://github.com/hyperium/hyper/pull/3430"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "31f27307da8f894b2eac54f818bd7e03e75e118a",
+    "body": "in `client::conn::http1::Connection` the method `poll_without_shutdown` references `without_shutdown` in its documentation, but the method `without_shutdown` is not present in the code. This PR copies `without_shutdown` from hyper `0.14.x`: https://github.com/hyperium/hyper/blob/0.14.x/src/client/conn.rs#L520-L528",
+    "comments": [],
+    "files": [
+      {
+        "additions": 11,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "src/client/conn/http1.rs"
+      }
+    ],
+    "headRefName": "hyper-1.0-client-without_shutdown",
+    "headRefOid": "90453959ff69ebf0fb7cd7c1f163634264c0aabe",
+    "labels": [],
+    "mergedAt": "2023-11-21T22:18:37Z",
+    "number": 3430,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "ce1e2b55e3ef4780010cfb69f286dc6749708274"
+        },
+        "id": "PRR_kwDOAWaYQc5ns-St",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-11-20T13:36:50Z"
+      },
+      {
+        "author": {
+          "login": "kiron1"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "ce1e2b55e3ef4780010cfb69f286dc6749708274"
+        },
+        "id": "PRR_kwDOAWaYQc5nxQvN",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-11-21T01:46:17Z"
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "90453959ff69ebf0fb7cd7c1f163634264c0aabe"
+        },
+        "id": "PRR_kwDOAWaYQc5n58-j",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2023-11-21T22:18:03Z"
+      },
+      {
+        "author": {
+          "login": "aliu"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "ce1e2b55e3ef4780010cfb69f286dc6749708274"
+        },
+        "id": "PRR_kwDOAWaYQc5oJgpw",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-11-24T05:22:28Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix(client): add missing without_shutdown method",
+    "url": "https://github.com/hyperium/hyper/pull/3430"
+  }
+}

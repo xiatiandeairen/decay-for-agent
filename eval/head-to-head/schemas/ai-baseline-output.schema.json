@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://decay.local/schemas/ai-baseline-output.schema.json",
+  "title": "AI baseline output v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["case_id", "model", "manifest_hash", "top_risks"],
+  "properties": {
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "manifest_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "top_risks": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "rank",
+          "risk_signal",
+          "subject",
+          "evidence_refs",
+          "confidence",
+          "value",
+          "rationale"
+        ],
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3
+          },
+          "risk_signal": {
+            "type": "string",
+            "enum": [
+              "assumption_boundary",
+              "non_happy_path",
+              "state_transition",
+              "error_propagation",
+              "lifecycle_ordering",
+              "concurrency_ordering",
+              "external_contract",
+              "test_gap_for_risk_path"
+            ]
+          },
+          "subject": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low"]
+          },
+          "value": {
+            "type": "string",
+            "enum": ["direct", "supporting", "context"]
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {"value": {"const": "direct"}}
+            },
+            "then": {
+              "properties": {
+                "confidence": {"enum": ["high", "medium"]}
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,93 @@
+version = "risk-signal-agent-aggregate.v1"
+reviewed_at = "2026-05-13"
+case_count = 8
+freeze_ready_count = 4
+needs_more_context_count = 3
+reject_count = 1
+
+[[cases]]
+id = "tokio-rs-tokio-7922"
+decision = "freeze_ready"
+confidence = "high"
+accepted_signals = ["concurrency_ordering", "lifecycle_ordering"]
+rejected_signals = ["risk_path_test_gap"]
+gate_reason = "All agents support freeze_ready for concurrency/lifecycle; risk_path_test_gap is not needed."
+must_have_reason = "Blocking pool shutdown and task enqueue could interleave and double-decrement idle thread accounting, causing panic; production pool and loom test changed."
+limitations = ["Do not claim all blocking-pool shutdown races are covered", "Do not claim decay detected this yet"]
+evidence_refs = ["https://github.com/tokio-rs/tokio/pull/7922"]
+
+[[cases]]
+id = "hyper-3988"
+decision = "needs_more_context"
+confidence = "medium"
+accepted_signals = ["concurrency_ordering", "state_transition"]
+gate_reason = "Ground Truth and Risk Signal support freeze_ready, but Skeptic blocks because this is v2 after a reverted wakeup fix."
+must_have_reason = "HTTP/1 dispatch loop could return Pending after write/flush readiness with no later wake."
+limitations = ["Needs follow-up/revert survival check", "Do not equate this v2 with the prior reverted fix"]
+required_follow_up = ["Search follow-up/revert after #3988", "Store minimal dispatch-loop explanation or test body"]
+evidence_refs = ["https://github.com/hyperium/hyper/pull/3988"]
+
+[[cases]]
+id = "hyper-3998"
+decision = "freeze_ready"
+confidence = "medium"
+accepted_signals = ["error_propagation", "state_transition", "non_happy_path"]
+gate_reason = "All agents support freeze_ready with scoped HTTP/2 early-response trailer claim."
+must_have_reason = "Reading trailers after early response should not propagate RST_STREAM NO_ERROR as a caller-visible error."
+limitations = ["Do not claim generic trailer handling is broken", "Scope to early response and RST_STREAM NO_ERROR"]
+evidence_refs = ["https://github.com/hyperium/hyper/pull/3998"]
+
+[[cases]]
+id = "hyper-4043"
+decision = "freeze_ready"
+confidence = "medium"
+accepted_signals = ["state_transition", "external_contract", "non_happy_path"]
+gate_reason = "All agents support freeze_ready; metadata production path must be normalized."
+must_have_reason = "Chunked requests with trailers incorrectly transitioned to closed instead of keep-alive, preventing connection reuse."
+limitations = ["Correct production file is src/proto/h1/conn.rs", "Do not generalize beyond chunked HTTP/1 requests with trailers and keep-alive reuse"]
+required_follow_up = ["Normalize candidate production_files from role.rs to conn.rs"]
+evidence_refs = ["https://github.com/hyperium/hyper/pull/4043"]
+
+[[cases]]
+id = "hyper-4019"
+decision = "reject"
+confidence = "high"
+accepted_signals = []
+gate_reason = "Skeptic high-confidence reject: empty body, no tests, no concrete input, and metadata path mismatch."
+must_have_reason = "Title-level invalid UTF-8 panic evidence is insufficient."
+limitations = ["Candidate production file conflicts with PR files", "No issue/test/repro stored"]
+evidence_refs = ["https://github.com/hyperium/hyper/pull/4019"]
+
+[[cases]]
+id = "hyper-4056"
+decision = "needs_more_context"
+confidence = "medium"
+accepted_signals = ["assumption_boundary", "non_happy_path"]
+gate_reason = "Ground Truth and Risk Signal support freeze_ready, but Skeptic requires 32-bit reproduction/test or issue context."
+must_have_reason = "u64-to-usize truncation on 32-bit systems could prevent large HTTP/1 bodies from being fully read."
+limitations = ["Do not claim 64-bit impact", "No local regression test or issue #4055 stored"]
+required_follow_up = ["Store issue #4055", "Find 32-bit reproduction/test evidence"]
+evidence_refs = ["https://github.com/hyperium/hyper/pull/4056"]
+
+[[cases]]
+id = "ripgrep-3195"
+decision = "freeze_ready"
+confidence = "medium"
+accepted_signals = ["external_contract", "state_transition"]
+rejected_signals = ["risk_path_test_gap"]
+gate_reason = "All agents support freeze_ready for external buffering behavior; risk_path_test_gap is too weak without test evidence."
+must_have_reason = "`--line-buffered` regressed after a read-loop change waited for buffer fill instead of processing available data promptly."
+limitations = ["Do not claim all buffering behavior regressed", "Scope to --line-buffered after prior read-loop change"]
+required_follow_up = ["Optional: store issue #3194 for stronger source chain"]
+evidence_refs = ["https://github.com/BurntSushi/ripgrep/pull/3195"]
+
+[[cases]]
+id = "serde-rs-json-757"
+decision = "needs_more_context"
+confidence = "medium"
+accepted_signals = ["assumption_boundary", "non_happy_path"]
+gate_reason = "Ground Truth and Risk Signal support freeze_ready, but Skeptic requires issue #755 or test body."
+must_have_reason = "RawValue deserialization from invalid UTF-8 bytes could panic."
+limitations = ["Issue #755 missing", "Exact malformed-byte behavior and expected error semantics are not stored"]
+required_follow_up = ["Store issue #755", "Capture added test body or failure mode"]
+evidence_refs = ["https://github.com/serde-rs/json/pull/757"]

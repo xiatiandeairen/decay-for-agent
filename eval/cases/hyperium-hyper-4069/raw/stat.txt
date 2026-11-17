@@ -1,0 +1,8 @@
+ Cargo.toml               |  2 +-
+ src/client/conn/http2.rs | 30 --------------------------
+ src/proto/h1/dispatch.rs | 49 +++++++++++++++++++++++++++++++++++-------
+ src/proto/h2/client.rs   |  5 -----
+ src/proto/h2/server.rs   |  5 -----
+ src/server/conn/http2.rs | 12 -----------
+ tests/client.rs          | 55 ++++++++++++++++++++++++++++++++++++++++++++++++
+ 7 files changed, 97 insertions(+), 61 deletions(-)

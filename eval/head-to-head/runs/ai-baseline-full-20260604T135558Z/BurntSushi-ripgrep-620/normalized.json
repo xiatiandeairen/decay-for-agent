@@ -1,0 +1,43 @@
+{
+  "case_id": "BurntSushi-ripgrep-620",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "if self.after_context_remaining > 0 {",
+        "self.print_after_context(upto);"
+      ],
+      "rank": 1,
+      "rationale": "New flush block runs after the `while !self.terminate()` loop exits, so when terminate() is true (e.g. max_count reached) it still emits after-context lines, bypassing the termination guard the loop\u2026",
+      "risk_signal": "state_transition",
+      "subject": "src/search_stream.rs:run",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "if self.last_printed == self.inp.lastnl {",
+        "try!(self.fill());"
+      ],
+      "rank": 2,
+      "rationale": "Calls fill() after the main search loop has ended; fill() mutates last_printed/last_line and reloads the buffer, performing I/O in a state the surrounding code previously treated as post-search.",
+      "risk_signal": "lifecycle_ordering",
+      "subject": "src/search_stream.rs:run",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "try!(self.fill());",
+        "if self.match_count > 0 {"
+      ],
+      "rank": 3,
+      "rationale": "New try!(self.fill()) introduces an error early-return at end-of-run; on failure the subsequent path_count / files_with_matches / files_without_matches summary is skipped, changing terminal output be\u2026",
+      "risk_signal": "error_propagation",
+      "subject": "src/search_stream.rs:run",
+      "value": "supporting"
+    }
+  ]
+}

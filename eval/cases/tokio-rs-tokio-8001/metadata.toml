@@ -1,0 +1,8 @@
+case_id = "tokio-rs-tokio-8001"
+repo = "tokio-rs/tokio"
+pr = 8001
+kind = "risk_signal"
+status = "freeze_ready"
+base_sha = "654d38b13228a13498e793d8bb4f6ba50fd1016a"
+head_sha = "dd0325e3f567581aecb7ac97ad73d35a35987c59"
+diff_exit = 0

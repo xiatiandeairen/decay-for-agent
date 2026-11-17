@@ -1,0 +1,380 @@
+{
+  "candidate": {
+    "ground_truth_summary": "PR body links issue #8000, explains READABLE versus ERROR readiness, and adds tests.",
+    "id": "tokio-rs-tokio-8001",
+    "limitations": "Linux-specific behavior needs source context when replayed.",
+    "production_files": [
+      "tokio/src/net/udp.rs"
+    ],
+    "repo": "tokio-rs/tokio",
+    "risk_summary": "UDP recv did not wait on error readiness, so SO_ERROR could fail to surface correctly.",
+    "signal_ids": [
+      "non_happy_path",
+      "state_transition",
+      "error_propagation"
+    ],
+    "source_refs": [
+      "https://github.com/tokio-rs/tokio/pull/8001",
+      "https://github.com/tokio-rs/tokio/issues/8000"
+    ],
+    "status": "candidate",
+    "test_files": [
+      "tokio/tests/udp.rs"
+    ],
+    "url": "https://github.com/tokio-rs/tokio/pull/8001",
+    "why_high_value": "Caller-visible socket error behavior changed on an OS-specific error path.",
+    "why_not_noise": "The diff, issue, PR explanation, and tests all point to the same failure mode."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "654d38b13228a13498e793d8bb4f6ba50fd1016a",
+    "body": "Fixes and adds a regression test for https://github.com/tokio-rs/tokio/issues/8000.\r\n\r\n## Motivation\r\n\r\nhttps://github.com/tokio-rs/tokio/issues/8000\r\n<!--\r\nExplain the context and why you're making that change. What is the problem\r\nyou're trying to solve? In some cases there is not a problem and this can be\r\nthought of as being the motivation for your change.\r\n-->\r\n\r\n## Solution\r\n\r\nAdjusted `UdpSocket::recv` to wait for `Interest::READABLE | Interest::ERROR` instead of only `Interest::READABLE`. This ensures error-only readiness wakes the operation so the underlying socket error is surfaced correctly. The change is intentionally minimal and scoped to recv to avoid altering broader readiness behavior.\r\n",
+    "comments": [
+      {
+        "author": {
+          "login": "SRv6d"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "> 1. https://github.com/tokio-rs/tokio/blob/6c2a446daa1368b98e449b622111a55329d357d0/tokio/src/io/interest.rs#L241\r\n>     is an interesting comment\r\n> 2. https://github.com/tokio-rs/tokio/blob/6c2a446daa1368b98e449b622111a55329d357d0/tokio/src/io/interest.rs#L258-L267\r\n> \r\n> Not related to this PR but I think this needs improvement - it does not handle bitwise combinations.\r\n\r\nThat comment isn't really accurate, but I think I understand where it comes from. Linux is a bit of an outlier here in that for TCP sockets it seems to signal both `EPOLLIN` and `EPOLLERR` if there's data in `SO_ERROR`, but for UDP sockets it only fires `EPOLLERR`. This is why the Tokio `TcpStream` works correctly and surfaces errors regardless.\r\nI haven't been able to test windows locally, but I have been able to run the regression tests I added as part of this MR on BSD and it passes without the fix, so it seems like Linux really is the outlier here.",
+        "createdAt": "2026-04-02T09:30:34Z",
+        "id": "IC_kwDOBAsbdc7455zB",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8001#issuecomment-4175928513",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "This concerns me a bit. I'm worried we're missing this in many other places.\r\n\r\n@Thomasdezeeuw what do you think?",
+        "createdAt": "2026-04-02T09:43:29Z",
+        "id": "IC_kwDOBAsbdc746Km1",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8001#issuecomment-4175997365",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "SRv6d"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "This is only scoped to `recv` because that's the only path I looked into. That does not mean at all that we should limit it to just that, I just didn't want to get ahead of myself here. I suspect some other places might also be less trivial to fix.",
+        "createdAt": "2026-04-02T09:53:57Z",
+        "id": "IC_kwDOBAsbdc746Yek",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8001#issuecomment-4176054180",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "I don't necessarily think you have to fix all the cases. But it does worry me somewhat.",
+        "createdAt": "2026-04-02T10:12:57Z",
+        "id": "IC_kwDOBAsbdc746xZG",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8001#issuecomment-4176156230",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "What about `send` on an UDP socket? What happens if there's an error from sending - could it be delivered to the reader?",
+        "createdAt": "2026-04-02T10:13:49Z",
+        "id": "IC_kwDOBAsbdc746ybB",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8001#issuecomment-4176160449",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "SRv6d"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "> What about `send` on an UDP socket? What happens if there's an error from sending - could it be delivered to the reader?\r\n\r\nThe `send` path should be fine. I haven't tested it explicitly, but send for UDP essentially just means \"I handed these bytes for sending to the kernel\", there is no other guarantees whatsoever. The only valid error cases for `send` I can think of are `WouldBlock` or other IO issues with the kernel. ",
+        "createdAt": "2026-04-02T10:22:39Z",
+        "id": "IC_kwDOBAsbdc7469Fb",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8001#issuecomment-4176204123",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "Thomasdezeeuw"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "> This concerns me a bit. I'm worried we're missing this in many other places.\r\n> \r\n> @Thomasdezeeuw what do you think?\r\n\r\nI'm a little confused about `Interest::ERROR`. As @martin-g pointed out above, there is no `ERROR` interest in Mio because it's always set by all implementations. Falling back to setting `READABLE`: https://github.com/tokio-rs/tokio/blob/6c2a446daa1368b98e449b622111a55329d357d0/tokio/src/io/interest.rs#L240-L247 isn't always correct either, but that's another issue.\r\n\r\nThe checking of the Mio `Event` is done correctly here: https://github.com/tokio-rs/tokio/blob/43134f1e5784993eb4fb3863933d74ac9e28f598/tokio/src/io/ready.rs#L57-L99\r\n\r\nMaybe the issue is in `ScheduledIo::wake`?\r\nhttps://github.com/tokio-rs/tokio/blob/43134f1e5784993eb4fb3863933d74ac9e28f598/tokio/src/runtime/io/scheduled_io.rs#L238-L288\r\n\r\nThe check in `Ready:: satisfies` should probably always trigger for errors:\r\nhttps://github.com/tokio-rs/tokio/blob/43134f1e5784993eb4fb3863933d74ac9e28f598/tokio/src/io/ready.rs#L268-L270\r\n\r\nHowever I'm not sure if that will cause too many wake-ups.\r\n\r\nAlternatively `Interest::ERROR` should probably be set for all calls to `async_io` (like this pr is doing) as otherwise they will get stuck on errors like reported in #8000.",
+        "createdAt": "2026-04-02T10:44:07Z",
+        "id": "IC_kwDOBAsbdc747YXk",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8001#issuecomment-4176315876",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks!",
+        "createdAt": "2026-04-04T19:45:57Z",
+        "id": "IC_kwDOBAsbdc75ml_h",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8001#issuecomment-4187643873",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "leshow"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "I'm not sure if this is relevant but the docs for try_io and async_io say:\r\n\r\n> This method is not intended to be used with combined interests. The closure should perform only one type of IO operation, so it should not require more than one ready state. This method may panic or sleep forever if it is called with a combined interest.\r\n\r\n\r\nisn't passing `Interest::READABLE | Interest::ERROR` a \"combined interest\"? It seems like the comment means readable | writable but it's not entirely clear, maybe that line needs to be updated.",
+        "createdAt": "2026-04-07T21:14:32Z",
+        "id": "IC_kwDOBAsbdc76eS8h",
+        "includesCreatedEdit": true,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8001#issuecomment-4202245921",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "You make a pretty good point. What the docs are actually trying to get at is that you should only perform a single syscall inside the closure, and those docs were written under the assumption that a combined interest only makes sense if you perform multiple syscalls, but that's not true for the error interest.",
+        "createdAt": "2026-04-08T06:01:49Z",
+        "id": "IC_kwDOBAsbdc76lmwZ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8001#issuecomment-4204162073",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "leshow"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "OK, thanks for the clarification. I maintain a library that adds the recvmsg/recvmmsg/sendmsg/sendmmsg syscalls to a tokio udp socket so this bug existed in my codebase as well. I was thinking it might also be missing on UnixDatagram/UnixSocket as well, since they all function somewhat similarly. \r\n\r\nI'll write a test and submit a PR if the infinite hang is there as well",
+        "createdAt": "2026-04-08T21:46:49Z",
+        "id": "IC_kwDOBAsbdc767buB",
+        "includesCreatedEdit": true,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8001#issuecomment-4209884033",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "leshow"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Interestingly, I saw the infinite hang both with and without registering Interest for `UnixDatagram`",
+        "createdAt": "2026-04-09T06:01:45Z",
+        "id": "IC_kwDOBAsbdc77CtGy",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8001#issuecomment-4211790258",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Hmm. Do you mind opening a new bug with your observations?",
+        "createdAt": "2026-04-09T06:30:26Z",
+        "id": "IC_kwDOBAsbdc77DR4D",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8001#issuecomment-4211940867",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 22,
+        "changeType": "MODIFIED",
+        "deletions": 10,
+        "path": "tokio/src/net/udp.rs"
+      },
+      {
+        "additions": 33,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "tokio/tests/udp.rs"
+      }
+    ],
+    "headRefName": "udp-socket-surface-SO_ERROR",
+    "headRefOid": "dd0325e3f567581aecb7ac97ad73d35a35987c59",
+    "labels": [
+      {
+        "color": "f7e101",
+        "description": "Area: The main tokio crate",
+        "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+        "name": "A-tokio"
+      },
+      {
+        "color": "f7b101",
+        "description": "Module: tokio/net",
+        "id": "MDU6TGFiZWwxOTkzNTA4OTI2",
+        "name": "M-net"
+      }
+    ],
+    "mergedAt": "2026-04-04T19:46:10Z",
+    "number": 8001,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "martin-g"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "6c2a446daa1368b98e449b622111a55329d357d0"
+        },
+        "id": "PRR_kwDOBAsbdc7xVoPW",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-04-02T07:53:19Z"
+      },
+      {
+        "author": {
+          "login": "martin-g"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "1. https://github.com/tokio-rs/tokio/blob/6c2a446daa1368b98e449b622111a55329d357d0/tokio/src/io/interest.rs#L241 is an interesting comment\n\n2. https://github.com/tokio-rs/tokio/blob/6c2a446daa1368b98e449b622111a55329d357d0/tokio/src/io/interest.rs#L258-L267\n\nNot related to this PR but I think this needs improvement - it does not handle bitwise combinations.",
+        "commit": {
+          "oid": "6c2a446daa1368b98e449b622111a55329d357d0"
+        },
+        "id": "PRR_kwDOBAsbdc7xV4TZ",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-04-02T08:20:24Z"
+      },
+      {
+        "author": {
+          "login": "SRv6d"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "6c2a446daa1368b98e449b622111a55329d357d0"
+        },
+        "id": "PRR_kwDOBAsbdc7xWcov",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-04-02T08:37:33Z"
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "6c08635a67f0a41f649bd3746f1bcd1a7ee104d1"
+        },
+        "id": "PRR_kwDOBAsbdc7x5QH5",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-04-04T08:06:38Z"
+      },
+      {
+        "author": {
+          "login": "martin-g"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "6c2a446daa1368b98e449b622111a55329d357d0"
+        },
+        "id": "PRR_kwDOBAsbdc7x5vh1",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-04-04T11:38:51Z"
+      },
+      {
+        "author": {
+          "login": "SRv6d"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "dd0325e3f567581aecb7ac97ad73d35a35987c59"
+        },
+        "id": "PRR_kwDOBAsbdc7x7BBT",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-04-04T19:23:21Z"
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "I'm going to merge this now. @Thomasdezeeuw makes a good point about whether the error interest should be applied more generally, which we should also look at, but one step at the time.",
+        "commit": {
+          "oid": "dd0325e3f567581aecb7ac97ad73d35a35987c59"
+        },
+        "id": "PRR_kwDOBAsbdc7x7EsS",
+        "includesCreatedEdit": false,
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 2
+            }
+          }
+        ],
+        "state": "APPROVED",
+        "submittedAt": "2026-04-04T19:45:49Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "Surface errors from `SO_ERROR` on `recv` for UDP sockets on Linux",
+    "url": "https://github.com/tokio-rs/tokio/pull/8001"
+  }
+}

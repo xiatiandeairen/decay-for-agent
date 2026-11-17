@@ -1,0 +1,84 @@
+# Follow-up refs for v1 candidate pool B.
+
+[[cases]]
+id = "tokio-rs-tokio-8068"
+refs = [
+  { type = "issue", repo = "tokio-rs/tokio", number = 8067, reason = "Regression-test target for blocking task abort behavior." },
+]
+
+[[cases]]
+id = "tokio-rs-tokio-8010"
+refs = [
+  { type = "issue", repo = "tokio-rs/tokio", number = 4730, reason = "Runtime driver handoff starvation context." },
+  { type = "issue", repo = "tokio-rs/tokio", number = 6315, reason = "Additional runtime handoff context." },
+]
+
+[[cases]]
+id = "tokio-rs-tokio-7983"
+refs = [
+  { type = "issue", repo = "tokio-rs/tokio", number = 7979, reason = "io_uring open cancellation fd leak report." },
+]
+
+[[cases]]
+id = "hyperium-hyper-3813"
+refs = [
+  { type = "pr", repo = "hyperium/hyper", number = 3812, reason = "Original partial-header panic fix being backported." },
+]
+
+[[cases]]
+id = "hyperium-hyper-4002"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 3923, reason = "HTTP/1 parser config not applied to server request parsing." },
+  { type = "pr", repo = "hyperium/hyper", number = 3929, reason = "Related parser config change context." },
+]
+
+[[cases]]
+id = "hyperium-hyper-4043"
+refs = [
+  { type = "pr", repo = "hyperium/hyper", number = 4043, reason = "Keep-alive trailer regression PR review context." },
+]
+
+[[cases]]
+id = "hyperium-hyper-4069"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 3995, reason = "Dispatcher dropped mid-body error report." },
+  { type = "issue", repo = "hyperium/hyper", number = 4016, reason = "Continuation issue referenced by PR." },
+]
+
+[[cases]]
+id = "BurntSushi-ripgrep-1065"
+refs = [
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 1052, reason = "Ruby source checkout panic." },
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 1064, reason = "Missing match for regex pattern." },
+]
+
+[[cases]]
+id = "BurntSushi-ripgrep-3189"
+refs = [
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 3179, reason = "Global gitignore absolute path bug report." },
+]
+
+[[cases]]
+id = "clap-rs-clap-4668"
+refs = [
+  { type = "issue", repo = "clap-rs/clap", number = 4660, reason = "Wrong Jaro-Winkler suggestion report." },
+]
+
+[[cases]]
+id = "clap-rs-clap-6068"
+refs = [
+  { type = "issue", repo = "clap-rs/clap", number = 6067, reason = "Visible long flag alias help report." },
+  { type = "issue", repo = "clap-rs/clap", number = 6073, reason = "Related visible alias help report." },
+]
+
+[[cases]]
+id = "serde-rs-json-257"
+refs = [
+  { type = "issue", repo = "serde-rs/json", number = 256, reason = "Arbitrary byte string deserialization use case." },
+]
+
+[[cases]]
+id = "serde-rs-json-1205"
+refs = [
+  { type = "issue", repo = "serde-rs/json", number = 1102, reason = "Deserialization compile-time/performance context." },
+]

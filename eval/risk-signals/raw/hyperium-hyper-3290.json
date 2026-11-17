@@ -1,0 +1,231 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Enriched candidate; production HTTP/2 client file changed.",
+    "id": "hyperium-hyper-3290",
+    "limitations": "Needs test/follow-up context.",
+    "production_files": [
+      "src/proto/h2/client.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "HTTP/2 client needed to avoid double-polling a Select future.",
+    "signal_ids": [
+      "concurrency_ordering",
+      "state_transition"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/3290",
+      "eval/semantic-candidates/enriched.jsonl"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/hyperium/hyper/pull/3290",
+    "why_high_value": "Double-polling future can violate async state machine invariants.",
+    "why_not_noise": "Specific async/concurrency failure mode."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "e68dc961a7dad0a96e16898b0da234927564c079",
+    "body": "This reworks http2 client connection task in order to avoid storing a `Select` future. Under some scheduling cases the future was polled multiple times, resulting in runtime panics:\r\n\r\n```\r\nthread 'main' panicked at 'cannot poll Select twice', /index.crates.io/futures-util-0.3.28/src/future/select.rs:112:42\r\nstack backtrace:\r\n[...]\r\n   5: <futures_util::future::select::Select<A,B> as core::future::future::Future>::poll\r\n   6: <hyper::proto::h2::client::H2ClientFuture<B,T> as core::future::future::Future>::poll\r\n[...]\r\n```\r\n\r\nCloses: https://github.com/hyperium/hyper/issues/3289",
+    "comments": [
+      {
+        "author": {
+          "login": "lucab"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "@seanmonstar unfortunately I've only observed these panics on a remote service, but I didn't manage to easily reproduce it manually or through a test.\r\nWe did run this patch on the staging environment and didn't observe panics, but maybe it was just a lucky run where we didn't hit the same race condition.\r\n\r\nI put together this patch based on the stacktrace and some educated guesses, but I'm not really familiar with this codebase.\r\n\r\nThe code was introduced in https://github.com/hyperium/hyper/pull/3184 by @Ruben2424, you may want to double-check this.",
+        "createdAt": "2023-08-18T17:21:20Z",
+        "id": "IC_kwDOAWaYQc5kYxBT",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3290#issuecomment-1684213843",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "lucab"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Alternatively I think we could also keep the `Select` (which already implements `FusedFuture`) and perform the `is_terminated()` check on it before polling.\r\nBut honestly I think that getting rid of it makes the `ConnTask::poll()` logic simpler to follow.",
+        "createdAt": "2023-08-20T08:34:37Z",
+        "id": "IC_kwDOAWaYQc5kcn6Z",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3290#issuecomment-1685225113",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 49,
+        "changeType": "MODIFIED",
+        "deletions": 28,
+        "path": "src/proto/h2/client.rs"
+      }
+    ],
+    "headRefName": "ups/client-select-panic",
+    "headRefOid": "1b96ed1f7446286c7c66fd3e5fe847499df389e5",
+    "labels": [],
+    "mergedAt": "2023-08-21T17:54:59Z",
+    "number": 3290,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "piscisaureus"
+        },
+        "authorAssociation": "NONE",
+        "body": "",
+        "commit": {
+          "oid": "bd9443e416cf8932ddf48bd58d85e47313acef8e"
+        },
+        "id": "PRR_kwDOAWaYQc5effpL",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-08-18T23:30:01Z"
+      },
+      {
+        "author": {
+          "login": "piscisaureus"
+        },
+        "authorAssociation": "NONE",
+        "body": "",
+        "commit": {
+          "oid": "bd9443e416cf8932ddf48bd58d85e47313acef8e"
+        },
+        "id": "PRR_kwDOAWaYQc5eff3c",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-08-18T23:32:47Z"
+      },
+      {
+        "author": {
+          "login": "lucab"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "bd9443e416cf8932ddf48bd58d85e47313acef8e"
+        },
+        "id": "PRR_kwDOAWaYQc5egtvW",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-08-19T12:10:15Z"
+      },
+      {
+        "author": {
+          "login": "Ruben2424"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "bd9443e416cf8932ddf48bd58d85e47313acef8e"
+        },
+        "id": "PRR_kwDOAWaYQc5ehBOR",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-08-19T18:04:52Z"
+      },
+      {
+        "author": {
+          "login": "Ruben2424"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Thanks for the PR!\r\nAll in all, I'm not sure if this truly addresses the underlying issue or merely treats the symptoms.\r\nAs of my understanding the future should never be polled twice. ",
+        "commit": {
+          "oid": "bd9443e416cf8932ddf48bd58d85e47313acef8e"
+        },
+        "id": "PRR_kwDOAWaYQc5ehBQA",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-08-19T18:16:14Z"
+      },
+      {
+        "author": {
+          "login": "lucab"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "bd9443e416cf8932ddf48bd58d85e47313acef8e"
+        },
+        "id": "PRR_kwDOAWaYQc5ehB73",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-08-19T18:42:16Z"
+      },
+      {
+        "author": {
+          "login": "lucab"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "941acb42d5bc6aea3e100ab8e1ef31c7aff0bcc8"
+        },
+        "id": "PRR_kwDOAWaYQc5ehLwr",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-08-19T20:42:02Z"
+      },
+      {
+        "author": {
+          "login": "Ruben2424"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "bd9443e416cf8932ddf48bd58d85e47313acef8e"
+        },
+        "id": "PRR_kwDOAWaYQc5ehoJP",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-08-20T10:53:07Z"
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Makes sense, thanks for catching and providing the fix! <3",
+        "commit": {
+          "oid": "1b96ed1f7446286c7c66fd3e5fe847499df389e5"
+        },
+        "id": "PRR_kwDOAWaYQc5eoBr7",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2023-08-21T17:38:42Z"
+      },
+      {
+        "author": {
+          "login": "sfackler"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "1b96ed1f7446286c7c66fd3e5fe847499df389e5"
+        },
+        "id": "PRR_kwDOAWaYQc5eoIjS",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-08-21T17:56:23Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix(http2/client): avoid double-polling a Select future",
+    "url": "https://github.com/hyperium/hyper/pull/3290"
+  }
+}

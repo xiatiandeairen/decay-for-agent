@@ -1,0 +1,979 @@
+{
+  "case_id": "tokio-rs-tokio-8010",
+  "refs": [
+    {
+      "detail": {
+        "body": "**Version**\r\nTested 1.16, 1.17, 1.18.2\r\n\r\n**Platform**\r\nConfirmed on Linux amd64 and M1 Mac\r\n\r\n**Description**\r\n\r\nIf one task gets stuck in a busy loop, or doing blocking IO, it can prevent all other tasks from being polled forever, even with the `multi_thread` executor.  All that seems to be required is for the bad task to jump threads once, which seems to happen fairly randomly.\r\n\r\nThis is a serious issue because:\r\n1. it can run for months without triggering, only for your whole program to freeze without being obvious as to why\r\n2. in any non-trivial program, you'll have enough tasks and dependencies that you can't reasonably guarantee none will ever block/busy loop\r\n\r\nI tried this code:\r\n\r\n```rs\r\nuse std::thread;\r\nuse std::time::Duration;\r\n\r\n//#[tokio::main]\r\n#[tokio::main(flavor = \"multi_thread\", worker_threads = 32)]\r\nasync fn main() {\r\n    let mut handles = Vec::new();\r\n\r\n    handles.push(tokio::spawn({\r\n        async {\r\n            loop {\r\n                println!(\"{:?}: good still alive\", thread::current().id());\r\n                tokio::time::sleep(Duration::from_secs(10)).await;\r\n            }\r\n        }\r\n    }));\r\n    handles.push(tokio::spawn({\r\n        async {\r\n            let orig_thread_id = format!(\"{:?}\", thread::current().id());\r\n            loop {\r\n                println!(\"{:?}: bad still alive\", thread::current().id());\r\n                thread::sleep(Duration::from_secs(10));\r\n                loop {\r\n                    // here we loop and sleep until we switch threads, once we do, we never call await again\r\n                    // blocking all progress on all other tasks forever\r\n                    let thread_id = format!(\"{:?}\", thread::current().id());\r\n                    if thread_id == orig_thread_id {\r\n                        tokio::time::sleep(Duration::from_secs(1)).await;\r\n                    } else {\r\n                        break;\r\n                    }\r\n                }\r\n            }\r\n        }\r\n    }));\r\n\r\n    for handle in handles {\r\n        handle.await.expect(\"handle await\");\r\n    }\r\n}\r\n```\r\n\r\nI expected to see this happen:\r\n\r\nWith 32 threads available, you'd expect one to be blocked, but both tasks should print messages and proceed.\r\n\r\nInstead, this happened:\r\n\r\n```\r\nThreadId(27): good still alive\r\nThreadId(23): bad still alive\r\nThreadId(2): good still alive\r\nThreadId(2): bad still alive\r\nThreadId(2): bad still alive\r\nThreadId(2): bad still alive\r\n*snip*\r\n```\r\n\r\n`good still alive` will never print again\r\n",
+        "closedAt": "2024-01-30T18:37:45Z",
+        "comments": [
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Yes, it's possible we should change the logic for when other sleeping threads are woken up. I worry whether it's possible to fix this without increasing the number of wakeups significantly.",
+            "createdAt": "2022-06-01T06:39:30Z",
+            "id": "IC_kwDOBAsbdc5EI33h",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1143176673",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "carllerche"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Alternatively, it might be nice to **detect** these cases and report them w/ logs / metrics. Even better would be some compiler lints.",
+            "createdAt": "2022-06-01T16:23:44Z",
+            "id": "IC_kwDOBAsbdc5ELW9Z",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1143828313",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Here's my theory for the how the deadlock occurred in this example. The first thing to note is that even if multiple worker threads are idle, only of them is waiting for IO/timer events. The remaining threads are just sleeping using `park`. The way that the runtime decides who gets the IO driver is by putting it behind a mutex and having each thread call `try_lock` before going to sleep, sleeping using the driver if it succeeds. Threads that fail the `try_lock` call just sleep using `park`.\r\n\r\nNow, given the above, here's what I think happened:\r\n\r\n1. All tasks are idle. Thread 2 has the IO driver.\r\n2. Thread 2 is woken by the second task's timer. The other threads continue to block on `park`. The first task is still idle.\r\n3. Thread 2 starts polling the second task.\r\n4. When the first timer expires, nobody notices because no thread is sleeping on the IO driver. No work stealing happens because the first task is idle, and will continue to be idle until the IO driver runs.",
+            "createdAt": "2022-06-02T16:55:18Z",
+            "id": "IC_kwDOBAsbdc5EQLJ4",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 2
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1145090680",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "carllerche"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "As far as I can tell, there is no bug in tokio. The example code *could* have happened before it just was far less likely due to erroneous thread wake ups that happened and were removed in 1.16.\r\n\r\nThe issue here is fundamentally, when one accidentally blocks the runtime, it would be nice to know that something went wrong and gracefully tolerate it. Currently, Tokio does not offer a way to do this reliably, it just \"happened\" to do this in some cases earlier.\r\n\r\nThe only reliable way to tolerate accidental blocking that I can think of is to have a dedicated thread to monitoring the state of each worker thread. If a thread gets stuck for too long, this monitor thread could warn & move all tasks currently on the stuck thread to a new thread.",
+            "createdAt": "2022-06-02T17:01:21Z",
+            "id": "IC_kwDOBAsbdc5EQMdJ",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 4
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1145096009",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Noah-Kennedy"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "This almost feels like a limitation of the polling model. I don't see a good way to do this without some a future uring-based driver-per-worker runtime flavor.",
+            "createdAt": "2022-06-05T21:18:41Z",
+            "id": "IC_kwDOBAsbdc5EXBS7",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1146885307",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Well, one challenge with per-worker solutions is that if that ties each resource to a specific core, then that resource will not receive wakeups if that core is blocked.\r\n\r\nOne thought: We don't _necessarily_ need a separate thread for monitoring this. We could make sure that whenever at least one thread is idle, one of the idle threads without the IO driver has a monitor timeout on its `park` call to allow it to steal the IO driver if the other thread is blocked.\r\n\r\nAlso, for anyone who wants a solution now, you can spawn your own monitor thread. See [here](https://gist.github.com/Darksonn/330f2aa771f95b5008ddd4864f5eb9e9) for an example.",
+            "createdAt": "2022-06-06T08:04:36Z",
+            "id": "IC_kwDOBAsbdc5EYF0C",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 11
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1147165954",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "gperinazzo"
+            },
+            "authorAssociation": "NONE",
+            "body": "Even if you don't block the runtime forever, wouldn't this possibly affect latency when it happens? Any task that becomes ready after the thread that previously held the IO driver starts running a task needs to wait until it finishes so that it can poll the IO driver again, even if you have available cores that could be handling that task.\r\n\r\nI think ideally it should always have something parked waiting on the IO driver if there's idle threads.",
+            "createdAt": "2022-06-06T19:46:05Z",
+            "id": "IC_kwDOBAsbdc5Eaqyo",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1147841704",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "hawkw"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "> One thought: We don't _necessarily_ need a separate thread for monitoring this. We could make sure that whenever at least one thread is idle, one of the idle threads without the IO driver has a monitor timeout on its `park` call to allow it to steal the IO driver if the other thread is blocked.\r\n\r\nAlong the lines of @Darksonn's suggestion here...if a worker is currently holding the IO driver and it's transitioning to start polling its own tasks, shouldn't it try to wake a parked worker to steal the IO driver? It seems like, even if none of the tasks on the worker that's holding the IO driver will block, there's still potentially an entire scheduler tick of latency until IO is polled again, and we could avoid that by eagerly giving the IO driver to a parked thread...",
+            "createdAt": "2022-06-06T21:59:01Z",
+            "id": "IC_kwDOBAsbdc5EbLWi",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 18
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1147975074",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Noah-Kennedy"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Hmm. Good point.",
+            "createdAt": "2022-06-06T22:06:32Z",
+            "id": "IC_kwDOBAsbdc5EbMt9",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1147980669",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "carllerche"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Re-using an existing thread would be the strategy, however it still needs to be an option as waking up a thread on an interval just to do a check is fairly expensive for apps that are mostly idle.",
+            "createdAt": "2022-08-24T16:35:58Z",
+            "id": "IC_kwDOBAsbdc5JEsfF",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1225967557",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "aegooby"
+            },
+            "authorAssociation": "NONE",
+            "body": "Any updates on this? I might be running into this issue currently.",
+            "createdAt": "2022-11-27T02:58:12Z",
+            "id": "IC_kwDOBAsbdc5PKhpG",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1328159302",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "There haven't been any updates.",
+            "createdAt": "2022-11-28T09:42:08Z",
+            "id": "IC_kwDOBAsbdc5PM8Ns",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1328792428",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Noah-Kennedy"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "I think it would be a good idea to try either of the solutions from @hawkw and @Darksonn and hide them behind builder flags on `tokio_unstable` kinda like with the LIFO slot. We could then have a way of looking at the performance impact on other types of applications without needing to first stabilize this behavior.",
+            "createdAt": "2022-12-03T21:30:02Z",
+            "id": "IC_kwDOBAsbdc5PpbuQ",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1336261520",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "cvkem"
+            },
+            "authorAssociation": "NONE",
+            "body": "I run into the same issue I think. \r\n\r\nI have a piece of code that does an async call (upload binary blob to S3). This code is tested and works correctly in a simple test-program.\r\nHowever, when using this crate (this piece of code)  in the context with some dependencies (also using async code) it halts at the moment the future that uploads the binary blob is being awaited. This upload-code is completely independent of the other newly added dependencies, so the code can not be affected by the dependencies. \r\n\r\nThe explanation of @Darksonn  on June 2th (no thread is watching the IO/timer events) could also explain the halted state of my program. I would welcome an option/feature to detect/analyse these kind of mysterious halting issues in the Tokio runtime (possibly as a feature that can be turned on/off as suggested by @Noah-Kennedy ).\r\n  ",
+            "createdAt": "2023-01-30T21:17:51Z",
+            "id": "IC_kwDOBAsbdc5UAQeR",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1409353617",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Generally, the cause of the halting is a task that [blocks the thread](https://ryhl.io/blog/async-what-is-blocking/). You should be able to detect those using tokio-console. Tasks that block the thread show up as \"busy duration\" increasing while the number of polls remains constant.",
+            "createdAt": "2023-01-30T21:33:13Z",
+            "id": "IC_kwDOBAsbdc5UAVfY",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1409374168",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "cvkem"
+            },
+            "authorAssociation": "NONE",
+            "body": "I did all steps proposed by @Darksonn and analyzed using Tokio-console combined with gdb to take snapshots in different parts of (execution of) the program. This analysis shows:\r\n\r\n**Observations via tokio-console**\r\n*  Task/thread that should perform the upload generates two new tasks:\r\n1.  An Idle  tokio::task without Waker in Location: <cargo>/hyper-0.14.23/src/common/exec.rs:49:21\r\n2. A Stopped tokio::task::blocking without Waker in Location:  <unknown>\r\n* The Task/thread that spawned the other tasks is jumping around forever on an await and the block-on one step further up in the stack  (yes this is a mix of Async and sync code using the channel strategy mentioned in https://tokio.rs/tokio/topics/bridging)\r\n\r\nOn the resources-overview I could not find an IO-driver resource and thus could not locate the owner of that resource.\r\n\r\n**Only gdb reveal the http-timeout error when using breakpoints**\r\nSo I have a busy loop burning cycles on .await forever when running the program directly. When running in a debugger with breakpoints the program stops after some time as a http-timeout. However, without breakpoints the program in the debugger also loops forever without spotting this time-out.\r\n\r\n**Same S3-upload code works well in test-program**\r\nWhen using tokio console to run a test that does the upload of a small file I see the same behavior of spinning up two tasks, but on the test program everything performs well and the file is uploaded (unless I introduce too much delay in the debugger, in which case I also trigger the http-timeout).\r\n\r\nHowever, the test-program only has four tasks, while the program above has 12 tasks (due to Parquet-dependencies used to generate/compute the output-file).  So I did not find a way to reproduce the issue in a small program. \r\nSo at this moment I can only think of two causes:\r\n1. The IOdriver resource is held by one of the blocked Tasks (as mentioned in your June-2 comment).\r\n2. The Parquet dependency used has some unsafe code, which corrupts the data of the Tokio.\r\n3.  ....\r\n\r\nI did add some changes to Stack and Heap by adding some variables, which adds some kind of memory-layout randomization, but this had no effect, which seems makes option 2 unlikely. So that leaves me with option 1 that I do not know how to analyze, or an option 3 that I still do not know.\r\n\r\n \r\n",
+            "createdAt": "2023-02-05T13:36:05Z",
+            "id": "IC_kwDOBAsbdc5Ugtn6",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1417861626",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "cvkem"
+            },
+            "authorAssociation": "NONE",
+            "body": "Further analysis revealed my issue is option 3. I am using a mix of Sync and Async code. The three patterns described in https://tokio.rs/tokio/topics/bridging where difficult in my context, so I tried to do it with block_on.  However, tokio::runtime::Runtime::block_on is not allowed, so I assumes that futures::executors::block_on did call the installed async runtime (Tokio). However, it seems this calls its own executor and bypasses Tokio, which probably causes the issues.\r\n\r\nMy alternative is using the tokio::runtime::Handle::spawn to spawn a task and use a oneshot-channel to wait for the result. However, I still have some work to do to please/fight the Rust borrow-checker on this solution. This feels like a complex solution to a simple problem, but I currently see no other options.\r\n",
+            "createdAt": "2023-02-09T07:49:37Z",
+            "id": "IC_kwDOBAsbdc5U3QCU",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1423769748",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "cvkem"
+            },
+            "authorAssociation": "NONE",
+            "body": "My issues as mentioned in Januari/februari in this thread (related to mixing of Synchronous and Asynchronous code were resolved by https://github.com/cvkem/async_bridge (generic solution I developed to make mixing of code easier. \r\nThis helped me to resolve my issues back than and served me well during further development.\r\nI added documentation and learnings and I hope this also helps others forward. ",
+            "createdAt": "2023-05-10T18:08:20Z",
+            "id": "IC_kwDOBAsbdc5b8lmZ",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 3
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1542609305",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "jiacai2050"
+            },
+            "authorAssociation": "NONE",
+            "body": "> if a worker is currently holding the IO driver and it's transitioning to start polling its own tasks, shouldn't it try to wake a parked worker to steal the IO driver?\r\n\r\nI wonder why we don't create a dedicated thread to run the IO driver? \r\n",
+            "createdAt": "2023-07-21T15:39:14Z",
+            "id": "IC_kwDOBAsbdc5iGJMf",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1645777695",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Noah-Kennedy"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "> > if a worker is currently holding the IO driver and it's transitioning to start polling its own tasks, shouldn't it try to wake a parked worker to steal the IO driver?\r\n> \r\n> I wonder why we don't create a dedicated thread to run the IO driver?\r\n\r\nOur current approach results in very little synchronization overhead and good tail latency under load. The background thread approach is much worse on both metrics, and is ultimately far slower and less effective for production workloads.",
+            "createdAt": "2023-07-21T15:43:19Z",
+            "id": "IC_kwDOBAsbdc5iGKbe",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "EYES",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1645782750",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "santossumii"
+            },
+            "authorAssociation": "NONE",
+            "body": "Spent some time looking into this; sharing some findings/thoughts just in case.\r\n\r\n\r\n### Benign case MRE\r\n\r\nCreated an minimal reproducible example for the \"benign case\"; i.e. where we see an impact on latency without a deadlock. \r\n\r\n```\r\nuse std::time::Duration;\r\nuse std::time::Instant;\r\n\r\nasync fn handle_request(start_time: Instant) {\r\n    tokio::time::sleep(Duration::from_millis(500)).await;\r\n    println!(\"request took {}ms\", start_time.elapsed().as_millis());\r\n}\r\n\r\nasync fn background_job() {\r\n    loop {\r\n        tokio::time::sleep(Duration::from_secs(3)).await;\r\n\r\n        println!(\"background job start\");\r\n        // Adjust as needed\r\n        for _ in 0..1_000 { vec![1; 1_000_000].sort() }\r\n        println!(\"background job finished\");\r\n    }\r\n}\r\n\r\n#[tokio::main]\r\nasync fn main() {\r\n    tokio::spawn(async { background_job().await });\r\n\r\n    loop {\r\n        let start = Instant::now();\r\n        tokio::spawn(async move {\r\n            handle_request(start).await\r\n        }).await.unwrap();\r\n    }\r\n}\r\n```\r\n\r\nOutput:\r\n```\r\nrequest took 501ms\r\nrequest took 501ms\r\nrequest took 501ms\r\nrequest took 501ms\r\nrequest took 500ms\r\nbackground job start\r\nbackground job finished\r\nrequest took 1620ms        <==== high-latency request\r\nrequest took 501ms\r\n```\r\n\r\nReproduced the issue on a arm server and the rust-playground.  \r\nI do not know what rust-playground uses, but the server has 32 cores. \r\n\r\n### Possible solution 1\r\n\r\nHanding over the the driver before running the task seems work. Not particularly familiar with the codebase, but after reading the comments above a couple time and going through the code I noticed that `notify_parked_remote()` seems to do what we need; i.e. it wakes-up a worker, handing them the driver in passing. So tried adding a call to `notify_parked_remote()` before the task runs and it does work in the sense that \"cargo test\" is happy and I'm no longer able to reproduce the issue.\r\n\r\ni.e. made the change below to [worker.rs:573](https://github.com/tokio-rs/tokio/blob/70410836ae51b955fe86e42dd5824e873a73944e/tokio/src/runtime/scheduler/multi_thread/worker.rs#L573).\r\n```\r\n        // Make the core available to the runtime context\r\n        *self.core.borrow_mut() = Some(core);\r\n\r\n+      // Probably the wrong way to do this\r\n+      self.worker.handle.notify_parked_remote();\r\n        // Run the task\r\n       ...\r\n```\r\n\r\n### Possible solution 2\r\n\r\nAs mentioned in other comments, creating a background thread that periodically launches threads does mitigate the issue (a workaround).   \r\n\r\n### Random thoughts\r\n\r\n(not particularly well informed)\r\n\r\nFrom the comments above think everyone agrees that \"this is not a good thing\"; perhaps a sacrifice that is made to get some other (good) properties in return. Without knowing how much this affects real-world workloads it's hard to say how big of an issue this is. Overall think this behavior is undesirable and counter-intuitive for a work-stealing scheduler. Guess we can have a separate issue called \"one benign task can halt all executor progress for a while\".\r\n\r\nWonder if the tracing feature or `tokio-metrics` provides some visibility into whether this issue is affecting a given workload or not. It's very possible that I missed such a metric/span/event but this might be a blindspot. Idk in the past I've seen some high latency requests that I could not explain, it would be useful to have a metric we could use to assess the concrete impact of this issue in the real world. A proxy for how much time the io-driver is both 1) ready and 2) held by a worker that is running a task.\r\n\r\nI tried the multi-threaded-alt scheduler and the issue is also present there; but wonder if the alt-scheduler would be the right place to ship a fix for this issue. The alt scheduler is only available on unstable; which means it's already behind an option. (just an idea; do not have much context here).\r\n",
+            "createdAt": "2023-10-23T04:45:55Z",
+            "id": "IC_kwDOBAsbdc5pw6OB",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1774429057",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "exabytes18"
+            },
+            "authorAssociation": "NONE",
+            "body": "I'll +1 this.\r\n\r\nThis is a pretty ugly performance wart. Our team has independently hit this issue twice, where some singular task takes longer than the developer expects and this results in 100ms+ of latency for API requests that we otherwise expect to complete very quickly.\r\n\r\nThe fact that one pathological task is able to harm a bunch of otherwise good API requests is alarming behavior.",
+            "createdAt": "2023-12-21T06:07:41Z",
+            "id": "IC_kwDOBAsbdc5vMiB0",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 5
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1865556084",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "lewiszlw"
+            },
+            "authorAssociation": "NONE",
+            "body": "Test code pasted by @santossumii using `async-std` runtime.\r\n```\r\nfn main() {\r\n    async_std::task::block_on(async {\r\n        async_std::task::spawn(async { background_job().await });\r\n\r\n        loop {\r\n            let start = Instant::now();\r\n            async_std::task::spawn(async move { handle_request(start).await }).await;\r\n        }\r\n    });\r\n}\r\n\r\nasync fn handle_request(start_time: Instant) {\r\n    async_std::task::sleep(Duration::from_millis(500)).await;\r\n    println!(\"request took {}ms\", start_time.elapsed().as_millis());\r\n}\r\n\r\nasync fn background_job() {\r\n    loop {\r\n        async_std::task::sleep(Duration::from_secs(3)).await;\r\n\r\n        println!(\"background job start\");\r\n        // Adjust as needed\r\n        for _ in 0..1_000 {\r\n            vec![1; 1_000_000].sort()\r\n        }\r\n        println!(\"background job finished\");\r\n    }\r\n}\r\n```\r\noutput\r\n```\r\nrequest took 500ms\r\nrequest took 501ms\r\nrequest took 501ms\r\nbackground job start\r\nrequest took 501ms\r\nrequest took 501ms\r\nrequest took 501ms\r\nrequest took 501ms\r\nrequest took 501ms\r\nrequest took 501ms\r\nrequest took 501ms\r\nrequest took 501ms\r\nrequest took 501ms\r\nrequest took 501ms\r\nrequest took 501ms\r\nrequest took 501ms\r\nrequest took 501ms\r\nrequest took 500ms\r\nbackground job finished\r\nrequest took 501ms\r\nrequest took 500ms\r\n```\r\nThe heavy compute task won't halt other tasks. I don't know the implementation of tokio, but seems this is a big problem as users are very likely to hit this issue.",
+            "createdAt": "2023-12-21T12:22:32Z",
+            "id": "IC_kwDOBAsbdc5vO1H4",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1866158584",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Congyuwang"
+            },
+            "authorAssociation": "NONE",
+            "body": "Except for using `spawn_blocking` to spawn it to another thread, using `block_in_place` also works:\r\n```rust\r\nuse std::time::Duration;\r\nuse std::time::Instant;\r\n\r\nasync fn handle_request(start_time: Instant) {\r\n    tokio::time::sleep(Duration::from_millis(500)).await;\r\n    println!(\"request took {}ms\", start_time.elapsed().as_millis());\r\n}\r\n\r\nasync fn background_job() {\r\n    loop {\r\n        tokio::time::sleep(Duration::from_secs(3)).await;\r\n\r\n        println!(\"background job start\");\r\n        // Adjust as needed\r\n        tokio::task::block_in_place(|| {\r\n            for _ in 0..1_000 {\r\n                vec![1; 1_000_000].sort()\r\n            }\r\n        });\r\n        println!(\"background job finished\");\r\n    }\r\n}\r\n\r\n#[tokio::main]\r\nasync fn main() {\r\n    tokio::spawn(async { background_job().await });\r\n\r\n    loop {\r\n        let start = Instant::now();\r\n        tokio::spawn(async move { handle_request(start).await })\r\n            .await\r\n            .unwrap();\r\n    }\r\n}\r\n```\r\n\r\nOutput:\r\n```\r\nrequest took 502ms\r\nrequest took 502ms\r\nrequest took 502ms\r\nbackground job start\r\nrequest took 500ms\r\nbackground job finished\r\nrequest took 502ms\r\nrequest took 502ms\r\nrequest took 501ms\r\nrequest took 502ms\r\nrequest took 502ms\r\nrequest took 501ms\r\nbackground job start\r\nrequest took 502ms\r\nbackground job finished\r\nrequest took 502ms\r\nrequest took 502ms\r\n```\r\n\r\nThe documentation of `block_in_place` says:\r\n```rust\r\n    /// Calling this function informs the\r\n    /// executor that the currently executing task is about to block the thread,\r\n    /// so the executor is able to hand off any other tasks it has to a new\r\n    /// worker thread before that happens.\r\n```\r\n\r\nIf there are more running `block_in_place` than the cpu cores, there would still be large latencies, which however is impossible to avoid as it is fundamentally caused by limited cpu resources.\r\n\r\nDon't know how async-std is dealing with blocking tasks. For Tokio, the responsibility of dealing with blocking tasks is on the programmer.",
+            "createdAt": "2023-12-21T13:15:39Z",
+            "id": "IC_kwDOBAsbdc5vPFDk",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1866223844",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "lewiszlw"
+            },
+            "authorAssociation": "NONE",
+            "body": "Good workaround. But we can not control our third-party libs if they have bad tasks.",
+            "createdAt": "2023-12-21T15:48:06Z",
+            "id": "IC_kwDOBAsbdc5vQQt1",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1866533749",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "yuyang-ok"
+            },
+            "authorAssociation": "NONE",
+            "body": "is `tokio` going to fix this or what?\r\n",
+            "createdAt": "2023-12-22T05:52:18Z",
+            "id": "IC_kwDOBAsbdc5vTE7I",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              },
+              {
+                "content": "THUMBS_DOWN",
+                "users": {
+                  "totalCount": 7
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1867271880",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Look, it isn't so simple. All potential solutions have disadvantages to them. They hurt the performance of well-behaved programs, and also raise questions about forwards-compatibility.\r\n\r\nIf you want to help, you could investigate how other runtimes handle this problem. For example, what does (did?) Go do if the thread with the epoll instance gets blocked by a tight loop without yield points, and all other threads are asleep? (Runtimes that poll IO from a dedicated thread are not relevant. We are not going to do that.)",
+            "createdAt": "2023-12-22T15:32:20Z",
+            "id": "IC_kwDOBAsbdc5vVKVI",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 3
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1867818312",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "exabytes18"
+            },
+            "authorAssociation": "NONE",
+            "body": "This feels somewhat similar to Spectre and Meltdown where Intel was \"caught speeding\" -- their optimizations were too aggressive for the happy-path (i.e. CPU only loaded with trusted, well-behaved programs) and that opened the door to other issues. Similarly, everything is great with tokio, until it's not.\r\n\r\nCommon in software engineering, it's not so much the performance or operation of a well-behaved program that matters, but dealing with the exceptional-cases or nefarious actors that requires so much thought. This might be where we're at here.\r\n\r\nIt would be interesting to know how much of a performance hit the potential solutions have and if it would be possible to feature-flag it. We could benchmark our own app, though it's probably not representative of other workloads, and we wouldn't be able to take this work item until the new year.",
+            "createdAt": "2023-12-22T18:50:50Z",
+            "id": "IC_kwDOBAsbdc5vVzX5",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 8
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1867986425",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "This problem is something you get \"by default\" if you do it the obvious way. It isn't because we have an extra optimization that is invalid.\r\n\r\n> and we wouldn't be able to take this work item until the new year.\r\n\r\nYou should not expect a fix for this over the holidays anyway. It's nowhere near that urgent. And there is even the workaround of spawning your own monitoring thread, [as I mentioned in a previous comment](https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1147165954).",
+            "createdAt": "2023-12-22T19:33:39Z",
+            "id": "IC_kwDOBAsbdc5vV6VR",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1868014929",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "carllerche"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "As @darkson mentioned, there is no obvious solution to this that comes without additional overhead. Fundamentally, Tokio is a cooperative multi-tasking system, which puts some responsibility on the user. As such, I will close this issue as there is no \"bug\" in Tokio.\r\n\r\nThat said, there would be value in detecting and possibly mitigating poorly behaved tasks on an opt-in basis. I opened #6315 as a tracking issue and referenced this issue. This will help reframe the conversation.",
+            "createdAt": "2024-01-30T18:37:45Z",
+            "id": "IC_kwDOBAsbdc5yTTfR",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 2
+                }
+              },
+              {
+                "content": "CONFUSED",
+                "users": {
+                  "totalCount": 3
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1917663185",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "mratsim"
+            },
+            "authorAssociation": "NONE",
+            "body": "> For example, what does (did?) Go do if the thread with the epoll instance gets blocked by a tight loop without yield points, and all other threads are asleep? (Runtimes that poll IO from a dedicated thread are not relevant. We are not going to do that.)\n\nThey have a sysmon monitor threads that can use signals for preemption. This was introduced in Go 1.14: https://go.dev/doc/go1.14#runtime\n\n> Goroutines are now asynchronously preemptible. As a result, loops without function calls no longer potentially deadlock the scheduler or significantly delay garbage collection. This is supported on all platforms except windows/arm, darwin/arm, js/wasm, and plan9/*.",
+            "createdAt": "2025-12-24T19:11:41Z",
+            "id": "IC_kwDOBAsbdc7b9vk0",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/4730#issuecomment-3690395956",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2022-05-31T21:11:05Z",
+        "labels": [
+          {
+            "color": "f5f1fd",
+            "description": "Category: This is a bug.",
+            "id": "MDU6TGFiZWw0Mzk4OTcxODg=",
+            "name": "C-bug"
+          },
+          {
+            "color": "f7e101",
+            "description": "Area: The main tokio crate",
+            "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+            "name": "A-tokio"
+          },
+          {
+            "color": "f7b101",
+            "description": "Module: tokio/runtime",
+            "id": "MDU6TGFiZWwxOTkzNTEwODc4",
+            "name": "M-runtime"
+          }
+        ],
+        "number": 4730,
+        "state": "CLOSED",
+        "title": "One bad task can halt all executor progress forever",
+        "url": "https://github.com/tokio-rs/tokio/issues/4730"
+      },
+      "target": {
+        "number": 4730,
+        "reason": "Runtime driver handoff starvation context.",
+        "repo": "tokio-rs/tokio",
+        "type": "issue"
+      }
+    },
+    {
+      "detail": {
+        "body": "Currently, Tokio relies on well-behaved application behavior, including tasks completing their polls in a reasonable time. When user tasks are not well-behaved, the application can suffer high latencies due to the Tokio scheduler being blocked by the user task and unable to process other tasks.\r\n\r\nFundamentally, because Tokio is an asynchronous task scheduler, it requires well-behaved user tasks. Any attempt to mitigate poorly behaved tasks will most likely be less effective than an OS's thread scheduler. That said, it is still valuable to be able to detect and mitigate these poorly behaved tasks.\r\n\r\nI don't know what the best strategy for this is. My gut is it will be a background process, either in a dedicated background thread or handled by idle workers, that checks that active workers are making consistent progress.\r\n\r\nAny solution cannot impact the existing performance of well-behaved apps, so if the best path forward comes with additional overhead, it needs to be opt-in.\r\n\r\nMoving this issue forward will require the following:\r\n\r\n1) A survey of other async systems to determine prior art.\r\n2) A report of our options with an analysis of pros/cons, including performance impact.\r\n3) A decision on which avenue to take.\r\n\r\nRefs: #4730",
+        "closedAt": null,
+        "comments": [
+          {
+            "author": {
+              "login": "exabytes18"
+            },
+            "authorAssociation": "NONE",
+            "body": "> Currently, Tokio relies on well-behaved application behavior, including tasks completing their polls in a reasonable time.\r\n\r\nIt may be worth trying to further define what \"well-behaved application behavior\" actually is, as it's probably not immediately obvious to some developers (or me). I don't know how long tasks are reasonably allowed to execute, or what set of circumstances may lead to degraded performance.\r\n\r\nAnecdotally, I come from working on JVM-based webservices, and have some implicit fear of GC. For the sake of argument, let's say a typical GC pause may be 20ms. Thus, I'd draw the line at something like a task taking 20ms to complete. Does this mean that due to the pathological nature of the scheduler, accidentally running a task that takes 20ms could result in my tokio/rust application pausing for longer than GC pauses we typically see in the JVM world?\r\n* Depending on your standpoint, maybe 20ms is too much or maybe it's too little. It's hard to say. At what point do you offload that work to background thread pool / spawn_blocking / whatever?\r\n* How savvy are developers at knowing how long all tasks take to complete?\r\n   * One case we saw of this was decompressing messages come off the wire from kafka. Decompressing a chunk of bytes seems relatively safe on the surface (no IO, anyway), but as a tokio-user, you need to now know that doing so in an async task is not a \"well-behaved application\" as, depending on how large those messages are, they could result in spending more CPU than you might realize.\r\n\r\nLast thought for now: the problem is very apparent if you run a very lengthy task (something that takes 1000ms), as demo'd in the past github issues. However, is the problem still present, just at a more difficult to measure level, with tasks that take 10us? The point being that if this actually impacts tasks both long and short, then this issue does represent a performance issue for reasonably well-behaved applications. That is, what is the overall system throughput penalty resulting from running a spurious task that takes 1us, or 10us, or 100us, or 1ms, or 10ms, or 100ms, or 1000ms? What is throughput penalty of various fixes posed in the previous github issues?",
+            "createdAt": "2024-02-01T05:22:38Z",
+            "id": "IC_kwDOBAsbdc5yeRPx",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-1920537585",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Yes, 20ms is definitely too long. In [my article on blocking](https://ryhl.io/blog/async-what-is-blocking/), I recommend 10μs to 100μs as an upper limit.\r\n\r\nIn general, there are three ways that long polls can cause degraded performance:\r\n\r\n1. Every single worker thread is blocked by a different task.\r\n2. There's a single blocking future, and there is a task in the LIFO slot of that thread (because the blocking future woke it up).\r\n3. There's a single blocking future on the thread that is currently responsible for receiving incoming IO/timer events.\r\n\r\nIn the first case, there is nothing we can do. The second case is tracked by #4941. This issue tracks the third case. In all other cases, work stealing will kick in and move tasks to a different worker so that they do not have to wait for the blocking future.\r\n\r\nThe way that this issue gets triggered is as follows:\r\n\r\n1. All threads are idle. Thread A is waiting for IO/timer events.\r\n2. Thread A receives an IO or timer event and wakes up to handle it.\r\n3. A single task is woken up by the IO/timer event, and thread A polls it.\r\n4. During the call to poll, a new IO (or timer) event becomes available.\r\n5. Thread A does not see the IO event since it's polling a future. The other worker threads don't see it either, since none of them are currently registered to receive IO events.\r\n\r\nAn important distinction here is that work-stealing is working correctly. There's only a single ready-to-run task on the entire runtime, so there is no work stealing that could happen. The problem is that the tasks will not get marked as ready until the runtime next asks the OS for IO events.\r\n\r\nNone of this happens if there are other active workers, because they will take over IO events when they next become idle. This is why you can make [your own monitor thread](https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1147165954) by regularly spawning tasks on the runtime.\r\n\r\nA silver lining of the above is that the issue can only really happen when all threads are idle and a single incoming IO event arrives, so it will not happen while the runtime is under load.",
+            "createdAt": "2024-02-01T09:23:52Z",
+            "id": "IC_kwDOBAsbdc5yfkCn",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 2
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-1920876711",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "CinchBlue"
+            },
+            "authorAssociation": "NONE",
+            "body": "Hey -- I just landed up being affected by https://github.com/tokio-rs/tokio/issues/4730 -- in my case, only 2 out of the 8 Tokio threads I had available were in deadlock but the rest of the 6 were not proceeding. \r\n\r\n> I don't know what the best strategy for this is. My gut is it will be a background process, either in a dedicated background thread or handled by idle workers, that checks that active workers are making consistent progress.\r\n\r\nIdea: in addition to having this \"monitor thread\" doing automatic spawning on the runtime, would it make sense to allow for manually signaling the runtime to do wake-up/shuffling of tasks/workers to allow movement in this case when it gets stuck? This wouldn't solve the issue definitively, but it would also allow testing whether a currently \"not-well-formed\" program is either only partially deadlocked or entirely deadlocked. I can see something like this being valuable while debugging.\r\n\r\n> Any solution cannot impact the existing performance of well-behaved apps, so if the best path forward comes with additional overhead, it needs to be opt-in.\r\n\r\nIf I remember from the discussion, there was more than 1 solution being considered. Eventually, as implementations come about, they would just be gated behind `tokio_unstable` features?\r\n",
+            "createdAt": "2024-02-04T01:11:34Z",
+            "id": "IC_kwDOBAsbdc5yxPAP",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-1925509135",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "inevity"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Does current thread runtime with localset suffer those 2 /3 issue @Darksonn ？\r\nI think it will suffer 3， and what about 2？",
+            "createdAt": "2024-02-16T13:59:47Z",
+            "id": "IC_kwDOBAsbdc50IshD",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-1948436547",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "@inevity The current-thread runtime can only suffer from case 1. After all, if you are blocking one thread, you are blocking all of them. (The current-thread runtime has no lifo slot.)\r\n\r\n> would it make sense to allow for manually signaling the runtime to do wake-up/shuffling of tasks/workers to allow movement in this case when it gets stuck? \r\n\r\nYou can call `handle.spawn(async {})` on a handle to the runtime. That will wake a new worker thread, which will then check the IO driver after handling your spawned task.\r\n\r\nBut I want to clarify that there is no shuffling of tasks that can happen here. It's not like there are a bunch of tasks on those two threads that could run if they were just moved to a different worker thread. Other than your blocking tasks, all other tasks on your runtime are considered idle. It's just that *if* you polled the IO driver, then that would result in more tasks being woken. But since the IO driver isn't being polled, those tasks are considered idle, and that is why the runtime isn't polling them.",
+            "createdAt": "2024-02-19T10:09:20Z",
+            "id": "IC_kwDOBAsbdc50WtvW",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-1952111574",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "rcoh"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "I had a thought on this: what if we had a mode (or a way to mark tasks) as poorly behaved.\n\nEach poll would run as if the user had wrapped the code with block_in_place. There are none of the normal block in place risks here — we know nothing else is going to make progress on that task anyway while a single poll is in progress.\n\nThis obviously would degrade performance for some applications, but it seems like a potential thing to try for a more tolerant Tokio.\n\nIn some experiments even 200us polls were benefitted by this behavior.",
+            "createdAt": "2024-11-01T10:31:59Z",
+            "id": "IC_kwDOBAsbdc6SIWL8",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-2451661564",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Avi-D-coder"
+            },
+            "authorAssociation": "NONE",
+            "body": "> I had a thought on this: what if we had a mode (or a way to mark tasks) as poorly behaved.\r\n\r\n@rcoh I wrote about something similar on [Reddit](https://www.reddit.com/r/rust/comments/1fzgzna/tokio_should_add_a_blockable_task_executor_a/), my post was not well received, but I maintain something like this is an important feature tokio should have.",
+            "createdAt": "2024-11-01T21:33:20Z",
+            "id": "IC_kwDOBAsbdc6SMAg7",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-2452621371",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "xmo-odoo"
+            },
+            "authorAssociation": "NONE",
+            "body": "> 3. There's a single blocking future on the thread that is currently responsible for receiving incoming IO/timer events.\n>     \n> [...]\n> \n> The way that this issue gets triggered is as follows:\n>     1. All threads are idle. Thread A is waiting for IO/timer events.\n>     2. Thread A receives an IO or timer event and wakes up to handle it.\n>     3. A single task is woken up by the IO/timer event, and thread A polls it.\n>     4. During the call to poll, a new IO (or timer) event becomes available.\n>     5. Thread A does not see the IO event since it's polling a future. The other worker threads don't see it either, since none of them are currently registered to receive IO events.\n\nAssuming a thread doesn't need to hold the IO driver to *run* an IO task is there no way for that thread to release the driver & enqueue a cancellable wake for (one of) the parked workers?\n\nI'd assume in the normal case where polls on IO tasks are extremely fast releasing the driver and possibly thread-migrating it all the time would be undesirable, but maybe the driver could be behind a QRL (a lock biased towards being reacquired by the thread which last released it) such that in that case the current driver owner would be very likely to remain its owner and would have a very fast path to reacquiring it?\n",
+            "createdAt": "2025-01-27T09:07:49Z",
+            "id": "IC_kwDOBAsbdc6b4LSV",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-2615194773",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "I surveyed two existing strategies.\n\n*BTW, shall we add the `E-help-wanted` label?*\n\n## Kernel IRQ subsystem\n\nThe IRQ handling is a bit similar to the async event loop, handlers must end quickly. This came up top half and bottom half, and [Workqueue — The Linux Kernel  documentation](https://www.kernel.org/doc/html/next/core-api/workqueue.html) is a part of the bottom half,\n\nWorkqueue can be marked as `WQ_CPU_INTENSIVE`, and a task can also be marked as `WQ_CPU_INTENSIVE` if it actually took too much time to end.\n\nThe `WQ_CPU_INTENSIVE` task doesn't contribute to the `nr_running` counter of the thread pool, so the pool can create a new kernel thread (`max_active` is the upper bound of threads)  to process more tasks without being blocked by the slow task.\n\nThe workqueue also reports the CPU-hogged tasks (auto detected) if `CONFIG_WQ_CPU_INTENSIVE_REPORT` is enabled.\n\nThis is kernel's solution, but I don't think this is feasible for the user space scheduler, data synchronization in user space is much more expensive than kernel space.\n\n## Golang\n\nGolang utilizes both work-stealing and preemptive scheduler. However, the preemptive scheduler requires the compiler to emit extra instructions which checks if the current goroutine has already run out of its time slice.\n\nI wouldn't expect the Rust compiler to do the same thing for async runtime in the future.\n",
+            "createdAt": "2025-06-08T09:15:21Z",
+            "id": "IC_kwDOBAsbdc6wD2rf",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-2953800415",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Follow-up of https://github.com/tokio-rs/tokio/issues/6315#issuecomment-2953800415.\n\nI'm concerned about **complexity** introduced to tolerate slow polls. We should carefully balance this against impacts on well-behaved applications.  \n\nA work-stealing scheduler is generally sufficient for managing tasks effectively. Additionally, I believe an optional CPU-hogged tasks report would be a valuable and appropriate feature for an asynchronous runtime. These two things might be the boundary of balance.\n\nMy gut feeling is that any more elaborate mitigation strategies would introduce significant complexity and very likely cause substantial performance regressions for well-behaved applications. Furthermore, making such complex features optional would increase the **maintenance burden** too much.\n\nI like this explanation of the second law of thermodynamics, I think it is also valuable for software engineering in certain case.\n\n> Every time we do get something we reduce by a measurable amount the opportunity to get that something in the future, until ultimately the time will come when there will be no more ’getting‘.\n",
+            "createdAt": "2025-06-08T09:52:02Z",
+            "id": "IC_kwDOBAsbdc6wD-5C",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-2953834050",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Ddystopia"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Can we have an option for Tokio to warn if poll took too long? Or maybe https://github.com/tokio-rs/console might do? ",
+            "createdAt": "2025-06-26T06:08:43Z",
+            "id": "IC_kwDOBAsbdc6zPnr9",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-3007216381",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "thomas725"
+            },
+            "authorAssociation": "NONE",
+            "body": "I had a strange unexplained freezup of [my application](https://gitlab.com/thomas351/rust-influxdb-udp-logger) a few weeks ago, and it took me quite a long time ([with the help of the community](https://users.rust-lang.org/t/my-rust-project-randomly-freezes-after-hours-doesnt-start-as-non-root/130935)) to find that the cause was having several of my tasks blocking their threads forever.\n\nThe way I found out in the end was to enable tokio-console for my project where it was obvious right away from the warnings it prints about blocking tasks.\n\nIt would love an option to print warnings or errors to stdout / stderr during runtime when a task doesn't yield for x seconds (maybe make it configurable to a value that makes sense for the current project?)",
+            "createdAt": "2025-06-27T10:15:12Z",
+            "id": "IC_kwDOBAsbdc6zjs7q",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 4
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-3012480746",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "TheBlueMatt"
+            },
+            "authorAssociation": "NONE",
+            "body": "This is causing real user pain, eg here's a medium article of someone ripping out tokio over, apparently, in some nontrivial part, this issue (though after the motivating incident they ultimately decided the overhead of tokio wasn't worth it to begin with) https://archive.ph/coR2L",
+            "createdAt": "2025-10-30T18:01:48Z",
+            "id": "IC_kwDOBAsbdc7Oyi8b",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 2
+                }
+              },
+              {
+                "content": "THUMBS_DOWN",
+                "users": {
+                  "totalCount": 4
+                }
+              },
+              {
+                "content": "LAUGH",
+                "users": {
+                  "totalCount": 3
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-3469356827",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Sorry, but it's never going to be a good idea to run blocking database calls in your asynchronous tasks.",
+            "createdAt": "2025-10-31T10:17:18Z",
+            "id": "IC_kwDOBAsbdc7O94fh",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 7
+                }
+              },
+              {
+                "content": "ROCKET",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-3472328673",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "supernomad"
+            },
+            "authorAssociation": "NONE",
+            "body": "So this is an interesting problem that I have personally faced, its not directly the same in terms of \"slow task polls\" but this problem exists on the other end of the spectrum as well, in my case I have two very lightweight futures, they respond in less than microseconds. These two will fight for the same worker thread, unless I push a yield_now into one of them. I can't seem to convince Tokio to push the second task to another thread, now after reading this and understanding better how the IO poller works it actually makes more sense what I am seeing. \n\nSo just wanted to point out this doesn't just affect \"blocking database calls in your async tasks\", but also super fast futures (to be clear fully async) that need the I/O poller, completely overwhelm the scheduler as well and might as well deadlock 🤔 To be clear I am writing AF_XDP programs, which means I have per packet latency of sub 1us and its also likely not the best fit for Tokio in the first place. Not sure if there is actually a solution either, outside of what has been mentioned here, just found this in my investigations as to what I am seeing on my project. Figured it might be useful for others to see the other side of this particular problem.",
+            "createdAt": "2026-01-19T20:46:48Z",
+            "id": "IC_kwDOBAsbdc7gtsSE",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-3770074244",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Hi folks, I believe we have a potential fix for this issue. The latest Tokio release contains an optional configuration option called [`enable_eager_driver_handoff`](https://docs.rs/tokio/latest/tokio/runtime/struct.Builder.html#method.enable_eager_driver_handoff), which causes Tokio to wake up a second thread eagerly when it receives work from the IO driver. When this option is enabled, there should no longer be any scenarios in which Tokio will fail to make progress unless all worker threads are blocked simultaneously.\n\nPlease try it out. I'm particularly interested in feedback about its performance impact.",
+            "createdAt": "2026-04-16T06:42:12Z",
+            "id": "IC_kwDOBAsbdc79yfTR",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "HEART",
+                "users": {
+                  "totalCount": 6
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/6315#issuecomment-4257871057",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2024-01-30T18:33:41Z",
+        "labels": [
+          {
+            "color": "f7e101",
+            "description": "Area: The main tokio crate",
+            "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+            "name": "A-tokio"
+          },
+          {
+            "color": "f7b101",
+            "description": "Module: tokio/runtime",
+            "id": "MDU6TGFiZWwxOTkzNTEwODc4",
+            "name": "M-runtime"
+          },
+          {
+            "color": "f5f1fd",
+            "description": "Category: A feature request.",
+            "id": "MDU6TGFiZWwxOTkzNTE3MDA4",
+            "name": "C-feature-request"
+          }
+        ],
+        "number": 6315,
+        "state": "OPEN",
+        "title": "rt: Tolerate slow task polls",
+        "url": "https://github.com/tokio-rs/tokio/issues/6315"
+      },
+      "target": {
+        "number": 6315,
+        "reason": "Additional runtime handoff context.",
+        "repo": "tokio-rs/tokio",
+        "type": "issue"
+      }
+    }
+  ]
+}

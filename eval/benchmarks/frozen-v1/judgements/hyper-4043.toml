@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "hyper-4043"
+repo = "hyperium/hyper"
+pr = 4043
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "HTTP/1 keep-alive with chunked trailers."
+
+[fact_only]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 2
+notes = "True risk is HTTP/1 keep-alive with chunked trailers. Fact output flags touched_existing_risky poll_read_body in conn.rs, which is the relevant path, plus generic prod/test context."
+
+[semantic_filtered]
+top3_total = 1
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "Semantic drops the relevant poll_read_body touched-risk evidence and keeps only generic prod_change_with_tests, missing trailers/keep-alive behavior."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = true
+notes = "Semantic filtering regresses by losing the only function-level clue."

@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "hyper-3998"
+repo = "hyperium/hyper"
+pr = 3998
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Trailer NO_ERROR propagation."
+
+[fact_only]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 1
+notes = "True risk is trailer NO_ERROR propagation. Fact output flags worsened src/body/incoming.rs:poll_frame, the relevant body/trailer path; prod/test context is weaker."
+
+[semantic_filtered]
+top3_total = 2
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Semantic preserves direct poll_frame complexity and ties the prod/test signal to that direct evidence, producing a focused review prompt."
+
+[comparison]
+semantic_improved_ranking = true
+semantic_reduced_noise = true
+semantic_introduced_noise = false
+notes = "Semantic improves by binding weak quality evidence to the concrete function-level signal."

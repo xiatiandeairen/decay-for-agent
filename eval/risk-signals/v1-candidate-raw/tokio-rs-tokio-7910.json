@@ -1,0 +1,112 @@
+{
+  "candidate": {
+    "id": "tokio-rs-tokio-7910",
+    "repo": "tokio-rs/tokio",
+    "url": "https://github.com/tokio-rs/tokio/pull/7910"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "a25d95a8c4f443886e55b24c97d4bbee1d87283d",
+    "body": "When a blocking pool worker thread hits the shutdown path, `num_idle_threads` gets incremented twice but only decremented once on thread exit, leaving the metric over-counted.\n\n**What happens:**\n\nThe worker loop increments `num_idle_threads` when entering IDLE state (before the condvar wait). During shutdown, `condvar.notify_all()` wakes all idle threads, but unlike a normal task spawn, it does *not* decrement `num_idle_threads` or increment `num_notify`. The woken thread sees `shared.shutdown == true`, exits the inner while loop, and enters the `if shared.shutdown` block which had a second `inc_num_idle_threads()` call. On thread exit, only one `dec_num_idle_threads()` happens, so the net effect is +1 per idle thread at shutdown time.\n\n**The fix:**\n\nRemove the extra `inc_num_idle_threads()` in the shutdown path. The thread is already counted as idle from the increment at the top of the IDLE section, so the balance is: +1 on entering IDLE, -1 on thread exit.\n\nCloses #6439",
+    "comments": [
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks! Can you add a test for this?",
+        "createdAt": "2026-02-16T10:09:40Z",
+        "id": "IC_kwDOBAsbdc7o6O6p",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/7910#issuecomment-3907579561",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "veeceey"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Added a regression test in `rt_unstable_metrics` — it grabs a `Handle` before dropping the runtime, spawns a blocking task, waits for the thread to go idle, then drops the runtime and asserts `num_idle_blocking_threads() == 0`. Verified it fails with the double-increment present and passes with the fix.",
+        "createdAt": "2026-02-16T19:14:58Z",
+        "id": "IC_kwDOBAsbdc7pEJqa",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/7910#issuecomment-3910179482",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "veeceey"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "@Darksonn I've added the regression test as requested. Would you mind taking another look? Thanks!",
+        "createdAt": "2026-02-17T05:59:54Z",
+        "id": "IC_kwDOBAsbdc7pMwd_",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/7910#issuecomment-3912435583",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 0,
+        "changeType": "MODIFIED",
+        "deletions": 6,
+        "path": "tokio/src/runtime/blocking/pool.rs"
+      },
+      {
+        "additions": 32,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tokio/tests/rt_unstable_metrics.rs"
+      }
+    ],
+    "headRefName": "fix/issue-6439-blocking-pool-idle-count",
+    "headRefOid": "bb4517853f225ee84dd40db1357d9d7568aa7ae1",
+    "labels": [
+      {
+        "color": "f7e101",
+        "description": "Area: The main tokio crate",
+        "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+        "name": "A-tokio"
+      },
+      {
+        "color": "f7b101",
+        "description": "Module: tokio/runtime",
+        "id": "MDU6TGFiZWwxOTkzNTEwODc4",
+        "name": "M-runtime"
+      }
+    ],
+    "mergedAt": "2026-02-17T07:19:51Z",
+    "number": 7910,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "ADD-SP"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks!",
+        "commit": {
+          "oid": "bb4517853f225ee84dd40db1357d9d7568aa7ae1"
+        },
+        "id": "PRR_kwDOBAsbdc7jOFBM",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2026-02-17T07:14:23Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "runtime: fix double-increment of num_idle_threads on blocking pool shutdown",
+    "url": "https://github.com/tokio-rs/tokio/pull/7910"
+  }
+}

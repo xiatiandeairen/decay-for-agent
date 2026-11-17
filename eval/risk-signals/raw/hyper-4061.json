@@ -1,0 +1,55 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Previously accepted large-scale candidate; merged fix around body buffering/capacity timing.",
+    "id": "hyper-4061",
+    "limitations": "Production file path should be confirmed by PR enrichment.",
+    "production_files": [
+      "src/proto/h2/mod.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "HTTP/2 body capacity was reserved before body data was available.",
+    "signal_ids": [
+      "state_transition",
+      "non_happy_path"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/4061",
+      "eval/large-scale-50/candidates/open-source.toml"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/hyperium/hyper/pull/4061",
+    "why_high_value": "Capacity reservation timing can alter memory behavior on streaming body paths.",
+    "why_not_noise": "Specific HTTP/2 buffering behavior and merged fix."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "b12f6525432e7fbe80b749fec26f8ed7723006fc",
+    "body": "Continuing https://github.com/hyperium/hyper/pull/4051\r\n\r\nCloses #4003 \r\nCloses #4051 ",
+    "comments": [],
+    "files": [
+      {
+        "additions": 70,
+        "changeType": "MODIFIED",
+        "deletions": 24,
+        "path": "src/proto/h2/mod.rs"
+      },
+      {
+        "additions": 167,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/client.rs"
+      }
+    ],
+    "headRefName": "sean/omooyxqukpvl",
+    "headRefOid": "e980da58262d806399e01f66cfae7f5a6025e71d",
+    "labels": [],
+    "mergedAt": "2026-05-04T20:49:24Z",
+    "number": 4061,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "fix(http2): do not reserve capacity before body data is available",
+    "url": "https://github.com/hyperium/hyper/pull/4061"
+  }
+}

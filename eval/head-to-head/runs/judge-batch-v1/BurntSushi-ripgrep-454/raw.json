@@ -1,0 +1,18 @@
+{
+  "case_id": "BurntSushi-ripgrep-454",
+  "attempt_count": 2,
+  "attempts": [
+    {
+      "ok": false,
+      "exit_code": 1,
+      "stdout": "API Error: 529 Overloaded. This is a server-side issue, usually temporary \u2014 try again in a moment. If it persists, check https://status.claude.com.\n",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"BurntSushi-ripgrep-454\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208\",\"ground_truth_draft\":{\"high_value\":true,\"primary_signal_ids\":[\"assumption_boundary\",\"state_transition\"],\"subject_files\":[\"src/printer.rs\"],\"expected_behavior\":\"With --only-matching, write_match was calling re.find on buf[start..end] once per iteration of find_iter, repeatedly returning the FIRST match instead of the current one. Fix passes the per-iteration column offset so the slice starts at the actual match position, yielding one output per match.\",\"rationale_from_pr_metadata\":\"PR title 'Fix reiteration of the first found match with --only-mathing flag' and the body's before/after demo (`\\\\d+` on '123' now yields '123' once instead of repeating '1') show the bug: only_matching path was re-finding from offset 0 each loop. Fixes #451; reviewer requested a regression test mirroring the reporter's case (added as regression_451_only_matching*).\",\"subject_files_note\":\"\"},\"judgement_drafts\":{\"fact_only\":{\"top3_total\":3,\"top3_useful\":0,\"actionable\":false,\"missed_high_risk_count\":2,\"weak_only_top_risk_count\":1,\"notes\":\"Reports panic_like_added (the .unwrap() line) and a parse-coverage gap plus generic prod+tests signal. Surfaces the right file but does not name the only_matching reiteration mechanism or column-offset bug.\"},\"semantic_filtered\":{\"top3_total\":1,\"top3_useful\":0,\"actionable\":false,\"missed_high_risk_count\":2,\"weak_only_top_risk_count\":1,\"notes\":\"Single semantic claim restates 'panic-like at line 302' from fact layer; does not identify the reiteration-of-first-match bug or the Option<u64>\u2192usize contract change.\"},\"ai_baseline\":{\"top3_total\":3,\"top3_useful\":2,\"actionable\":true,\"missed_high_risk_count\":0,\"weak_only_top_risk_count\":0,\"notes\":\"Rank1 directly names the start+column slice + unwrap assumption (the actual fix mechanism). Rank2 catches the Option\u2192usize contract change. Rank3 supporting test-gap. Matches both primary signals.\"}}}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

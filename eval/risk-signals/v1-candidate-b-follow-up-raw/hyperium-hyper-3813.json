@@ -1,0 +1,43 @@
+{
+  "case_id": "hyperium-hyper-3813",
+  "refs": [
+    {
+      "detail": {
+        "baseRefName": "master",
+        "baseRefOid": "a3bda62da36060a38638fba983a0c07c0ab6259d",
+        "body": "Closes #3811 ",
+        "comments": [],
+        "files": [
+          {
+            "additions": 4,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "src/proto/h1/io.rs"
+          },
+          {
+            "additions": 57,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "tests/client.rs"
+          }
+        ],
+        "headRefName": "bug-is-complete-fast",
+        "headRefOid": "e94b14a44d9f55321864d2c49628e62fe86cfc10",
+        "labels": [],
+        "mergedAt": "2024-12-16T15:36:41Z",
+        "number": 3812,
+        "reviewDecision": "REVIEW_REQUIRED",
+        "reviews": [],
+        "state": "MERGED",
+        "title": "fix(http1): fix intermitent panic parsing partial headers",
+        "url": "https://github.com/hyperium/hyper/pull/3812"
+      },
+      "target": {
+        "number": 3812,
+        "reason": "Original partial-header panic fix being backported.",
+        "repo": "hyperium/hyper",
+        "type": "pr"
+      }
+    }
+  ]
+}

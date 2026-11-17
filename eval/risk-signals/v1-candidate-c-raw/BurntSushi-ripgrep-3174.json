@@ -1,0 +1,43 @@
+{
+  "candidate": {
+    "id": "BurntSushi-ripgrep-3174",
+    "repo": "BurntSushi/ripgrep",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3174"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "bb88a1ac45c70bef97e0d6ccd6e91595610de860",
+    "body": "... specifically, when the whitelist comes from a _parent_ gitignore\nfile.\n\nOur handling of parent gitignores is pretty ham-fisted and has been a\nsource of some unfortunate bugs. The problem is that we need to strip\nthe parent path from the path we're searching in order to correctly\napply the globs. But getting this stripping correct seems to be a subtle\naffair.\n\nFixes #3173\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 2,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "CHANGELOG.md"
+      },
+      {
+        "additions": 14,
+        "changeType": "MODIFIED",
+        "deletions": 10,
+        "path": "crates/ignore/src/dir.rs"
+      },
+      {
+        "additions": 21,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/regression.rs"
+      }
+    ],
+    "headRefName": "ag/fix-3173",
+    "headRefOid": "ce3d884a06ab68082846ed1a58e904904330ee23",
+    "labels": [],
+    "mergedAt": "2025-10-09T01:16:59Z",
+    "number": 3174,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "ignore: fix problem with searching whitelisted hidden files",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3174"
+  }
+}

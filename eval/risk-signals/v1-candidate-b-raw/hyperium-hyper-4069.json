@@ -1,0 +1,37 @@
+{
+  "candidate": {
+    "id": "hyperium-hyper-4069",
+    "repo": "hyperium/hyper",
+    "url": "https://github.com/hyperium/hyper/pull/4069"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "156a6f6aaacdc782861a4cab23ab3940a029d6ac",
+    "body": "This continues #4016, adding a unit test.\r\n\r\nCloses #3995 \r\nCloses #4016",
+    "comments": [],
+    "files": [
+      {
+        "additions": 41,
+        "changeType": "MODIFIED",
+        "deletions": 8,
+        "path": "src/proto/h1/dispatch.rs"
+      },
+      {
+        "additions": 55,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/client.rs"
+      }
+    ],
+    "headRefName": "sean/toltptoomnln",
+    "headRefOid": "c50341cc317ae2b8f1be58e38c55302505db5cea",
+    "labels": [],
+    "mergedAt": "2026-05-12T18:56:30Z",
+    "number": 4069,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "fix(http1): send error when dispatcher is dropped mid-body",
+    "url": "https://github.com/hyperium/hyper/pull/4069"
+  }
+}

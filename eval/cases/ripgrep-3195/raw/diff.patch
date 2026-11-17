@@ -1,0 +1,624 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 22a2b39..eaf5103 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,121 +1,124 @@
+-TBD
+-===
++15.0.1
++======
+ Unreleased changes. Release notes have not yet been written.
+ 
++Bug fixes:
++
++* [BUG #3194](https://github.com/BurntSushi/ripgrep/issues/3194):
++  Fix a regression with `--line-buffered` introduced in ripgrep 15.0.0.
++
+ 
+ 15.0.0 (2025-10-15)
+ ===================
+ ripgrep 15 is a new major version release of ripgrep that mostly has bug fixes,
+ some minor performance improvements and minor new features. Here are some
+ highlights:
+ 
+ * Several bugs around gitignore matching have been fixed. This includes
+   a commonly reported bug related to applying gitignore rules from parent
+   directories.
+ * A memory usage regression when handling very large gitignore files has been
+   fixed.
+ * `rg -vf file`, where `file` is empty, now matches everything.
+ * The `-r/--replace` flag now works with `--json`.
+ * A subset of Jujutsu (`jj`) repositories are now treated as if they were git
+   repositories. That is, ripgrep will respect `jj`'s gitignores.
+ * Globs can now use nested curly braces.
+ 
+ Platform support:
+ 
+ * `aarch64` for Windows now has release artifacts.
+ * `powerpc64` no longer has release artifacts generated for it. The CI
+   release workflow stopped working, and I didn't deem it worth my time to
+   debug it. If someone wants this and can test it, I'd be happy to add it
+   back.
+ * ripgrep binaries are now compiled with full LTO enabled. You may notice
+   small performance improvements from this and a modest decrease in binary
+   size.
+ 
+ Performance improvements:
+ 
+ * [PERF #2111](https://github.com/BurntSushi/ripgrep/issues/2111):
+   Don't resolve helper binaries on Windows when `-z/--search-zip` isn't used.
+ * [PERF #2865](https://github.com/BurntSushi/ripgrep/pull/2865):
+   Avoid using path canonicalization on Windows when emitting hyperlinks.
+-* [PERF #3184](https://github.com/BurntSushi/ripgrep/pull/3184):
+-  Improve performance of large values with `-A/--after-context`.
+ 
+ Bug fixes:
+ 
+ * [BUG #829](https://github.com/BurntSushi/ripgrep/issues/829),
+   [BUG #2731](https://github.com/BurntSushi/ripgrep/issues/2731),
+   [BUG #2747](https://github.com/BurntSushi/ripgrep/issues/2747),
+   [BUG #2770](https://github.com/BurntSushi/ripgrep/issues/2770),
+   [BUG #2778](https://github.com/BurntSushi/ripgrep/issues/2778),
+   [BUG #2836](https://github.com/BurntSushi/ripgrep/issues/2836),
+   [BUG #2933](https://github.com/BurntSushi/ripgrep/pull/2933),
+   [BUG #3067](https://github.com/BurntSushi/ripgrep/pull/3067):
+   Fix bug related to gitignores from parent directories.
+ * [BUG #1332](https://github.com/BurntSushi/ripgrep/issues/1332),
+   [BUG #3001](https://github.com/BurntSushi/ripgrep/issues/3001):
+   Make `rg -vf file` where `file` is empty match everything.
+ * [BUG #2177](https://github.com/BurntSushi/ripgrep/issues/2177):
+   Ignore a UTF-8 BOM marker at the start of `.gitignore` (and similar files).
+ * [BUG #2750](https://github.com/BurntSushi/ripgrep/issues/2750):
+   Fix memory usage regression for some truly large gitignore files.
+ * [BUG #2944](https://github.com/BurntSushi/ripgrep/pull/2944):
+   Fix a bug where the "bytes searched" in `--stats` output could be incorrect.
+ * [BUG #2990](https://github.com/BurntSushi/ripgrep/issues/2990):
+   Fix a bug where ripgrep would mishandle globs that ended with a `.`.
+ * [BUG #2094](https://github.com/BurntSushi/ripgrep/issues/2094),
+   [BUG #3076](https://github.com/BurntSushi/ripgrep/issues/3076):
+   Fix bug with `-m/--max-count` and `-U/--multiline` showing too many matches.
+ * [BUG #3100](https://github.com/BurntSushi/ripgrep/pull/3100):
+   Preserve line terminators when using `-r/--replace` flag.
+ * [BUG #3108](https://github.com/BurntSushi/ripgrep/issues/3108):
+   Fix a bug where `-q --files-without-match` inverted the exit code.
+ * [BUG #3131](https://github.com/BurntSushi/ripgrep/issues/3131):
+   Document inconsistency between `-c/--count` and `--files-with-matches`.
+ * [BUG #3135](https://github.com/BurntSushi/ripgrep/issues/3135):
+   Fix rare panic for some classes of large regexes on large haystacks.
+ * [BUG #3140](https://github.com/BurntSushi/ripgrep/issues/3140):
+   Ensure hyphens in flag names are escaped in the roff text for the man page.
+ * [BUG #3155](https://github.com/BurntSushi/ripgrep/issues/3155):
+   Statically compile PCRE2 into macOS release artifacts on `aarch64`.
+ * [BUG #3173](https://github.com/BurntSushi/ripgrep/issues/3173):
+   Fix ancestor ignore filter bug when searching whitelisted hidden files.
+ * [BUG #3178](https://github.com/BurntSushi/ripgrep/discussions/3178):
+   Fix bug causing incorrect summary statistics with `--json` flag.
+ * [BUG #3179](https://github.com/BurntSushi/ripgrep/issues/3179):
+   Fix gitignore bug when searching absolute paths with global gitignores.
+ * [BUG #3180](https://github.com/BurntSushi/ripgrep/issues/3180):
+   Fix a panicking bug when using `-U/--multiline` and `-r/--replace`.
+ 
+ Feature enhancements:
+ 
+ * Many enhancements to the default set of file types available for filtering.
+ * [FEATURE #1872](https://github.com/BurntSushi/ripgrep/issues/1872):
+   Make `-r/--replace` work with `--json`.
+ * [FEATURE #2708](https://github.com/BurntSushi/ripgrep/pull/2708):
+   Completions for the fish shell take ripgrep's config file into account.
+ * [FEATURE #2841](https://github.com/BurntSushi/ripgrep/pull/2841):
+   Add `italic` to the list of available style attributes in `--color`.
+ * [FEATURE #2842](https://github.com/BurntSushi/ripgrep/pull/2842):
+   Directories containing `.jj` are now treated as git repositories.
+ * [FEATURE #2849](https://github.com/BurntSushi/ripgrep/pull/2849):
+   When using multithreading, schedule files to search in order given on CLI.
+ * [FEATURE #2943](https://github.com/BurntSushi/ripgrep/issues/2943):
+   Add `aarch64` release artifacts for Windows.
+ * [FEATURE #3024](https://github.com/BurntSushi/ripgrep/issues/3024):
+   Add `highlight` color type, for styling non-matching text in a matching line.
+ * [FEATURE #3048](https://github.com/BurntSushi/ripgrep/pull/3048):
+   Globs in ripgrep (and the `globset` crate) now support nested alternates.
+ * [FEATURE #3096](https://github.com/BurntSushi/ripgrep/pull/3096):
+   Improve completions for `--hyperlink-format` in bash and fish.
+ * [FEATURE #3102](https://github.com/BurntSushi/ripgrep/pull/3102):
+   Improve completions for `--hyperlink-format` in zsh.
+ 
+ 
+ 14.1.1 (2024-09-08)
+ ===================
+ This is a minor release with a bug fix for a matching bug. In particular, a bug
+ was found that could cause ripgrep to ignore lines that should match. That is,
+ false negatives. It is difficult to characterize the specific set of regexes
+ in which this occurs as it requires multiple different optimization strategies
+ to collide and produce an incorrect result. But as one reported example, in
+ ripgrep, the regex `(?i:e.x|ex)` does not match `e-x` when it should. (This
+diff --git a/crates/printer/src/hyperlink/aliases.rs b/crates/printer/src/hyperlink/aliases.rs
+index 3db34e0..faefb20 100644
+--- a/crates/printer/src/hyperlink/aliases.rs
++++ b/crates/printer/src/hyperlink/aliases.rs
+@@ -1,91 +1,86 @@
+ use crate::hyperlink::HyperlinkAlias;
+ 
+ /// Aliases to well-known hyperlink schemes.
+ ///
+ /// These need to be sorted by name.
+ pub(super) const HYPERLINK_PATTERN_ALIASES: &[HyperlinkAlias] = &[
+-    alias(
+-        "cursor",
+-        "Cursor scheme (cursor://)",
+-        "cursor://file{path}:{line}:{column}",
+-    ),
+     prioritized_alias(
+         0,
+         "default",
+         "RFC 8089 scheme (file://) (platform-aware)",
+         {
+             #[cfg(not(windows))]
+             {
+                 "file://{host}{path}"
+             }
+             #[cfg(windows)]
+             {
+                 "file://{path}"
+             }
+         },
+     ),
+     alias(
+         "file",
+         "RFC 8089 scheme (file://) with host",
+         "file://{host}{path}",
+     ),
+     // https://github.com/misaki-web/grepp
+     alias("grep+", "grep+ scheme (grep+://)", "grep+://{path}:{line}"),
+     alias(
+         "kitty",
+         "kitty-style RFC 8089 scheme (file://) with line number",
+         "file://{host}{path}#{line}",
+     ),
+     // https://macvim.org/docs/gui_mac.txt.html#mvim%3A%2F%2F
+     alias(
+         "macvim",
+         "MacVim scheme (mvim://)",
+         "mvim://open?url=file://{path}&line={line}&column={column}",
+     ),
+     prioritized_alias(1, "none", "disable hyperlinks", ""),
+     // https://macromates.com/blog/2007/the-textmate-url-scheme/
+     alias(
+         "textmate",
+         "TextMate scheme (txmt://)",
+         "txmt://open?url=file://{path}&line={line}&column={column}",
+     ),
+     // https://code.visualstudio.com/docs/editor/command-line#_opening-vs-code-with-urls
+     alias(
+         "vscode",
+         "VS Code scheme (vscode://)",
+         "vscode://file{path}:{line}:{column}",
+     ),
+     alias(
+         "vscode-insiders",
+         "VS Code Insiders scheme (vscode-insiders://)",
+         "vscode-insiders://file{path}:{line}:{column}",
+     ),
+     alias(
+         "vscodium",
+         "VSCodium scheme (vscodium://)",
+         "vscodium://file{path}:{line}:{column}",
+     ),
+ ];
+ 
+ /// Creates a [`HyperlinkAlias`].
+ const fn alias(
+     name: &'static str,
+     description: &'static str,
+     format: &'static str,
+ ) -> HyperlinkAlias {
+     HyperlinkAlias { name, description, format, display_priority: None }
+ }
+ 
+ /// Creates a [`HyperlinkAlias`] with a display priority.
+ const fn prioritized_alias(
+     priority: i16,
+     name: &'static str,
+     description: &'static str,
+     format: &'static str,
+ ) -> HyperlinkAlias {
+     HyperlinkAlias {
+         name,
+         description,
+         format,
+         display_priority: Some(priority),
+     }
+diff --git a/crates/searcher/src/line_buffer.rs b/crates/searcher/src/line_buffer.rs
+index 5bc49db..2a7ff09 100644
+--- a/crates/searcher/src/line_buffer.rs
++++ b/crates/searcher/src/line_buffer.rs
+@@ -338,180 +338,175 @@ impl LineBuffer {
+         self.end = 0;
+         self.absolute_byte_offset = 0;
+         self.binary_byte_offset = None;
+     }
+ 
+     /// The absolute byte offset which corresponds to the starting offsets
+     /// of the data returned by `buffer` relative to the beginning of the
+     /// reader's contents. As such, this offset does not generally correspond
+     /// to an offset in memory. It is typically used for reporting purposes,
+     /// particularly in error messages.
+     ///
+     /// This is reset to `0` when `clear` is called.
+     fn absolute_byte_offset(&self) -> u64 {
+         self.absolute_byte_offset
+     }
+ 
+     /// If binary data was detected, then this returns the absolute byte offset
+     /// at which binary data was initially found.
+     fn binary_byte_offset(&self) -> Option<u64> {
+         self.binary_byte_offset
+     }
+ 
+     /// Return the contents of this buffer.
+     fn buffer(&self) -> &[u8] {
+         &self.buf[self.pos..self.last_lineterm]
+     }
+ 
+     /// Return the contents of the free space beyond the end of the buffer as
+     /// a mutable slice.
+     fn free_buffer(&mut self) -> &mut [u8] {
+         &mut self.buf[self.end..]
+     }
+ 
+     /// Consume the number of bytes provided. This must be less than or equal
+     /// to the number of bytes returned by `buffer`.
+     fn consume(&mut self, amt: usize) {
+         assert!(amt <= self.buffer().len());
+         self.pos += amt;
+         self.absolute_byte_offset += amt as u64;
+     }
+ 
+     /// Consumes the remainder of the buffer. Subsequent calls to `buffer` are
+     /// guaranteed to return an empty slice until the buffer is refilled.
+     ///
+     /// This is a convenience function for `consume(buffer.len())`.
+     #[cfg(test)]
+     fn consume_all(&mut self) {
+         let amt = self.buffer().len();
+         self.consume(amt);
+     }
+ 
+     /// Fill the contents of this buffer by discarding the part of the buffer
+     /// that has been consumed. The free space created by discarding the
+     /// consumed part of the buffer is then filled with new data from the given
+     /// reader.
+     ///
+     /// Callers should provide the same reader to this line buffer in
+     /// subsequent calls to fill. A different reader can only be used
+     /// immediately following a call to `clear`.
+     ///
+     /// If EOF is reached, then `false` is returned. Otherwise, `true` is
+     /// returned. (Note that if this line buffer's binary detection is set to
+     /// `Quit`, then the presence of binary data will cause this buffer to
+     /// behave as if it had seen EOF.)
+     ///
+     /// This forwards any errors returned by `rdr`, and will also return an
+     /// error if the buffer must be expanded past its allocation limit, as
+     /// governed by the buffer allocation strategy.
+     fn fill<R: io::Read>(&mut self, mut rdr: R) -> Result<bool, io::Error> {
+         // If the binary detection heuristic tells us to quit once binary data
+         // has been observed, then we no longer read new data and reach EOF
+         // once the current buffer has been consumed.
+         if self.config.binary.is_quit() && self.binary_byte_offset.is_some() {
+             return Ok(!self.buffer().is_empty());
+         }
+ 
+         self.roll();
+         assert_eq!(self.pos, 0);
+         loop {
+             self.ensure_capacity()?;
+-            let oldend = self.end;
+-            while !self.free_buffer().is_empty() {
+-                let readlen = rdr.read(self.free_buffer())?;
+-                if readlen == 0 {
+-                    break;
+-                }
+-                self.end += readlen;
++            let readlen = rdr.read(self.free_buffer().as_bytes_mut())?;
++            if readlen == 0 {
++                // We're only done reading for good once the caller has
++                // consumed everything.
++                self.last_lineterm = self.end;
++                return Ok(!self.buffer().is_empty());
+             }
+ 
+             // Get a mutable view into the bytes we've just read. These are
+             // the bytes that we do binary detection on, and also the bytes we
+             // search to find the last line terminator. We need a mutable slice
+             // in the case of binary conversion.
++            let oldend = self.end;
++            self.end += readlen;
+             let newbytes = &mut self.buf[oldend..self.end];
+-            if newbytes.is_empty() {
+-                self.last_lineterm = self.end;
+-                // We're only done reading for good once the caller has
+-                // consumed everything.
+-                return Ok(!self.buffer().is_empty());
+-            }
+ 
+             // Binary detection.
+             match self.config.binary {
+                 BinaryDetection::None => {} // nothing to do
+                 BinaryDetection::Quit(byte) => {
+                     if let Some(i) = newbytes.find_byte(byte) {
+                         self.end = oldend + i;
+                         self.last_lineterm = self.end;
+                         self.binary_byte_offset =
+                             Some(self.absolute_byte_offset + self.end as u64);
+                         // If the first byte in our buffer is a binary byte,
+                         // then our buffer is empty and we should report as
+                         // such to the caller.
+                         return Ok(self.pos < self.end);
+                     }
+                 }
+                 BinaryDetection::Convert(byte) => {
+                     if let Some(i) =
+                         replace_bytes(newbytes, byte, self.config.lineterm)
+                     {
+                         // Record only the first binary offset.
+                         if self.binary_byte_offset.is_none() {
+                             self.binary_byte_offset = Some(
+                                 self.absolute_byte_offset
+                                     + (oldend + i) as u64,
+                             );
+                         }
+                     }
+                 }
+             }
+ 
+             // Update our `last_lineterm` positions if we read one.
+             if let Some(i) = newbytes.rfind_byte(self.config.lineterm) {
+                 self.last_lineterm = oldend + i + 1;
+                 return Ok(true);
+             }
+             // At this point, if we couldn't find a line terminator, then we
+             // don't have a complete line. Therefore, we try to read more!
+         }
+     }
+ 
+     /// Roll the unconsumed parts of the buffer to the front.
+     ///
+     /// This operation is idempotent.
+     ///
+     /// After rolling, `last_lineterm` and `end` point to the same location,
+     /// and `pos` is always set to `0`.
+     fn roll(&mut self) {
+         if self.pos == self.end {
+             self.pos = 0;
+             self.last_lineterm = 0;
+             self.end = 0;
+             return;
+         }
+ 
+         let roll_len = self.end - self.pos;
+         self.buf.copy_within(self.pos..self.end, 0);
+         self.pos = 0;
+         self.last_lineterm = roll_len;
+         self.end = roll_len;
+     }
+ 
+     /// Ensures that the internal buffer has a non-zero amount of free space
+     /// in which to read more data. If there is no free space, then more is
+     /// allocated. If the allocation must exceed the configured limit, then
+     /// this returns an error.
+     fn ensure_capacity(&mut self) -> Result<(), io::Error> {
+         if !self.free_buffer().is_empty() {
+             return Ok(());
+         }
+         // `len` is used for computing the next allocation size. The capacity
+         // is permitted to start at `0`, so we make sure it's at least `1`.
+         let len = std::cmp::max(1, self.buf.len());
+         let additional = match self.config.buffer_alloc {
+             BufferAllocation::Eager => len * 2,
+             BufferAllocation::Error(limit) => {
+                 let used = self.buf.len() - self.config.capacity;
+                 let n = std::cmp::min(len * 2, limit - used);
+                 if n == 0 {
+                     return Err(alloc_error(self.config.capacity + limit));
+diff --git a/crates/searcher/src/searcher/glue.rs b/crates/searcher/src/searcher/glue.rs
+index 7c94307..defb9c4 100644
+--- a/crates/searcher/src/searcher/glue.rs
++++ b/crates/searcher/src/searcher/glue.rs
+@@ -660,195 +660,195 @@ d
+         let mut haystack = String::new();
+         haystack.push_str("a\n");
+         // Pick an arbitrary number above the capacity.
+         for _ in 0..(4 * (DEFAULT_BUFFER_CAPACITY + 7)) {
+             haystack.push_str("zzz\n");
+         }
+         haystack.push_str("a\n");
+ 
+         let matcher = RegexMatcher::new("a");
+         let mut sink = KitchenSink::new();
+         let mut searcher = SearcherBuilder::new()
+             .heap_limit(Some(3)) // max line length is 4, one byte short
+             .build();
+         let result =
+             searcher.search_reader(&matcher, haystack.as_bytes(), &mut sink);
+         assert!(result.is_err());
+     }
+ 
+     #[test]
+     fn big_error_multi_line() {
+         let mut haystack = String::new();
+         haystack.push_str("a\n");
+         // Pick an arbitrary number above the capacity.
+         for _ in 0..(4 * (DEFAULT_BUFFER_CAPACITY + 7)) {
+             haystack.push_str("zzz\n");
+         }
+         haystack.push_str("a\n");
+ 
+         let matcher = RegexMatcher::new("a");
+         let mut sink = KitchenSink::new();
+         let mut searcher = SearcherBuilder::new()
+             .multi_line(true)
+             .heap_limit(Some(haystack.len())) // actually need one more byte
+             .build();
+         let result =
+             searcher.search_reader(&matcher, haystack.as_bytes(), &mut sink);
+         assert!(result.is_err());
+     }
+ 
+     #[test]
+     fn binary1() {
+         let haystack = "\x00a";
+         let exp = "\nbyte count:0\nbinary offset:0\n";
+ 
+         SearcherTester::new(haystack, "a")
+             .binary_detection(BinaryDetection::quit(0))
+             .line_number(false)
+             .expected_no_line_number(exp)
+             .test();
+     }
+ 
+     #[test]
+     fn binary2() {
+         let haystack = "a\x00";
+         let exp = "\nbyte count:0\nbinary offset:1\n";
+ 
+         SearcherTester::new(haystack, "a")
+             .binary_detection(BinaryDetection::quit(0))
+             .line_number(false)
+             .expected_no_line_number(exp)
+             .test();
+     }
+ 
+     #[test]
+     fn binary3() {
+         let mut haystack = String::new();
+         haystack.push_str("a\n");
+         for _ in 0..DEFAULT_BUFFER_CAPACITY {
+             haystack.push_str("zzz\n");
+         }
+         haystack.push_str("a\n");
+         haystack.push_str("zzz\n");
+         haystack.push_str("a\x00a\n");
+         haystack.push_str("zzz\n");
+         haystack.push_str("a\n");
+ 
+         // The line buffered searcher has slightly different semantics here.
+         // Namely, it will *always* detect binary data in the current buffer
+         // before searching it. Thus, the total number of bytes searched is
+         // smaller than below.
+-        let exp = "0:a\n\nbyte count:262142\nbinary offset:262153\n";
++        let exp = "0:a\n\nbyte count:262146\nbinary offset:262153\n";
+         // In contrast, the slice readers (for multi line as well) will only
+         // look for binary data in the initial chunk of bytes. After that
+         // point, it only looks for binary data in matches. Note though that
+         // the binary offset remains the same. (See the binary4 test for a case
+         // where the offset is explicitly different.)
+         let exp_slice =
+             "0:a\n262146:a\n\nbyte count:262153\nbinary offset:262153\n";
+ 
+         SearcherTester::new(&haystack, "a")
+             .binary_detection(BinaryDetection::quit(0))
+             .line_number(false)
+             .auto_heap_limit(false)
+             .expected_no_line_number(exp)
+             .expected_slice_no_line_number(exp_slice)
+             .test();
+     }
+ 
+     #[test]
+     fn binary4() {
+         let mut haystack = String::new();
+         haystack.push_str("a\n");
+         for _ in 0..DEFAULT_BUFFER_CAPACITY {
+             haystack.push_str("zzz\n");
+         }
+         haystack.push_str("a\n");
+         // The Read searcher will detect binary data here, but since this is
+         // beyond the initial buffer size and doesn't otherwise contain a
+         // match, the Slice reader won't detect the binary data until the next
+         // line (which is a match).
+         haystack.push_str("b\x00b\n");
+         haystack.push_str("a\x00a\n");
+         haystack.push_str("a\n");
+ 
+-        let exp = "0:a\n\nbyte count:262142\nbinary offset:262149\n";
++        let exp = "0:a\n\nbyte count:262146\nbinary offset:262149\n";
+         // The binary offset for the Slice readers corresponds to the binary
+         // data in `a\x00a\n` since the first line with binary data
+         // (`b\x00b\n`) isn't part of a match, and is therefore undetected.
+         let exp_slice =
+             "0:a\n262146:a\n\nbyte count:262153\nbinary offset:262153\n";
+ 
+         SearcherTester::new(&haystack, "a")
+             .binary_detection(BinaryDetection::quit(0))
+             .line_number(false)
+             .auto_heap_limit(false)
+             .expected_no_line_number(exp)
+             .expected_slice_no_line_number(exp_slice)
+             .test();
+     }
+ 
+     #[test]
+     fn passthru_sherlock1() {
+         let exp = "\
+ 0:For the Doctor Watsons of this world, as opposed to the Sherlock
+ 65-Holmeses, success in the province of detective work must always
+ 129:be, to a very large extent, the result of luck. Sherlock Holmes
+ 193-can extract a clew from a wisp of straw or a flake of cigar ash;
+ 258-but Doctor Watson has to have it taken out for him and dusted,
+ 321-and exhibited clearly, with a label attached.
+ byte count:366
+ ";
+         SearcherTester::new(SHERLOCK, "Sherlock")
+             .passthru(true)
+             .line_number(false)
+             .expected_no_line_number(exp)
+             .test();
+     }
+ 
+     #[test]
+     fn passthru_sherlock_invert1() {
+         let exp = "\
+ 0-For the Doctor Watsons of this world, as opposed to the Sherlock
+ 65:Holmeses, success in the province of detective work must always
+ 129-be, to a very large extent, the result of luck. Sherlock Holmes
+ 193:can extract a clew from a wisp of straw or a flake of cigar ash;
+ 258:but Doctor Watson has to have it taken out for him and dusted,
+ 321:and exhibited clearly, with a label attached.
+ byte count:366
+ ";
+         SearcherTester::new(SHERLOCK, "Sherlock")
+             .passthru(true)
+             .line_number(false)
+             .invert_match(true)
+             .expected_no_line_number(exp)
+             .test();
+     }
+ 
+     #[test]
+     fn context_sherlock1() {
+         let exp = "\
+ 0:For the Doctor Watsons of this world, as opposed to the Sherlock
+ 65-Holmeses, success in the province of detective work must always
+ 129:be, to a very large extent, the result of luck. Sherlock Holmes
+ 193-can extract a clew from a wisp of straw or a flake of cigar ash;
+ 
+ byte count:366
+ ";
+         let exp_lines = "\
+ 1:0:For the Doctor Watsons of this world, as opposed to the Sherlock
+ 2-65-Holmeses, success in the province of detective work must always
+ 3:129:be, to a very large extent, the result of luck. Sherlock Holmes
+ 4-193-can extract a clew from a wisp of straw or a flake of cigar ash;
+ 
+ byte count:366
+ ";
+         // before and after + line numbers
+         SearcherTester::new(SHERLOCK, "Sherlock")
+             .after_context(1)
+             .before_context(1)
+             .line_number(true)
+             .expected_no_line_number(exp)
+             .expected_with_line_number(exp_lines)
+             .test();
+ 
+         // after

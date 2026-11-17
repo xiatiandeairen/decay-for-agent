@@ -1,0 +1,63 @@
+{
+  "candidate": {
+    "id": "serde-rs-json-1030",
+    "repo": "serde-rs/json",
+    "url": "https://github.com/serde-rs/json/pull/1030"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "a0ddb25ff6b86f43912f8fc637797bcbb920c61e",
+    "body": "This PR updates `MapKeySerializer::serialize_some` to match `Serializer::serialize_some`.\r\n\r\nCurrently, all calls to `serialize_some` are rejected with the `key_must_be_a_string` error that many other variants use. Because there is no distinction between `Some(T)` and `T` in JSON, I think that serializing the underlying type directly is a better behavior for this function.\r\n\r\nI think this change is useful for serializing types that have internal nullability. In a project I am working on, there is a bitpattern in a type I am serializing that I would like serialize as `null`. To behave correctly with as many serializers as I can, I use `serialize_some` and `serialize_none`. When the type is used as a key, this causes serde_json to panic, even if the value is normally fine as a key.\r\n\r\nOne argument against this change is that it creates a new footgun. Users may serialize a type like `HashMap<Option<String>, T>` with keys that are all `Some(...)`, and then be surprised when the type fails to serialize with a key that is `None`. Currently, I think that any types that are valid map keys are _always_ valid map keys, which is desirable.\r\n\r\nI'm hoping to get feedback by opening this PR to figure out if this is the right direction... or not!",
+    "comments": [
+      {
+        "author": {
+          "login": "LPGhatguy"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Thank you for the quick response and turnaround!\r\n\r\n> Serde_json does not panic in this situation. Most likely serde_json returned an error and that got turned into a panic by something else in your project.\r\n\r\nWhoops, my bad! I'm not sure why I took the shortcut from \"error\" to \"panic\" here. 😅\r\n\r\n> This is not concerning to me. As a general principle, serde operates in terms of values, not types. Being able to serialize or deserialize one particular value of a type does not convey a guarantee that you can serialize or deserialize other values of the same Rust type. For example, on all existing serde_json versions, you can serialize Map<Option<String>, T> already (as long as the map is empty). It is not meaningful to consider whether the \"type\" itself is supported by serde.\r\n\r\nThis makes a lot of sense. Already being able to deserialize the value, and the empty map already working anyways are great examples.",
+        "createdAt": "2023-06-24T04:59:10Z",
+        "id": "IC_kwDOAiO0785frnMD",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/1030#issuecomment-1605268227",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 3,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "src/ser.rs"
+      }
+    ],
+    "headRefName": "map-key-serialize-some",
+    "headRefOid": "b0fa9788f4f1fc03a9fc8066ea4c2aa0f26c5400",
+    "labels": [],
+    "mergedAt": "2023-06-24T04:28:26Z",
+    "number": 1030,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks &mdash; this seems fine to me.\r\n\r\nDeserializing `Map<Option<String>, T>` is already permitted.\r\n\r\n```rust\r\nserde_json::from_str::<BTreeMap<Option<String>, ()>>(r#\"{\"...\":null}\"#).unwrap();\r\n```\r\n\r\nhttps://github.com/serde-rs/json/blob/ba29a89a098dd5db6e889830bf1ac33837c1416e/src/de.rs#L2170-L2176\r\n\r\n> When the type is used as a key, this causes serde_json to panic, even if the value is normally fine as a key.\r\n\r\nSerde_json does not panic in this situation. Most likely serde_json returned an error and that got turned into a panic by something else in your project.\r\n\r\n> Users may serialize a type like `HashMap<Option<String>, T>` with keys that are all `Some(...)`, and then be surprised when the type fails to serialize with a key that is `None`.\r\n\r\nThis is not concerning to me. As a general principle, serde operates in terms of values, not types. Being able to serialize or deserialize one particular value of a type does not convey a guarantee that you can serialize or deserialize other values of the same Rust type. For example, on all existing serde_json versions, you can serialize `Map<Option<String>, T>` already (as long as the map is empty). It is not meaningful to consider whether the \"type\" itself is supported by serde.",
+        "commit": {
+          "oid": "b0fa9788f4f1fc03a9fc8066ea4c2aa0f26c5400"
+        },
+        "id": "PRR_kwDOAiO0785ZMEtk",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2023-06-24T04:27:21Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "Support MapKeySerializer::serialize_some",
+    "url": "https://github.com/serde-rs/json/pull/1030"
+  }
+}

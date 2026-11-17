@@ -1,0 +1,8 @@
+ CHANGELOG.md                       |  2 +
+ crates/core/flags/hiargs.rs        |  9 +++-
+ crates/ignore/src/default_types.rs |  2 +-
+ crates/ignore/src/dir.rs           | 61 ++++++++++++++++++++++--
+ crates/ignore/src/gitignore.rs     |  5 +-
+ crates/ignore/src/walk.rs          | 97 ++++++++++++++++++++++++++++++++++++--
+ tests/regression.rs                | 50 ++++++++++++++++++++
+ 7 files changed, 214 insertions(+), 12 deletions(-)

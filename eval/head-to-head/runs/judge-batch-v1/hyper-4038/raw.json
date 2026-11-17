@@ -1,0 +1,18 @@
+{
+  "case_id": "hyper-4038",
+  "attempt_count": 2,
+  "attempts": [
+    {
+      "ok": false,
+      "exit_code": 1,
+      "stdout": "API Error: 529 Overloaded. This is a server-side issue, usually temporary \u2014 try again in a moment. If it persists, check https://status.claude.com.\n",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"hyper-4038\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208\",\"ground_truth_draft\":{\"high_value\":true,\"primary_signal_ids\":[\"assumption_boundary\",\"non_happy_path\"],\"subject_files\":[\"src/ffi/http_types.rs\"],\"expected_behavior\":\"Three FFI entry points (hyper_request_set_uri_parts, hyper_request_headers, hyper_response_headers) previously dereferenced raw *mut pointers via unsafe { &mut *req/resp } without NULL validation, causing UB when callers passed NULL handles. Patch inserts non_null! guards returning HYPERE_INVALID_ARG / null_mut sentinel before dereferencing.\",\"rationale_from_pr_metadata\":\"PR title 'fix(ffi): validate null pointers before dereferencing in request/resp\u2026' and body: 'Three FFI functions dereference raw pointers before NULL validation, leading to UB when called with NULL handles. Added non_null! checks.' Lists exact functions fixed: hyper_request_set_uri_parts, hyper_request_headers, hyper_response_headers. Closes #4033. Approved by seanmonstar.\"},\"judgement_drafts\":{\"fact_only\":{\"top3_total\":3,\"top3_useful\":2,\"actionable\":true,\"missed_high_risk_count\":0,\"weak_only_top_risk_count\":0,\"notes\":\"Top-3 includes one supporting test_gap and two direct boundary_expression_changed findings at the exact non_null! lines. Surfaces the right file and mechanism (FFI boundary change) without naming UB, but reviewer would investigate.\"},\"semantic_filtered\":{\"top3_total\":3,\"top3_useful\":2,\"actionable\":true,\"missed_high_risk_count\":0,\"weak_only_top_risk_count\":0,\"notes\":\"Same three boundary_expression_changed lines as direct evidence; semantic claim correctly identifies multi-site FFI null-check change and requests focused null/invalid-arg tests. Right mechanism, right action.\"},\"ai_baseline\":{\"top3_total\":3,\"top3_useful\":2,\"actionable\":true,\"missed_high_risk_count\":0,\"weak_only_top_risk_count\":0,\"notes\":\"Rank 1-2 directly identify assumption_boundary on hyper_request_headers/hyper_response_headers with UB mechanism named. Rank 3 supporting flags pre-check slice::from_raw_parts on component ptrs \u2014 astute but value=supporting. Strongest of the three.\"}}}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

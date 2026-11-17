@@ -1,0 +1,44 @@
+{
+  "case_id": "tokio-rs-tokio-8076",
+  "ground_truth_draft": {
+    "expected_behavior": "RwLock::with_max_readers and const_with_max_readers now panic when max_reads=0. Previously, max_reads=0 caused write()/try_write() to acquire 0 permits, breaking mutual exclusion and enabling use-after-free / UB. debug_assert_ne!(self.mr, 0) is added in write paths as defense-in-depth, and regression tests cover the panic for both constructors.",
+    "high_value": true,
+    "primary_signal_ids": [
+      "assumption_boundary",
+      "external_contract"
+    ],
+    "rationale_from_pr_metadata": "PR title: 'Require that an RwLock has max_readers != 0'. Body explicitly describes the UB: 'write locks do not ensure mutual exclusion because they acquire 0 permits ... This can be abused to trigger UB' with a UAF reproducer. Reviewer ADD-SP confirmed via Miri reporting UAF. Maintainer flagged this needs backport, indicating a real soundness fix in a public API.",
+    "subject_files": [
+      "tokio/src/sync/rwlock.rs",
+      "tokio/tests/sync_rwlock.rs"
+    ]
+  },
+  "judgement_drafts": {
+    "ai_baseline": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "Correctly identifies the UB mechanism: write acquires self.mr permits, so mr=0 grants exclusive access while readers hold permits. Covers both assumption_boundary (with_max_readers) and external_contract (const constructor public API change).",
+      "top3_total": 3,
+      "top3_useful": 2,
+      "weak_only_top_risk_count": 0
+    },
+    "fact_only": {
+      "actionable": true,
+      "missed_high_risk_count": 1,
+      "notes": "Top finding correctly flags boundary_condition_changed on the new assert (maps to assumption_boundary). #2 prod_change_with_tests is supporting only. Does not separately surface external_contract / public-API panic change.",
+      "top3_total": 2,
+      "top3_useful": 1,
+      "weak_only_top_risk_count": 0
+    },
+    "semantic_filtered": {
+      "actionable": false,
+      "missed_high_risk_count": 2,
+      "notes": "Only emits a generic prod_change_with_tests claim; never names the max_reads=0 boundary or the write-permit mutual-exclusion mechanism. Filter dropped the direct boundary_condition_changed evidence that fact-only retained.",
+      "top3_total": 1,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 1
+    }
+  },
+  "manifest_hash": "06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208",
+  "model": "claude-opus-4-7"
+}

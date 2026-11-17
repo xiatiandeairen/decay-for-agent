@@ -1,0 +1,43 @@
+{
+  "candidate": {
+    "id": "serde-rs-json-187",
+    "repo": "serde-rs/json",
+    "url": "https://github.com/serde-rs/json/pull/187"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "d8cf0146aa7f633ff7169aa6d0b438ce7ba990a0",
+    "body": "Fixes #186.",
+    "comments": [],
+    "files": [
+      {
+        "additions": 10,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "json/src/builder.rs"
+      },
+      {
+        "additions": 34,
+        "changeType": "MODIFIED",
+        "deletions": 18,
+        "path": "json/src/value.rs"
+      },
+      {
+        "additions": 8,
+        "changeType": "MODIFIED",
+        "deletions": 8,
+        "path": "json_tests/tests/test_json.rs"
+      }
+    ],
+    "headRefName": "panic",
+    "headRefOid": "8febbd49bf7e1381ce52f0a1d8256b8013fcff2b",
+    "labels": [],
+    "mergedAt": "2017-01-16T07:27:17Z",
+    "number": 187,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "Do not panic in to_value",
+    "url": "https://github.com/serde-rs/json/pull/187"
+  }
+}

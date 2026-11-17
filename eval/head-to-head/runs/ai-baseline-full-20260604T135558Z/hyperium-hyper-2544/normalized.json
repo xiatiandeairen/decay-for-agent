@@ -1,0 +1,42 @@
+{
+  "case_id": "hyperium-hyper-2544",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "Err(e) => maybe_panic!(e),",
+        "return Err(Parse::Internal)"
+      ],
+      "rank": 1,
+      "rationale": "Previously an illegal header name from httparse panicked in both debug and release. Now release mode silently returns Err(Parse::Internal) via a macro-hidden early return, changing the error contract\u2026",
+      "risk_signal": "error_propagation",
+      "subject": "src/proto/h1/role.rs:header_name!/maybe_panic!",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "unsafe { HeaderValue::from_maybe_shared_unchecked($bytes) }"
+      ],
+      "rank": 2,
+      "rationale": "Debug-only validation branch (from_maybe_shared with panic-on-Err) was removed; the unchecked unsafe path now runs in debug too, eliminating the safety net that previously caught httparse contract vi\u2026",
+      "risk_signal": "assumption_boundary",
+      "subject": "src/proto/h1/role.rs:header_value!",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "\"internal error inside Hyper and/or its dependencies, please report\"",
+        "matches!(self.inner.kind, Kind::Parse(_))"
+      ],
+      "rank": 3,
+      "rationale": "A new Parse::Internal variant is folded into Kind::Parse, so Error::is_parse() now returns true for internal/bug errors as well as real HTTP parse failures, blurring the public is_parse semantics for\u2026",
+      "risk_signal": "external_contract",
+      "subject": "src/error.rs:Parse::Internal",
+      "value": "supporting"
+    }
+  ]
+}

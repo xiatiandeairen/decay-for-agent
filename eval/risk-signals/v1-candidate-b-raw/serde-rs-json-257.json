@@ -1,0 +1,120 @@
+{
+  "candidate": {
+    "id": "serde-rs-json-257",
+    "repo": "serde-rs/json",
+    "url": "https://github.com/serde-rs/json/pull/257"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "e741eff3d97e92c4e406dca9361cc95b796abf67",
+    "body": "Usecase described in #256. Also see the included documentation.",
+    "comments": [
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "I misinterpreted \"without doing any processing\" in your proposal - I was thinking processing as in performing UTF-8 validation. Without interpreting escape sequences, this is a breaking change because the string containing backslash+n used to deserialize as one byte and now it deserializes as two bytes. Would this still be useful to you if we interpret escape sequences but just don't do the final from_utf8 conversion?",
+        "createdAt": "2017-02-19T18:58:16Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI4MDkzOTk0MA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/257#issuecomment-280939940",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "bennofs"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "OK, that works for my usecase as well. I thought that it might be a good idea to go all the way and allow the user to request access to the low level bytes, but I was not aware that other functionality uses visit_bytes already.",
+        "createdAt": "2017-02-19T21:15:01Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI4MDk0OTY1NA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/257#issuecomment-280949654",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "bennofs"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "@dtolnay changed it to only skip unicode validation and to allow delegate to `deserialize`.",
+        "createdAt": "2017-02-20T15:49:37Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI4MTExMzU0MQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/257#issuecomment-281113541",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks, I released this in serde_json 0.9.7.",
+        "createdAt": "2017-02-20T17:40:19Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI4MTE0MDkyNg==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/257#issuecomment-281140926",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 64,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "json/src/de.rs"
+      },
+      {
+        "additions": 6,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "json/src/error.rs"
+      },
+      {
+        "additions": 84,
+        "changeType": "MODIFIED",
+        "deletions": 27,
+        "path": "json/src/read.rs"
+      }
+    ],
+    "headRefName": "fix-256",
+    "headRefOid": "8123ecc474ea599d4659f20c3cfbfb7011b77628",
+    "labels": [],
+    "mergedAt": "2017-02-20T17:23:43Z",
+    "number": 257,
+    "reviewDecision": "",
+    "reviews": [
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "663ba465ce4098eef9b055248c3c3ae65926d748"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MjI2NjQzMjY=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2017-02-19T18:52:31Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "Fix #256: support deserializing strings with arbitrary bytes",
+    "url": "https://github.com/serde-rs/json/pull/257"
+  }
+}

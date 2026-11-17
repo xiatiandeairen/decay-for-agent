@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyperium-hyper-4069"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "When the http1 Dispatcher is dropped while still holding a body Sender (e.g. the runtime driving the conn task is shut down mid-response-body), the body receiver now observes an incomplete-message error via a Drop guard (SenderDropGuard) instead of a silent clean EOF."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank-3 correctly identifies SenderDropGuard emitting incomplete-message instead of silent EOF (labeled state_transition; mechanism description is accurate even though label is not the cleanest fit). Ranks 1-2 flag rebase-noise public API removals (reset_stream_duration, header_table_size) and h2 fl… [recovered-from-raw: judge response exceeded schema free-text caps; metrics unaffected]"

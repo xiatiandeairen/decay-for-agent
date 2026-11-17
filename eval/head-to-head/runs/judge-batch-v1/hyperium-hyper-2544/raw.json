@@ -1,0 +1,18 @@
+{
+  "case_id": "hyperium-hyper-2544",
+  "attempt_count": 2,
+  "attempts": [
+    {
+      "ok": false,
+      "exit_code": 1,
+      "stdout": "API Error: 529 Overloaded. This is a server-side issue, usually temporary \u2014 try again in a moment. If it persists, check https://status.claude.com.\n",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"hyperium-hyper-2544\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208\",\"ground_truth_draft\":{\"high_value\":true,\"primary_signal_ids\":[\"error_propagation\",\"external_contract\"],\"subject_files\":[\"src/proto/h1/role.rs\",\"src/error.rs\"],\"expected_behavior\":\"When httparse hands back a byte sequence that http::HeaderName/HeaderValue rejects, release builds previously panicked. The PR introduces a maybe_panic! macro and a new Parse::Internal variant so release builds log and return Err(Parse::Internal) instead of crashing; debug builds still panic to surface the httparse contract violation during development.\",\"rationale_from_pr_metadata\":\"PR title 'Return Parse::Internal error if there's an illegal header name or value' and body 'Initial implementation that aims to solve #2534 by returning a Parse::Internal error instead of panic' explicitly state the mechanism. Author notes 'I intentionally added a new Parse error instead of a new Kind since i think this is still relevant and the diff is much cleaner', confirming both the error-propagation change in role.rs and the public Parse enum extension in error.rs are intentional, reviewer-visible behavior changes.\"},\"judgement_drafts\":{\"fact_only\":{\"top3_total\":3,\"top3_useful\":1,\"actionable\":false,\"missed_high_risk_count\":2,\"weak_only_top_risk_count\":0,\"notes\":\"Top-3 surfaces sensitive_test_gap, panic_like_added, and complexity worsened on description. Only the panic-like-added evidence points a reviewer at the real edit site; the error_propagation_changed semantic finding that actually names maybe_panic! sits at rank 4, outside top-3. The Parse::Internal API broadening is entirely missed.\"},\"semantic_filtered\":{\"top3_total\":2,\"top3_useful\":1,\"actionable\":false,\"missed_high_risk_count\":2,\"weak_only_top_risk_count\":0,\"notes\":\"Semantic layer kept only the description-complexity+test-gap claim and the two panic_like additions claim. The panic-like claim correctly directs the reviewer at role.rs but frames it as runtime-risk; the actual contract/propagation change (panic\u2192Err(Parse::Internal), is_parse now covers internal errors) is not stated. No claim about Parse::Internal.\"},\"ai_baseline\":{\"top3_total\":3,\"top3_useful\":3,\"actionable\":true,\"missed_high_risk_count\":0,\"weak_only_top_risk_count\":0,\"notes\":\"Rank 1 names error_propagation via maybe_panic! exactly. Rank 3 calls out the Parse::Internal API blurring is_parse() \u2014 matches external_contract ground truth. Rank 2 (assumption_boundary on header_value! unchecked path now running in debug) is a real, related concern arising from the same diff. Diff-only view captured the mechanism that decay's top-3 lost to ranking.\"}}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

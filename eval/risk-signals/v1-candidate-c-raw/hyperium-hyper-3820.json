@@ -1,0 +1,70 @@
+{
+  "candidate": {
+    "id": "hyperium-hyper-3820",
+    "repo": "hyperium/hyper",
+    "url": "https://github.com/hyperium/hyper/pull/3820"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "30f2961e89eb306780d856e6e2c1ee10ffbbafd2",
+    "body": "This PR fixes an inconsistency with the HTTP/2 builder, which I assume was unintentional. This is a breaking change. Hopefully it counts as acceptable breakage.\r\n\r\nI searched and only found one public, non-fork user of `max_local_error_reset_streams` on GitHub (https://github.com/IGrok2/monorepo/blob/955a9b9bbed159b99637cf7576482af831acac7d/src/opnieuw/src/main.rs#L380-L388) and I think this PR wouldn't even break it.",
+    "comments": [
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Well that's a major 🤯🤡",
+        "createdAt": "2025-01-02T11:27:34Z",
+        "id": "IC_kwDOAWaYQc6ZCu7z",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "LAUGH",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/hyperium/hyper/pull/3820#issuecomment-2567630579",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/server/conn/http2.rs"
+      }
+    ],
+    "headRefName": "patch-1",
+    "headRefOid": "eca3f01aecf1fc017eb4e82deb570a23c70dfb52",
+    "labels": [],
+    "mergedAt": "2025-01-07T14:05:17Z",
+    "number": 3820,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "dswij"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "eca3f01aecf1fc017eb4e82deb570a23c70dfb52"
+        },
+        "id": "PRR_kwDOAWaYQc6Wqf_O",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2025-01-02T15:02:37Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix(server): `max_local_error_reset_streams` function `mut self` -> `&mut self`",
+    "url": "https://github.com/hyperium/hyper/pull/3820"
+  }
+}

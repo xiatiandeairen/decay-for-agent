@@ -1,0 +1,23 @@
+{
+  "case_id": "serde-rs-json-757",
+  "flags": [],
+  "per_mode": {
+    "ai_baseline": {
+      "agree": true,
+      "ai_subjective": 2,
+      "mechanical": 2
+    },
+    "fact_only": {
+      "agree": null,
+      "ai_subjective": 0,
+      "mechanical": null,
+      "reason": "top3 list not provided"
+    },
+    "semantic_filtered": {
+      "agree": null,
+      "ai_subjective": 1,
+      "mechanical": null,
+      "reason": "top3 list not provided"
+    }
+  }
+}

@@ -62,8 +62,10 @@ It does not report deletions, unchanged functions, or below-threshold small incr
 For git-ref comparisons, `decay diff <ref>` uses the evidence-first path and reports:
 
 - `Complexity impact`
+- `Coverage impact`
 - `Stability impact`
 - `Quality impact`
+- `Semantic impact`
 - `History impact`
 
 It also records the changeset and emitted evidence in the local SQLite database. This is evidence, not a merge recommendation.

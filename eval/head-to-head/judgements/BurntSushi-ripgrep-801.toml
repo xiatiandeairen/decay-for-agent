@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "BurntSushi-ripgrep-801"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "When a caller configures only custom ignore files (via add_custom_ignore_filename) and disables .ignore/.gitignore/.git-global/.git-exclude, matched() must still consult the custom ignore matcher. Previously the gating precondition (has_any_ignore_options) checked only the four builtin flags and skipped matched_ignore entirely, so custom ignore rules silently had no effect."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank 1 precisely describes the bug: gating condition now also considers custom_ignore_filenames, previously skipped when builtin flags false. Rank 2 (assumption_boundary on matched) covers the precondition angle directly. Rank 3 is a supporting test-gap note. Signal label on rank 1 is state_transit… [recovered-from-raw: judge response exceeded schema free-text caps; metrics unaffected]"

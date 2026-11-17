@@ -1,0 +1,12 @@
+{
+  "case_id": "tokio-rs-tokio-8021",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"tokio-rs-tokio-8021\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"state_transition\",\"subject\":\"tokio/src/sync/batch_semaphore.rs:forget_permits\",\"evidence_refs\":[\"(new << Self::PERMIT_SHIFT) | (curr_bits & Self::CLOSED),\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"CAS new value now OR-masks the CLOSED bit from curr_bits; previously `new << PERMIT_SHIFT` would zero bit 0, silently un-closing a closed semaphore on forget_permits.\"},{\"rank\":2,\"risk_signal\":\"test_gap_for_risk_path\",\"subject\":\"tokio/tests/sync_semaphore.rs:forget_closed\",\"evidence_refs\":[\"sem.close();\\n            let actual_sub = sem.forget_permits(sub);\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"New tests only exercise sequential close-then-forget on a single thread; no coverage for forget_permits racing with close() where CAS retries must observe the CLOSED bit flipping mid-loop.\"},{\"rank\":3,\"risk_signal\":\"assumption_boundary\",\"subject\":\"tokio/src/sync/batch_semaphore.rs:forget_permits\",\"evidence_refs\":[\"(new << Self::PERMIT_SHIFT) | (curr_bits & Self::CLOSED),\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"Fix assumes CLOSED is the only non-permit flag bit in the permits word; any future low-bit flag added to the encoding would be silently dropped by this CAS unless the mask is widened.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "case_id": "hyper-4056",
+  "ground_truth_draft": {
+    "expected_behavior": "On 32-bit targets, replace truncating `*remaining as usize` / `r as usize` casts in the Length and chunked-body read paths with `usize::try_from(...).unwrap_or(usize::MAX)` so that u64 lengths exceeding usize::MAX saturate instead of silently truncating, allowing large bodies to be fully read (downstream u64 bookkeeping still tracks the real remaining count).",
+    "high_value": true,
+    "primary_signal_ids": [
+      "assumption_boundary"
+    ],
+    "rationale_from_pr_metadata": "PR title `fix(http1): fix reading large bodies on 32-bit systems` and body: `On 32-bit systems, the cast of the length to read from a u64 to a usize could truncate, and cause less to be read. If the length was larger than usize::MAX, the end could not be read. To fix this, we use a saturating cast pattern instead. Closes #4055`. Reviewer comment confirms the truncation is guaranteed once remaining exceeds usize::MAX, not merely rare.",
+    "subject_files": [
+      "src/proto/h1/decode.rs"
+    ]
+  },
+  "judgement_drafts": {
+    "ai_baseline": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "Ranks 1\u20132 pinpoint both saturation sites with assumption_boundary/direct and correctly explain the u64\u2192usize truncation on 32-bit; rank 3 is a supporting test_gap. Matches ground truth without PR metadata.",
+      "top3_total": 3,
+      "top3_useful": 2,
+      "weak_only_top_risk_count": 0
+    },
+    "fact_only": {
+      "actionable": false,
+      "missed_high_risk_count": 1,
+      "notes": "Only complexity touched_existing_risky (context) and quality test_gap (supporting) \u2014 neither names the u64\u2192usize platform boundary; a reviewer would not catch the 32-bit truncation from these alone.",
+      "top3_total": 2,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 1
+    },
+    "semantic_filtered": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "Single high-confidence claim cites both `usize::try_from(*remaining)` and `usize::try_from(*rem)` sites as integer_platform_boundary_changed, directly aligned with the 32-bit assumption_boundary fix; review action explicitly mentions 32-bit targets.",
+      "top3_total": 1,
+      "top3_useful": 1,
+      "weak_only_top_risk_count": 0
+    }
+  },
+  "manifest_hash": "06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208",
+  "model": "claude-opus-4-7"
+}

@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "hyper-3977"
+repo = "hyperium/hyper"
+pr = 3977
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Revert of rare missed write wakeup fix."
+
+[fact_only]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "True risk is revert of rare missed write wakeup fix due CPU reports. Fact output gives generic prod_change_with_tests and dependency change, not wakeup/revert/CPU semantics."
+
+[semantic_filtered]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "Semantic still only says dispatch invariant review and dependency review; it misses revert and CPU regression context."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = false
+notes = "No material improvement."

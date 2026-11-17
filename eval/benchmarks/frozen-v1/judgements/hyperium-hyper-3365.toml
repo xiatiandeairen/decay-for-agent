@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "hyperium-hyper-3365"
+repo = "hyperium/hyper"
+pr = 3365
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Zero pool idle timeout panic boundary."
+
+[fact_only]
+top3_total = 1
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "True risk is zero pool idle timeout panic. Fact output does not find zero-timeout boundary, but test_gap on src/client/pool.rs is actionable because the PR changes only production code for a panic fix."
+
+[semantic_filtered]
+top3_total = 1
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "Semantic preserves the useful missing-test concern but still misses the exact zero idle timeout panic mechanism."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = false
+notes = "Useful because it asks for tests on the right production file, but still not a semantic detection win."

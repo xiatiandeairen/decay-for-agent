@@ -1,0 +1,4 @@
+M	tokio/src/runtime/io/driver/uring.rs
+A	tokio/tests/fs_uring_cancel_open.rs
+A	tokio/tests/fs_uring_completed_then_dropped_before_repoll.rs
+A	tokio/tests/fs_uring_runtime_shutdown.rs

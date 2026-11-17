@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "tokio-rs-tokio-7991"
+repo = "tokio-rs/tokio"
+pr = 7991
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Closed-channel recv_many panic boundary."
+
+[fact_only]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "True risk is closed-channel recv_many panic/assertion boundary. Fact output only reports generic prod_change_with_tests on the right file; useful as context but not concrete enough."
+
+[semantic_filtered]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "Semantic restates generic prod/test behavior-invariant review and explicitly lacks exact function/behavior. It does not identify closed-channel panic or assertion boundary."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = false
+notes = "No meaningful improvement over fact output; both are plausible but miss the high-value risk mechanism."

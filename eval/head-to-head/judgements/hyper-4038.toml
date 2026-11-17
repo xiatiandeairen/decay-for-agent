@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyper-4038"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "Three FFI entry points (hyper_request_set_uri_parts, hyper_request_headers, hyper_response_headers) previously dereferenced raw *mut pointers via unsafe { &mut *req/resp } without NULL validation, causing UB when callers passed NULL handles. Patch inserts non_null! guards returning HYPERE_INVALID_ARG / null_mut sentinel before dereferencing."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank 1-2 directly identify assumption_boundary on hyper_request_headers/hyper_response_headers with UB mechanism named. Rank 3 supporting flags pre-check slice::from_raw_parts on component ptrs — astute but value=supporting. Strongest of the three."

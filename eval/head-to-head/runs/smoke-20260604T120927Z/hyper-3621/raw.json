@@ -1,0 +1,12 @@
+{
+  "case_id": "hyper-3621",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"hyper-3621\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"state_transition\",\"subject\":\"src/server/conn/http1.rs:UpgradeableConnection::poll\",\"evidence_refs\":[\"match ready!(Pin::new(&mut self.inner.as_mut().unwrap().conn).poll(cx)) {\",\"// inner is `None`, meaning the connection was upgraded, thus it's `Poll::Ready(Ok(()))`\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"poll() now unconditionally unwraps self.inner; the prior None branch (set when Upgrade fulfilled and inner.take() was called) is removed, so any re-poll after upgrade panics.\"},{\"rank\":2,\"risk_signal\":\"external_contract\",\"subject\":\"src/proto/h2/server.rs:DEFAULT_SETTINGS_MAX_HEADER_LIST_SIZE\",\"evidence_refs\":[\"// 16 MB \\\"sane default\\\" taken from golang http2\",\"const DEFAULT_SETTINGS_MAX_HEADER_LIST_SIZE: u32 = 16 << 20;\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Server default SETTINGS_MAX_HEADER_LIST_SIZE jumps from 16KB to 16MB (1024x), advertised to peers in SETTINGS \u2014 changes accepted header size and resource exposure for existing deployments.\"},{\"rank\":3,\"risk_signal\":\"external_contract\",\"subject\":\"src/client/conn/http2.rs:Builder::max_header_list_size\",\"evidence_refs\":[\"-    /// Sets the max size of received header frames.\",\"-    pub fn max_header_list_size(&mut self, max: u32) -> &mut Self {\",\"-        self.h2_builder.max_header_list_size = max;\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Public client Builder method max_header_list_size and the underlying Config field are deleted; existing callers configuring this on the h2 client break at compile time.\"}]\n",
+      "stderr_tail": ""
+    }
+  ]
+}

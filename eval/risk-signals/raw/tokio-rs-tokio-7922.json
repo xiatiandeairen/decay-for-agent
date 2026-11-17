@@ -1,0 +1,210 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Title names race condition; production blocking pool and loom test files changed.",
+    "id": "tokio-rs-tokio-7922",
+    "limitations": "Needs detailed happens-before analysis for final ground truth.",
+    "production_files": [
+      "tokio/src/runtime/blocking/pool.rs"
+    ],
+    "repo": "tokio-rs/tokio",
+    "risk_summary": "Race condition during blocking pool shutdown.",
+    "signal_ids": [
+      "concurrency_ordering",
+      "lifecycle_ordering",
+      "risk_path_test_gap"
+    ],
+    "source_refs": [
+      "https://github.com/tokio-rs/tokio/pull/7922"
+    ],
+    "status": "candidate",
+    "test_files": [
+      "tokio/src/runtime/tests/loom_blocking.rs"
+    ],
+    "url": "https://github.com/tokio-rs/tokio/pull/7922",
+    "why_high_value": "Runtime shutdown races can cause rare but serious stability failures.",
+    "why_not_noise": "Concurrency-specific production file and loom test context are present."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "25e7f2641ef2555d688c267059431a2802805f1d",
+    "body": "Follow-up of <https://github.com/tokio-rs/tokio/pull/7918#issuecomment-3928245159>.\r\n\r\nConsider this sequence:\r\n\r\n1. A blocking thread is sleeping at [`pool.rs:525`].\r\n2. Someone enqueues a task, then decreases the `num_idle_thread`, finally calls `condvar.notify_one` at [`pool.rs:449-451`].\r\n3. Another one shutdown the blocking pool, flips the `shared.shutdown` bit, finally unlock the `shared` at [`pool.rs:254-261`].\r\n4. That blocking thread wakes at [`pool.rs:525`], and exit the loop at [`pool.rs:535`]. At this time, the `num_idle_thread` has already been decreased at [`pool.rs:449`].\r\n5. That blocking thread tries to decrease the `num_idle_thread` again at [`pool.rs:574`], then panic.\r\n\r\n\r\n[`pool.rs:525`]:https://github.com/tokio-rs/tokio/blob/e65040f061008ca5a94d21721aa8b544c078c606/tokio/src/runtime/blocking/pool.rs#L525\r\n[`pool.rs:449-451`]: https://github.com/tokio-rs/tokio/blob/e65040f061008ca5a94d21721aa8b544c078c606/tokio/src/runtime/blocking/pool.rs#L449-L451\r\n[`pool.rs:254-261`]: https://github.com/tokio-rs/tokio/blob/e65040f061008ca5a94d21721aa8b544c078c606/tokio/src/runtime/blocking/pool.rs#L254-L261\r\n[`pool.rs:535`]: https://github.com/tokio-rs/tokio/blob/e65040f061008ca5a94d21721aa8b544c078c606/tokio/src/runtime/blocking/pool.rs#L535\r\n[`pool.rs:449`]: https://github.com/tokio-rs/tokio/blob/e65040f061008ca5a94d21721aa8b544c078c606/tokio/src/runtime/blocking/pool.rs#L449\r\n[`pool.rs:574`]: https://github.com/tokio-rs/tokio/blob/e65040f061008ca5a94d21721aa8b544c078c606/tokio/src/runtime/blocking/pool.rs#L574",
+    "comments": [
+      {
+        "author": {
+          "login": "ADD-SP"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> LGTM!\r\n> \r\n> Could this be tested reliably with loom ?\r\n\r\nAdded a loom test for this race condition, tested locally and confirmed it failed without this fix.",
+        "createdAt": "2026-02-23T08:29:02Z",
+        "id": "IC_kwDOBAsbdc7rCovy",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/7922#issuecomment-3943336946",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "ADD-SP"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "The labeler rules are not applied PR as the labeler only respect the rules on the default branch.",
+        "createdAt": "2026-02-23T08:38:25Z",
+        "id": "IC_kwDOBAsbdc7rCxSx",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/7922#issuecomment-3943371953",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Seems to be some CI failure.",
+        "createdAt": "2026-02-23T10:43:19Z",
+        "id": "IC_kwDOBAsbdc7rFFKT",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/7922#issuecomment-3943977619",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "ADD-SP"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> Seems to be some CI failure.\r\n\r\nThis failure is `task_big_spawn_sizes_recorded`, which looks irrelevant to this race condition as it didn't tigger our underflow assertion. I have re-ran it, and now it is green.\r\n\r\n```\r\nthread 'task_big_spawn_sizes_recorded' (170245) panicked at /.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-mock-0.1.0-beta.1/src/metadata.rs:38:13:\r\n[task_big_spawn_sizes_recorded] expected a new span named `runtime.spawn`,\r\n[task_big_spawn_sizes_recorded] but got one named `runtime.resource` instead.\r\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\r\nthread 'task_big_spawn_sizes_recorded' (170245) panicked at tokio/tests/tracing_task.rs:169:14:\r\nfailed to await join handle: JoinError::Panic(Id(3), \"\\n[task_big_spawn_sizes_recorded] expected a new span named `runtime.spawn`,\\n[task_big_spawn_sizes_recorded] but got one named `runtime.resource` instead.\", ...)\r\nfailures:\r\n    task_big_spawn_sizes_recorded\r\ntest result: FAILED. 5 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\r\nerror: test failed, to rerun pass `-p tokio --test tracing_task`\r\n```\r\n\r\n<https://cirrus-ci.com/task/5737753201082368?logs=test#L7041>",
+        "createdAt": "2026-02-23T19:43:15Z",
+        "id": "IC_kwDOBAsbdc7rQUcR",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/7922#issuecomment-3946923793",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 3,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": ".github/labeler.yml"
+      },
+      {
+        "additions": 16,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": ".github/workflows/loom.yml"
+      },
+      {
+        "additions": 18,
+        "changeType": "MODIFIED",
+        "deletions": 8,
+        "path": "tokio/src/runtime/blocking/pool.rs"
+      },
+      {
+        "additions": 39,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "tokio/src/runtime/tests/loom_blocking.rs"
+      }
+    ],
+    "headRefName": "add_sp/runtime-fix-race-condition",
+    "headRefOid": "6724524a9e95e912e7223e51041374f4dd8bda68",
+    "labels": [
+      {
+        "color": "f7e101",
+        "description": "Area: The main tokio crate",
+        "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+        "name": "A-tokio"
+      },
+      {
+        "color": "f7b101",
+        "description": "Module: tokio/runtime",
+        "id": "MDU6TGFiZWwxOTkzNTEwODc4",
+        "name": "M-runtime"
+      },
+      {
+        "color": "D9C0F1",
+        "description": "Run loom `runtime::spawn_blocking` tests on this PR",
+        "id": "LA_kwDOBAsbdc8AAAACZB7wvw",
+        "name": "R-loom-blocking"
+      }
+    ],
+    "mergedAt": "2026-02-23T21:50:28Z",
+    "number": 7922,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "da794f6a0c452f794ba2ac1df6735573f5bd73cc"
+        },
+        "id": "PRR_kwDOBAsbdc7kUIO3",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-02-20T07:36:55Z"
+      },
+      {
+        "author": {
+          "login": "ADD-SP"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "da794f6a0c452f794ba2ac1df6735573f5bd73cc"
+        },
+        "id": "PRR_kwDOBAsbdc7kUSCY",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-02-20T07:49:30Z"
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "da794f6a0c452f794ba2ac1df6735573f5bd73cc"
+        },
+        "id": "PRR_kwDOBAsbdc7kUUdL",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-02-20T07:52:46Z"
+      },
+      {
+        "author": {
+          "login": "martin-g"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "LGTM!\n\nCould this be tested reliably with loom ? ",
+        "commit": {
+          "oid": "da794f6a0c452f794ba2ac1df6735573f5bd73cc"
+        },
+        "id": "PRR_kwDOBAsbdc7kWZ1U",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2026-02-20T09:51:26Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "runtime: fix race condition during the blocking pool shutdown",
+    "url": "https://github.com/tokio-rs/tokio/pull/7922"
+  }
+}

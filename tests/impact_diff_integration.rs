@@ -561,6 +561,44 @@ pub extern "C" fn mx_send(value: i32) -> i32 {
 }
 
 #[test]
+fn diff_reports_prod_change_with_tests_as_diff_structure_evidence() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(project.join("src/lib.rs"), "pub fn answer() -> i32 { 1 }\n").expect("write lib");
+    fs::create_dir_all(project.join("tests")).expect("create tests");
+    fs::write(
+        project.join("tests/answer_test.rs"),
+        "#[test]\nfn answer_stays_visible() {}\n",
+    )
+    .expect("write test");
+    commit_all(&project, "feat: seed answer");
+
+    fs::write(project.join("src/lib.rs"), "pub fn answer() -> i32 { 2 }\n").expect("change lib");
+    fs::write(
+        project.join("tests/answer_test.rs"),
+        "#[test]\nfn answer_stays_visible() {}\n#[test]\nfn answer_changes() {}\n",
+    )
+    .expect("change test");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Top risk findings:"))
+        .stdout(predicate::str::contains("[medium] src/lib.rs"))
+        .stdout(predicate::str::contains(
+            "production code changed with test changes",
+        ))
+        .stdout(predicate::str::contains("Quality impact:"))
+        .stdout(predicate::str::contains("kind=prod_change_with_tests"))
+        .stdout(predicate::str::contains("confidence=low value=supporting"))
+        .stdout(predicate::str::contains("kind=test_gap").not())
+        .stdout(predicate::str::contains("Semantic findings:").not());
+}
+
+#[test]
 fn diff_reports_default_value_delta_as_semantic_risk() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let project = tmp.path().join("project");
@@ -797,6 +835,870 @@ pub fn host_header(url: &hyper::Uri) -> String {
 }
 
 #[test]
+fn diff_reports_zero_closed_condition_as_boundary_semantic_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn forget_permits(state: usize, permits: usize) -> usize {
+    state - permits
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed semaphore boundary");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn forget_permits(state: usize, permits: usize) -> usize {
+    if permits == 0 || state & CLOSED_BIT != 0 {
+        return state;
+    }
+    state - permits
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Top risk findings:"))
+        .stdout(predicate::str::contains("[high] src/lib.rs"))
+        .stdout(predicate::str::contains("Semantic impact:"))
+        .stdout(predicate::str::contains("kind=boundary_condition_changed"))
+        .stdout(predicate::str::contains("permits == 0"))
+        .stdout(predicate::str::contains("CLOSED_BIT"));
+}
+
+#[test]
+fn diff_reports_usize_max_condition_as_integer_boundary_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub fn read_len(len: u64) -> usize { len as usize }\n",
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed integer boundary");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn read_len(len: u64) -> usize {
+    if len > usize::MAX as u64 {
+        return usize::MAX;
+    }
+    len as usize
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Semantic impact:"))
+        .stdout(predicate::str::contains("kind=boundary_condition_changed"))
+        .stdout(predicate::str::contains("usize::MAX"));
+}
+
+#[test]
+fn diff_reports_bitmask_assignment_as_boundary_semantic_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+const CLOSED_BIT: usize = 1;
+
+pub fn forget_permits(state: usize, permits: usize) -> usize {
+    state - permits
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed bit boundary");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+const CLOSED_BIT: usize = 1;
+
+pub fn forget_permits(state: usize, permits: usize) -> usize {
+    (state - permits) | (state & CLOSED_BIT)
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Semantic impact:"))
+        .stdout(predicate::str::contains("kind=boundary_expression_changed"))
+        .stdout(predicate::str::contains("CLOSED_BIT"));
+}
+
+#[test]
+fn diff_reports_saturating_assignment_as_boundary_semantic_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub fn read_len(len: u64) -> usize { len as usize }\n",
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed saturation boundary");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn read_len(len: u64) -> usize {
+    len.min(usize::MAX as u64) as usize
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Semantic impact:"))
+        .stdout(predicate::str::contains("kind=boundary_expression_changed"))
+        .stdout(predicate::str::contains("usize::MAX"));
+}
+
+#[test]
+fn diff_reports_usize_try_from_fallback_as_integer_platform_boundary_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn to_read(remaining: u64) -> usize {
+    remaining as usize
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed truncating cast");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn to_read(remaining: u64) -> usize {
+    usize::try_from(remaining).unwrap_or(usize::MAX)
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Top risk findings:"))
+        .stdout(predicate::str::contains("[high] src/lib.rs"))
+        .stdout(predicate::str::contains("Semantic impact:"))
+        .stdout(predicate::str::contains(
+            "kind=integer_platform_boundary_changed",
+        ))
+        .stdout(predicate::str::contains("usize::try_from"))
+        .stdout(predicate::str::contains("usize::MAX"));
+}
+
+#[test]
+fn diff_does_not_report_plain_usize_try_from_as_platform_boundary_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn parse_len(value: u32) -> Result<usize, std::num::TryFromIntError> {
+    Ok(value as usize)
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed checked cast");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn parse_len(value: u32) -> Result<usize, std::num::TryFromIntError> {
+    usize::try_from(value)
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kind=integer_platform_boundary_changed").not());
+}
+
+#[test]
+fn diff_reports_panic_to_error_propagation_for_malformed_input_path() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn raw_value(raw: &[u8]) -> Result<&str, &'static str> {
+    let raw = std::str::from_utf8(raw).unwrap();
+    Ok(raw)
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed utf8 panic");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn raw_value(raw: &[u8]) -> Result<&str, &'static str> {
+    let raw = match std::str::from_utf8(raw) {
+        Ok(raw) => raw,
+        Err(_) => return Err("invalid unicode code point"),
+    };
+    Ok(raw)
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Top risk findings:"))
+        .stdout(predicate::str::contains("[high] src/lib.rs"))
+        .stdout(predicate::str::contains("Semantic impact:"))
+        .stdout(predicate::str::contains(
+            "kind=panic_to_error_propagation_changed",
+        ))
+        .stdout(predicate::str::contains("Err(_) => return Err"))
+        .stdout(predicate::str::contains("confidence=high value=direct"))
+        .stdout(predicate::str::contains("Semantic findings:").not());
+}
+
+#[test]
+fn diff_reports_error_propagation_change_for_error_to_non_error_path() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub enum Reason { NoError, Cancel, Other }
+
+pub fn poll_body(reason: Reason) -> Result<Option<&'static str>, &'static str> {
+    match reason {
+        Reason::NoError => return Err("body error"),
+        Reason::Cancel => return Err("body error"),
+        Reason::Other => Err("body error"),
+    }
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed error propagation");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub enum Reason { NoError, Cancel, Other }
+
+pub fn poll_body(reason: Reason) -> Result<Option<&'static str>, &'static str> {
+    match reason {
+        Reason::NoError => return Ok(None),
+        Reason::Cancel => return Ok(None),
+        Reason::Other => Err("body error"),
+    }
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kind=error_propagation_changed"))
+        .stdout(predicate::str::contains("Reason::"))
+        .stdout(predicate::str::contains("confidence=medium value=direct"));
+}
+
+#[test]
+fn diff_reports_error_propagation_change_for_panic_to_internal_parse_error() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub enum Parse { Internal }
+
+pub fn header_name(bytes: &[u8]) -> Result<&[u8], Parse> {
+    match std::str::from_utf8(bytes) {
+        Ok(_) => Ok(bytes),
+        Err(_) => panic!("illegal header name"),
+    }
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed panic header");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub enum Parse { Internal }
+
+pub fn header_name(bytes: &[u8]) -> Result<&[u8], Parse> {
+    match std::str::from_utf8(bytes) {
+        Ok(_) => Ok(bytes),
+        Err(e) => {
+            let _ = e;
+            return Err(Parse::Internal);
+        }
+    }
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "kind=panic_to_error_propagation_changed",
+        ))
+        .stdout(predicate::str::contains("kind=error_propagation_changed"));
+}
+
+#[test]
+fn diff_reports_readiness_error_propagation_change_for_recv_interest_error() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub struct Interest;
+
+impl Interest {
+    pub const READABLE: u8 = 1;
+    pub const ERROR: u8 = 2;
+}
+
+pub struct Registration;
+
+impl Registration {
+    pub async fn async_io<F, T>(&self, _interest: u8, f: F) -> Result<T, &'static str>
+    where
+        F: FnOnce() -> Result<T, &'static str>,
+    {
+        f()
+    }
+}
+
+pub struct Io;
+
+impl Io {
+    pub fn registration(&self) -> Registration {
+        Registration
+    }
+
+    pub fn recv(&self, _buf: &mut [u8]) -> Result<usize, &'static str> {
+        Ok(1)
+    }
+}
+
+pub struct Socket {
+    io: Io,
+}
+
+impl Socket {
+    pub async fn recv(&self, buf: &mut [u8]) -> Result<usize, &'static str> {
+        self.io
+            .registration()
+            .async_io(Interest::READABLE, || self.io.recv(buf))
+            .await
+    }
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed recv readiness");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub struct Interest;
+
+impl Interest {
+    pub const READABLE: u8 = 1;
+    pub const ERROR: u8 = 2;
+}
+
+pub struct Registration;
+
+impl Registration {
+    pub async fn async_io<F, T>(&self, _interest: u8, f: F) -> Result<T, &'static str>
+    where
+        F: FnOnce() -> Result<T, &'static str>,
+    {
+        f()
+    }
+}
+
+pub struct Io;
+
+impl Io {
+    pub fn registration(&self) -> Registration {
+        Registration
+    }
+
+    pub fn recv(&self, _buf: &mut [u8]) -> Result<usize, &'static str> {
+        Ok(1)
+    }
+}
+
+pub struct Socket {
+    io: Io,
+}
+
+impl Socket {
+    pub async fn recv(&self, buf: &mut [u8]) -> Result<usize, &'static str> {
+        self.io
+            .registration()
+            .async_io(Interest::READABLE | Interest::ERROR, || self.io.recv(buf))
+            .await
+    }
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "kind=readiness_error_propagation_changed",
+        ))
+        .stdout(predicate::str::contains(
+            "Interest::READABLE | Interest::ERROR",
+        ))
+        .stdout(predicate::str::contains("confidence=high value=direct"));
+}
+
+#[test]
+fn diff_reports_drop_error_propagation_change_for_incomplete_message_guard() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub struct Sender;
+
+impl Sender {
+    pub fn send_error(&mut self, _err: Error) {}
+}
+
+pub struct Error;
+
+impl Error {
+    pub fn new_incomplete() -> Self {
+        Error
+    }
+}
+
+pub struct Dispatcher {
+    body_tx: Option<Sender>,
+}
+
+impl Dispatcher {
+    pub fn new() -> Self {
+        Self { body_tx: None }
+    }
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed dispatcher sender");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub struct Sender;
+
+impl Sender {
+    pub fn send_error(&mut self, _err: Error) {}
+}
+
+pub struct Error;
+
+impl Error {
+    pub fn new_incomplete() -> Self {
+        Error
+    }
+}
+
+pub struct SenderDropGuard(Option<Sender>);
+
+impl SenderDropGuard {
+    pub fn none() -> Self {
+        Self(None)
+    }
+}
+
+impl Drop for SenderDropGuard {
+    fn drop(&mut self) {
+        if let Some(mut sender) = self.0.take() {
+            sender.send_error(Error::new_incomplete());
+        }
+    }
+}
+
+pub struct Dispatcher {
+    body_tx: SenderDropGuard,
+}
+
+impl Dispatcher {
+    pub fn new() -> Self {
+        Self {
+            body_tx: SenderDropGuard::none(),
+        }
+    }
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "kind=drop_error_propagation_changed",
+        ))
+        .stdout(predicate::str::contains(
+            "send_error(Error::new_incomplete())",
+        ))
+        .stdout(predicate::str::contains("confidence=high value=direct"));
+}
+
+#[test]
+fn diff_does_not_report_unrelated_unwrap_refactor_as_error_propagation() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn parse(raw: &str) -> usize {
+    raw.parse::<usize>().unwrap()
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed unwrap");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn parse(raw: &str) -> usize {
+    raw.parse::<usize>().expect("valid fixture")
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kind=panic_to_error_propagation_changed").not());
+}
+
+#[test]
+fn diff_does_not_report_send_interest_error_as_readiness_error_propagation() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub struct Interest;
+
+impl Interest {
+    pub const WRITABLE: u8 = 1;
+    pub const ERROR: u8 = 2;
+}
+
+pub struct Registration;
+
+impl Registration {
+    pub async fn async_io<F, T>(&self, _interest: u8, f: F) -> Result<T, &'static str>
+    where
+        F: FnOnce() -> Result<T, &'static str>,
+    {
+        f()
+    }
+}
+
+pub struct Io;
+
+impl Io {
+    pub fn registration(&self) -> Registration {
+        Registration
+    }
+
+    pub fn send(&self, _buf: &[u8]) -> Result<usize, &'static str> {
+        Ok(1)
+    }
+}
+
+pub struct Socket {
+    io: Io,
+}
+
+impl Socket {
+    pub async fn send(&self, buf: &[u8]) -> Result<usize, &'static str> {
+        self.io
+            .registration()
+            .async_io(Interest::WRITABLE, || self.io.send(buf))
+            .await
+    }
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed send readiness");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub struct Interest;
+
+impl Interest {
+    pub const WRITABLE: u8 = 1;
+    pub const ERROR: u8 = 2;
+}
+
+pub struct Registration;
+
+impl Registration {
+    pub async fn async_io<F, T>(&self, _interest: u8, f: F) -> Result<T, &'static str>
+    where
+        F: FnOnce() -> Result<T, &'static str>,
+    {
+        f()
+    }
+}
+
+pub struct Io;
+
+impl Io {
+    pub fn registration(&self) -> Registration {
+        Registration
+    }
+
+    pub fn send(&self, _buf: &[u8]) -> Result<usize, &'static str> {
+        Ok(1)
+    }
+}
+
+pub struct Socket {
+    io: Io,
+}
+
+impl Socket {
+    pub async fn send(&self, buf: &[u8]) -> Result<usize, &'static str> {
+        self.io
+            .registration()
+            .async_io(Interest::WRITABLE | Interest::ERROR, || self.io.send(buf))
+            .await
+    }
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kind=readiness_error_propagation_changed").not());
+}
+
+#[test]
+fn diff_does_not_report_test_only_error_propagation_as_semantic_direct() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::create_dir_all(project.join("tests")).expect("create tests");
+    fs::write(project.join("src/lib.rs"), "pub fn stable() {}\n").expect("write lib");
+    fs::write(
+        project.join("tests/error_test.rs"),
+        r#"
+#[test]
+fn old_test() {
+    let result: Result<(), &str> = Err("body error");
+    assert!(result.is_err());
+}
+"#,
+    )
+    .expect("write base test");
+    commit_all(&project, "feat: seed test");
+
+    fs::write(
+        project.join("tests/error_test.rs"),
+        r#"
+#[test]
+fn old_test() {
+    let result: Result<Option<()>, &str> = Ok(None);
+    assert!(result.is_ok());
+}
+"#,
+    )
+    .expect("write changed test");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kind=error_propagation_changed").not())
+        .stdout(predicate::str::contains("kind=panic_to_error_propagation_changed").not());
+}
+
+#[test]
+fn diff_does_not_report_plain_arithmetic_assignment_as_boundary_expression() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub fn total(a: usize, b: usize) -> usize { a + b }\n",
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed arithmetic");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub fn total(a: usize, b: usize) -> usize { (a + b) * 2 }\n",
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kind=boundary_expression_changed").not());
+}
+
+#[test]
+fn diff_does_not_report_plain_status_condition_as_boundary_semantic_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(project.join("src/lib.rs"), "pub fn ok() -> bool { true }\n").expect("write lib");
+    commit_all(&project, "feat: seed status condition");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn ok() -> bool {
+    let status = 200;
+    if status == 201 {
+        return false;
+    }
+    true
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kind=boundary_condition_changed").not());
+}
+
+#[test]
+fn diff_does_not_report_test_file_boundary_condition_as_semantic_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(project.join("src/lib.rs"), "pub fn ok() -> bool { true }\n").expect("write lib");
+    fs::create_dir_all(project.join("tests")).expect("create tests");
+    fs::write(
+        project.join("tests/state_test.rs"),
+        "#[test]\nfn base() {}\n",
+    )
+    .expect("write test");
+    commit_all(&project, "feat: seed test boundary");
+
+    fs::write(
+        project.join("tests/state_test.rs"),
+        r#"
+#[test]
+fn closed_state() {
+    let closed = true;
+    if closed != false {
+        assert!(true);
+    }
+}
+"#,
+    )
+    .expect("write changed test");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kind=boundary_condition_changed").not());
+}
+
+#[test]
 fn diff_does_not_flag_public_api_moved_into_new_file_as_added() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let project = tmp.path().join("project");
@@ -819,6 +1721,552 @@ fn diff_does_not_flag_public_api_moved_into_new_file_as_added() {
         .assert()
         .success()
         .stdout(predicate::str::contains("kind=public_api_added").not());
+}
+
+#[test]
+fn diff_reports_lifecycle_ordering_change_for_upgradeable_graceful_shutdown_guard() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+use std::pin::Pin;
+
+pub struct Inner;
+
+impl Inner {
+    pub fn graceful_shutdown(self: Pin<&mut Self>) {}
+}
+
+pub struct UpgradeableConnection {
+    inner: Option<Inner>,
+}
+
+impl UpgradeableConnection {
+    pub fn graceful_shutdown(mut self: Pin<&mut Self>) {
+        Pin::new(self.inner.as_mut().unwrap()).graceful_shutdown()
+    }
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed upgradeable shutdown");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+use std::pin::Pin;
+
+pub struct Inner;
+
+impl Inner {
+    pub fn graceful_shutdown(self: Pin<&mut Self>) {}
+}
+
+pub struct UpgradeableConnection {
+    inner: Option<Inner>,
+}
+
+impl UpgradeableConnection {
+    pub fn graceful_shutdown(mut self: Pin<&mut Self>) {
+        if let Some(conn) = self.inner.as_mut() {
+            Pin::new(conn).graceful_shutdown()
+        }
+    }
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kind=lifecycle_ordering_changed"))
+        .stdout(predicate::str::contains(
+            "Pin::new(conn).graceful_shutdown()",
+        ))
+        .stdout(predicate::str::contains("confidence=high value=direct"));
+}
+
+#[test]
+fn diff_reports_lifecycle_ordering_change_for_initial_state_shutdown_branch() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub struct Conn;
+
+impl Conn {
+    pub fn disable_keep_alive(&mut self) {}
+
+    pub fn is_write_closed(&self) -> bool {
+        false
+    }
+}
+
+pub struct Dispatcher {
+    conn: Conn,
+}
+
+impl Dispatcher {
+    pub fn close(&mut self) {}
+
+    pub fn disable_keep_alive(&mut self) {
+        self.conn.disable_keep_alive();
+        if self.conn.is_write_closed() {
+            self.close();
+        }
+    }
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed shutdown branch");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub struct Conn;
+
+impl Conn {
+    pub fn disable_keep_alive(&mut self) {}
+
+    pub fn is_write_closed(&self) -> bool {
+        false
+    }
+
+    pub fn has_initial_read_write_state(&self) -> bool {
+        true
+    }
+}
+
+pub struct Dispatcher {
+    conn: Conn,
+}
+
+impl Dispatcher {
+    pub fn close(&mut self) {}
+
+    pub fn disable_keep_alive(&mut self) {
+        self.conn.disable_keep_alive();
+        if self.conn.is_write_closed() || self.conn.has_initial_read_write_state() {
+            self.close();
+        }
+    }
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kind=lifecycle_ordering_changed"))
+        .stdout(predicate::str::contains("has_initial_read_write_state()"))
+        .stdout(predicate::str::contains("confidence=high value=direct"));
+}
+
+#[test]
+fn diff_reports_lifecycle_ordering_change_for_cancel_reset_cleanup_path() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+use std::task::Poll;
+
+pub mod h2 {
+    pub enum Reason {
+        CANCEL,
+    }
+}
+
+pub struct Pipe;
+
+impl Pipe {
+    pub fn send_reset(&mut self, _reason: h2::Reason) {}
+}
+
+pub struct PipeMap {
+    pipe: Pipe,
+    conn_drop_ref: Option<()>,
+    cancel_rx: Option<()>,
+}
+
+impl PipeMap {
+    pub fn poll(&mut self) -> Poll<()> {
+        Poll::Pending
+    }
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed cancel cleanup");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+use std::task::Poll;
+
+pub mod h2 {
+    pub enum Reason {
+        CANCEL,
+    }
+}
+
+pub struct Pipe;
+
+impl Pipe {
+    pub fn send_reset(&mut self, _reason: h2::Reason) {}
+}
+
+pub struct PipeMap {
+    pipe: Pipe,
+    conn_drop_ref: Option<()>,
+    cancel_rx: Option<()>,
+}
+
+impl PipeMap {
+    pub fn poll(&mut self) -> Poll<()> {
+        let cancel_result = self.cancel_rx.as_mut().map(|_| Poll::Ready(()));
+        match cancel_result {
+            Some(Poll::Ready(())) => {
+                self.pipe.send_reset(h2::Reason::CANCEL);
+                drop(self.conn_drop_ref.take().expect("Future polled twice"));
+                return Poll::Ready(());
+            }
+            Some(Poll::Pending) | None => {}
+        }
+        Poll::Pending
+    }
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kind=lifecycle_ordering_changed"))
+        .stdout(predicate::str::contains("send_reset(h2::Reason::CANCEL)"))
+        .stdout(predicate::str::contains("confidence=high value=direct"));
+}
+
+#[test]
+fn diff_does_not_report_cancel_protocol_mapping_as_lifecycle_ordering() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+use std::task::Poll;
+
+pub enum Reason {
+    NO_ERROR,
+    CANCEL,
+}
+
+pub fn map(reason: Reason) -> Poll<Option<Result<(), &'static str>>> {
+    match reason {
+        Reason::NO_ERROR => Poll::Ready(Some(Err("body"))),
+        Reason::CANCEL => Poll::Ready(Some(Err("body"))),
+    }
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed cancel mapping");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+use std::task::Poll;
+
+pub enum Reason {
+    NO_ERROR,
+    CANCEL,
+}
+
+pub fn map(reason: Reason) -> Poll<Option<Result<(), &'static str>>> {
+    match reason {
+        Reason::NO_ERROR | Reason::CANCEL => Poll::Ready(None),
+    }
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kind=lifecycle_ordering_changed").not());
+}
+
+#[test]
+fn diff_reports_concurrency_ordering_change_for_blocking_pool_idle_race() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub struct Metrics;
+
+impl Metrics {
+    pub fn inc_num_idle_threads(&self) {}
+    pub fn dec_num_idle_threads(&self) -> usize { 1 }
+}
+
+pub struct Inner {
+    metrics: Metrics,
+}
+
+impl Inner {
+    pub fn run(&self, shutdown: bool, notified: bool) {
+        self.metrics.inc_num_idle_threads();
+        if notified {
+            return;
+        }
+        if shutdown {
+            let prev_idle = self.metrics.dec_num_idle_threads();
+            assert_ne!(prev_idle, 0);
+        }
+    }
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed blocking pool idle path");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub struct Metrics;
+
+impl Metrics {
+    pub fn inc_num_idle_threads(&self) {}
+    pub fn dec_num_idle_threads(&self) -> usize { 1 }
+}
+
+pub struct Inner {
+    metrics: Metrics,
+}
+
+impl Inner {
+    pub fn run(&self, shutdown: bool, notified: bool) {
+        let mut is_counted_idle;
+        self.metrics.inc_num_idle_threads();
+        is_counted_idle = true;
+        if notified {
+            is_counted_idle = false;
+            return;
+        }
+        if shutdown && is_counted_idle {
+            let prev_idle = self.metrics.dec_num_idle_threads();
+            assert_ne!(prev_idle, 0);
+        }
+    }
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "kind=concurrency_ordering_changed",
+        ))
+        .stdout(predicate::str::contains("is_counted_idle"))
+        .stdout(predicate::str::contains("confidence=high value=direct"));
+}
+
+#[test]
+fn diff_reports_concurrency_ordering_change_for_wakeup_repoll_stall() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub struct Dispatcher;
+
+impl Dispatcher {
+    pub fn poll_loop(&mut self) -> bool {
+        let _ = self.poll_write();
+        let _ = self.poll_flush();
+        if !self.wants_read_again() {
+            return true;
+        }
+        false
+    }
+
+    fn poll_write(&mut self) -> bool { true }
+    fn poll_flush(&mut self) -> bool { true }
+    fn wants_read_again(&self) -> bool { false }
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed wakeup stall path");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub struct Dispatcher;
+
+impl Dispatcher {
+    pub fn poll_loop(&mut self) -> bool {
+        let _ = self.poll_write();
+        let conn_ready = self.poll_flush();
+        let wants_write_again = self.can_write_again() && conn_ready;
+        let wants_read_again = self.wants_read_again();
+        if !(wants_write_again || wants_read_again) {
+            return true;
+        }
+        false
+    }
+
+    fn poll_write(&mut self) -> bool { true }
+    fn poll_flush(&mut self) -> bool { true }
+    fn wants_read_again(&self) -> bool { false }
+    fn can_write_again(&mut self) -> bool { true }
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "kind=concurrency_ordering_changed",
+        ))
+        .stdout(predicate::str::contains("wants_write_again"))
+        .stdout(predicate::str::contains("confidence=high value=direct"));
+}
+
+#[test]
+fn diff_reports_concurrency_ordering_change_for_completed_before_repoll_cleanup() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub enum Lifecycle {
+    Waiting,
+    Cancelled,
+    Completed,
+}
+
+pub fn cancel_op(lifecycle: &mut Lifecycle) {
+    match lifecycle {
+        Lifecycle::Completed => {}
+        Lifecycle::Cancelled => {}
+        Lifecycle::Waiting => {}
+    }
+}
+"#,
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed completion ordering");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub enum Lifecycle {
+    Waiting,
+    Cancelled(CancelData),
+    Completed(Cqe),
+}
+
+pub struct Cqe;
+pub struct OwnedFd;
+pub struct Open;
+
+pub enum CancelData {
+    Open(Open),
+}
+
+impl OwnedFd {
+    pub unsafe fn from_raw_fd(_fd: i32) -> Self { Self }
+}
+
+pub fn cancel_op(lifecycle: &mut Lifecycle, cqe: Cqe) {
+    match lifecycle {
+        Lifecycle::Completed(cqe) => {
+            if let Lifecycle::Cancelled(CancelData::Open(_)) = lifecycle {
+                unsafe { OwnedFd::from_raw_fd(1) };
+            }
+        }
+        Lifecycle::Cancelled(_) => {}
+        Lifecycle::Waiting => {}
+    }
+    let _ = cqe;
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "kind=concurrency_ordering_changed",
+        ))
+        .stdout(predicate::str::contains("Lifecycle::Completed(cqe)"))
+        .stdout(predicate::str::contains("confidence=high value=direct"));
+}
+
+#[test]
+fn diff_does_not_report_assert_boundary_as_concurrency_ordering() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub fn make(limit: usize) -> usize { limit }\n",
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed max readers");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        r#"
+pub fn make(limit: usize) -> usize {
+    assert!(limit != 0, "limit must not be zero");
+    limit
+}
+"#,
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("kind=concurrency_ordering_changed").not());
 }
 
 #[test]
@@ -845,6 +2293,38 @@ fn diff_promotes_public_api_addition_to_top_risk() {
         .stdout(predicate::str::contains("public API added"))
         .stdout(predicate::str::contains("Stability impact:"))
         .stdout(predicate::str::contains("kind=public_api_added"));
+}
+
+#[test]
+fn diff_promotes_public_api_function_addition_to_top_risk() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub fn keep_alive(val: bool) -> bool { val }\n",
+    )
+    .expect("write base lib");
+    commit_all(&project, "feat: seed public api");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub fn keep_alive(val: bool) -> bool { val }\n\
+         pub fn http10_disable_keep_alive(disable: bool) -> bool { disable }\n",
+    )
+    .expect("write changed lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Top risk findings:"))
+        .stdout(predicate::str::contains("[high] src/lib.rs"))
+        .stdout(predicate::str::contains("public API function added"))
+        .stdout(predicate::str::contains("Stability impact:"))
+        .stdout(predicate::str::contains("kind=public_api_function_added"))
+        .stdout(predicate::str::contains("http10_disable_keep_alive"));
 }
 
 #[test]
@@ -921,6 +2401,35 @@ fn diff_does_not_treat_docs_only_changes_as_test_gap_or_stability_evidence() {
     assert_eq!(db_count(&db, "SELECT COUNT(*) FROM changesets"), 1);
     assert_eq!(db_count(&db, "SELECT COUNT(*) FROM file_changes"), 1);
     assert_eq!(db_count(&db, "SELECT COUNT(*) FROM evidence_items"), 0);
+}
+
+#[test]
+fn diff_reports_parse_coverage_gap_as_structured_evidence() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let db = tmp.path().join("decay.db");
+    init_repo(&project);
+    fs::write(project.join("src/lib.rs"), "pub fn answer() -> i32 { 1 }\n").expect("write lib");
+    commit_all(&project, "feat: seed parse fixture");
+
+    fs::write(
+        project.join("src/lib.rs"),
+        "pub fn answer() -> i32 { let = 2; 2 }\n",
+    )
+    .expect("write invalid lib");
+
+    decay_cmd(&project, &db)
+        .args(["diff", "HEAD"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Coverage impact:"))
+        .stdout(predicate::str::contains("kind=parse_coverage_gap"))
+        .stdout(predicate::str::contains("source=scan"))
+        .stdout(predicate::str::contains(
+            "diagnostic=parse error in src/lib.rs",
+        ))
+        .stdout(predicate::str::contains("[medium] src/lib.rs"))
+        .stdout(predicate::str::contains("decay scan coverage is partial"));
 }
 
 #[test]

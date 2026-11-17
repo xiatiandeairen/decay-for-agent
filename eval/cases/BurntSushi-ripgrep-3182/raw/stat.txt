@@ -1,0 +1,5 @@
+ CHANGELOG.md               |  4 ++++
+ crates/core/search.rs      | 39 ++++++++++++++++++---------------------
+ crates/printer/src/util.rs | 14 ++++++++++----
+ tests/regression.rs        | 13 +++++++++++++
+ 4 files changed, 45 insertions(+), 25 deletions(-)

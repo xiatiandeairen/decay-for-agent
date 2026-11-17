@@ -1,0 +1,40 @@
+{
+  "case_id": "hyper-4011",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        ".filter_map(|s| HeaderName::from_bytes(s.trim().as_bytes()).ok())"
+      ],
+      "rank": 1,
+      "rationale": "Invalid trailer field names in the Trailer header are silently dropped via .ok(), with no debug/warn log; the Trailer header is still written verbatim to the wire, so peer is told to expect a name th\u2026",
+      "risk_signal": "error_propagation",
+      "subject": "src/proto/h1/role.rs:encode_headers",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "if let Ok(value_str) = value.to_str() {"
+      ],
+      "rank": 2,
+      "rationale": "If a Trailer HeaderValue contains non-visible-ASCII bytes, to_str() fails and the entire allowed-trailer set is silently skipped while the Trailer header is still emitted, so no trailer field will be\u2026",
+      "risk_signal": "error_propagation",
+      "subject": "src/proto/h1/role.rs:encode_headers",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "pub(crate) fn into_chunked_with_trailing_fields(self, trailers: Vec<HeaderName>) -> Encoder {"
+      ],
+      "rank": 3,
+      "rationale": "Public-in-crate signature changed Vec<HeaderValue> -> Vec<HeaderName>; any other internal caller relying on the prior HeaderValue-based comma parsing must now pre-parse to HeaderName or lose entries.",
+      "risk_signal": "external_contract",
+      "subject": "src/proto/h1/encode.rs:into_chunked_with_trailing_fields",
+      "value": "supporting"
+    }
+  ]
+}

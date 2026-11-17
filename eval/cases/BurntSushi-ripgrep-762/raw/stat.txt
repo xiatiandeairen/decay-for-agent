@@ -1,0 +1,4 @@
+ ignore/src/gitignore.rs                             | 21 +++++++++++----------
+ ignore/src/overrides.rs                             |  3 ++-
+ .../gitignore_matched_path_or_any_parents_tests.rs  | 16 ++++++++--------
+ 3 files changed, 21 insertions(+), 19 deletions(-)

@@ -1,0 +1,94 @@
+# Follow-up refs for v1 candidate pool.
+
+[[cases]]
+id = "tokio-rs-tokio-8021"
+refs = [
+  { type = "issue", repo = "tokio-rs/tokio", number = 8020, reason = "Semaphore reopen behavior report." },
+  { type = "pr", repo = "tokio-rs/tokio", number = 8022, reason = "Duplicate maintainer fix with more exhaustive tests." },
+]
+
+[[cases]]
+id = "tokio-rs-tokio-7910"
+refs = [
+  { type = "issue", repo = "tokio-rs/tokio", number = 6439, reason = "Blocking pool idle metric over-count report." },
+]
+
+[[cases]]
+id = "hyperium-hyper-2544"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 2534, reason = "Illegal header name/value panic report." },
+]
+
+[[cases]]
+id = "hyperium-hyper-3275"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 2872, reason = "Early response NO_ERROR propagation report." },
+  { type = "pr", repo = "hyperium/hyper", number = 3274, reason = "Backport with equivalent regression context." },
+]
+
+[[cases]]
+id = "hyperium-hyper-3557"
+refs = [
+  { type = "issue", repo = "hyperium/hyper", number = 3556, reason = "Sleep::downcast_mut_pin lifetime report." },
+]
+
+[[cases]]
+id = "hyperium-hyper-3782"
+refs = [
+  { type = "pr", repo = "hyperium/hyper", number = 3528, reason = "Original config patch for max_local_error_reset_streams." },
+  { type = "pr", repo = "hyperium/hyper", number = 3530, reason = "Port that introduced wrong parameter wiring." },
+]
+
+[[cases]]
+id = "serde-rs-json-187"
+refs = [
+  { type = "issue", repo = "serde-rs/json", number = 186, reason = "to_value panic report." },
+]
+
+[[cases]]
+id = "serde-rs-json-303"
+refs = [
+  { type = "issue", repo = "serde-rs/json", number = 183, reason = "StreamDeserializer byte offset feature request and behavior context." },
+]
+
+[[cases]]
+id = "serde-rs-json-384"
+refs = [
+  { type = "pr", repo = "serde-rs/json", number = 301, reason = "Related StreamDeserializer top-level primitive behavior change." },
+]
+
+[[cases]]
+id = "serde-rs-json-521"
+refs = [
+  { type = "issue", repo = "serde-rs/json", number = 520, reason = "Adjacently tagged f32 roundtrip regression report." },
+]
+
+[[cases]]
+id = "BurntSushi-ripgrep-454"
+refs = [
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 451, reason = "Only-matching column/reiteration report." },
+]
+
+[[cases]]
+id = "BurntSushi-ripgrep-620"
+refs = [
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 402, reason = "Context after max-count early return report." },
+]
+
+[[cases]]
+id = "BurntSushi-ripgrep-652"
+refs = [
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 649, reason = "Directory-only gitignore glob matching report." },
+]
+
+[[cases]]
+id = "BurntSushi-ripgrep-762"
+refs = [
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 761, reason = "Gitignore slash-pattern behavior report." },
+]
+
+[[cases]]
+id = "clap-rs-clap-4049"
+refs = [
+  { type = "issue", repo = "clap-rs/clap", number = 3785, reason = "derive id attribute report." },
+]

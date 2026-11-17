@@ -1,0 +1,12 @@
+{
+  "case_id": "tokio-rs-tokio-8001",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"tokio-rs-tokio-8001\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"state_transition\",\"subject\":\"tokio/src/net/udp.rs:recv\",\"evidence_refs\":[\"async_io(Interest::READABLE | Interest::ERROR, || self.io.recv(buf))\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"recv/recv_buf/recv_from/peek/peek_from/peek_sender now register Interest::ERROR alongside READABLE so error-state wakeups (e.g. ECONNREFUSED on connected UDP) surface from async_io instead of stalling.\"},{\"rank\":2,\"risk_signal\":\"non_happy_path\",\"subject\":\"tokio/tests/udp.rs:send_to_recv_closed_returns_err\",\"evidence_refs\":[\"drop(receiver);\",\"time::timeout(Duration::from_secs(5), sender.recv(&mut recv_buf))\",\"ConnectionRefused | io::ErrorKind::ConnectionReset\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"New test exercises connected-UDP after peer drop; relies on Interest::ERROR wakeup to deliver ECONNREFUSED/ECONNRESET. 5s timeout would mask a regression as a slow path.\"},{\"rank\":3,\"risk_signal\":\"external_contract\",\"subject\":\"tokio/src/net/udp.rs:poll_recv\",\"evidence_refs\":[\"pub fn poll_recv(&self, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {\",\"self.io.registration().poll_read_io(cx, ||\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"poll_recv / poll_recv_from / poll_peek* still register only READABLE via poll_read_io; behavior diverges from async recv* which now surface ERROR events \u2014 inconsistent contract across the two API surfaces.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

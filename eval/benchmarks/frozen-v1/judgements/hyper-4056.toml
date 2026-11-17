@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "hyper-4056"
+repo = "hyperium/hyper"
+pr = 4056
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "HTTP/1 32-bit large-body integer boundary."
+
+[fact_only]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 2
+notes = "True risk is 32-bit large-body integer boundary in HTTP/1 decode. Fact output points to src/proto/h1/decode.rs and missing tests, which is useful, but it does not surface integer truncation/saturating-cast semantics."
+
+[semantic_filtered]
+top3_total = 1
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "Semantic keeps the useful test-gap concern on the right file but still misses the 32-bit integer boundary mechanism."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = true
+semantic_introduced_noise = false
+notes = "Semantic reduces touched-risk/history noise but does not improve semantic recall."

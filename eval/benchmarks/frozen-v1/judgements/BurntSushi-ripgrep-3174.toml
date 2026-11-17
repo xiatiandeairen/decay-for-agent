@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "BurntSushi-ripgrep-3174"
+repo = "BurntSushi/ripgrep"
+pr = 3174
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Ancestor ignore whitelist path normalization false negative."
+
+[fact_only]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 1
+notes = "True risk is ancestor ignore whitelist path normalization false negative. Fact output flags worsened crates/ignore/src/dir.rs:matched_ignore, the relevant ignore path."
+
+[semantic_filtered]
+top3_total = 2
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Semantic preserves matched_ignore complexity and ties test review to the same path."
+
+[comparison]
+semantic_improved_ranking = true
+semantic_reduced_noise = true
+semantic_introduced_noise = false
+notes = "Semantic improves the usefulness of the supporting quality signal."

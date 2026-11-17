@@ -1,0 +1,59 @@
+Diff context:
+  repo_root=/private/tmp/decay-pr-eval/hyper-4011/repo
+  mode=git_ref
+  base_input=0f0b6ed3ac55ac1682afd2104cb8d0385149249a
+  base=0f0b6ed3ac55ac1682afd2104cb8d0385149249a
+  head=108d0bbf5339d8a1b44b5d27300e324be12017fe
+  changed_files=4
+
+Top risk findings:
+1. [high] src/proto/h1/role.rs:encode_headers
+   complexity worsened
+   action: review function complexity and add focused regression tests
+2. [high] src/proto/h1/role.rs:set_length
+   complexity worsened
+   action: review function complexity and add focused regression tests
+3. [medium] src/proto/h1/encode.rs:encode_trailers
+   complexity touched_existing_risky
+   action: review function complexity and add focused regression tests
+4. [medium] src/proto/h1/encode.rs
+   quality prod_change_with_tests
+   action: review changed behavior invariants and confirm regression tests cover the risky path
+
+Complexity impact:
+  changed_functions=10 evidence=3 partial=false diagnostics=0
+  value_note=direct for worsened/new_high_risk; touched_existing_risky is supporting context, not proof of current-diff risk
+- id=1 category=complexity kind=touched_existing_risky subject=function source=diff_hunk+ast_snapshot confidence=low value=context
+  function=src/proto/h1/encode.rs:encode_trailers
+  metrics=cognitive:16->16, cyclomatic:9->9, statements:23->23
+- id=2 category=complexity kind=worsened subject=function source=diff_hunk+ast_snapshot confidence=high value=direct
+  function=src/proto/h1/role.rs:encode_headers
+  metrics=cognitive:88->94, cyclomatic:45->46, statements:134->136
+- id=3 category=complexity kind=worsened subject=function source=diff_hunk+ast_snapshot confidence=high value=direct
+  function=src/proto/h1/role.rs:set_length
+  metrics=cognitive:31->40, cyclomatic:17->17, statements:34->34
+
+Coverage impact:
+  evidence=0
+  value_note=scan coverage gaps limit decay confidence; this is tool coverage evidence, not proof of product code risk
+
+Stability impact:
+  evidence=0
+  value_note=direct for newly introduced unsafe/panic/public-api evidence; move/refactor diffs can weaken this signal
+
+Quality impact:
+  evidence=1 prod_files_changed=2 test_files_changed=3 docs_files_changed=0
+  value_note=missing-test signals are supporting evidence; broad scope signals are weak unless paired with direct diff evidence
+- id=4 category=quality kind=prod_change_with_tests subject=production code changed with test changes source=quality confidence=low value=supporting
+  file=src/proto/h1/encode.rs
+
+Semantic impact:
+  evidence=0
+  value_note=high confidence only for explicit scanned patterns; this is not general semantic understanding
+
+History impact:
+  evidence=1
+  value_note=context only; excluded from top risk unless direct diff evidence exists
+- id=5 category=history kind=recently_bugfixed_area subject=fix(http1): use httparse config for Servers (#4002) source=git_history confidence=low value=context
+  file=src/proto/h1/role.rs
+recorded=true changeset=1 evidence_saved=5

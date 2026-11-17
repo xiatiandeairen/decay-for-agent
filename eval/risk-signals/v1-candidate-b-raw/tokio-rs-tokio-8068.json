@@ -1,0 +1,293 @@
+{
+  "candidate": {
+    "id": "tokio-rs-tokio-8068",
+    "repo": "tokio-rs/tokio",
+    "url": "https://github.com/tokio-rs/tokio/pull/8068"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "89713ad1eccdab8c21137a37f996f130d5a8bd31",
+    "body": "refs #8067\r\n",
+    "comments": [
+      {
+        "author": {
+          "login": "alex"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "(Failures on integration tests look to be a GH failure, if someone can retry them.)",
+        "createdAt": "2026-04-18T16:56:19Z",
+        "id": "IC_kwDOBAsbdc7-wnoH",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8068#issuecomment-4274158087",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "mattiapitossi"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> (Failures on integration tests look to be a GH failure, if someone can retry them.)\r\n\r\nLately gh jobs are pretty unstable, I will re-run them",
+        "createdAt": "2026-04-18T17:00:16Z",
+        "id": "IC_kwDOBAsbdc7-wq-A",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/tokio-rs/tokio/pull/8068#issuecomment-4274171776",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "alex"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Thank you!",
+        "createdAt": "2026-04-18T17:00:26Z",
+        "id": "IC_kwDOBAsbdc7-wrDP",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8068#issuecomment-4274172111",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "alex"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Ok, took me a while, but there's now a description of the bug + how this test attempts to replicate it. Let me know if they make sense.",
+        "createdAt": "2026-04-26T21:55:17Z",
+        "id": "IC_kwDOBAsbdc8AAAABAa0UGg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8068#issuecomment-4323087386",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Since this is a racy test that's not guaranteed to catch the issue every time, can you please try pushing the queue sharding code to see if the error triggers in CI as well. This will verify that the perf characteristics of the github instances do not adjust timings so that it does not occur.",
+        "createdAt": "2026-04-27T06:33:13Z",
+        "id": "IC_kwDOBAsbdc8AAAABAcWZcg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8068#issuecomment-4324694386",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "alex"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Ok, cherry-picked the sharded queue on this. Assuming the failures look good, I can then rebase it back off.",
+        "createdAt": "2026-04-27T12:34:52Z",
+        "id": "IC_kwDOBAsbdc8AAAABAei2rg",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8068#issuecomment-4326995630",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Looks good, thanks!",
+        "createdAt": "2026-04-27T15:36:36Z",
+        "id": "IC_kwDOBAsbdc8AAAABAfz1bA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8068#issuecomment-4328322412",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "alex"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Ok, rebased that commit out",
+        "createdAt": "2026-04-28T02:31:58Z",
+        "id": "IC_kwDOBAsbdc8AAAABAjRHxw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8068#issuecomment-4331947975",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 107,
+        "changeType": "ADDED",
+        "deletions": 0,
+        "path": "tokio/tests/rt_spawn_blocking.rs"
+      }
+    ],
+    "headRefName": "regression-test",
+    "headRefOid": "109929f732bb5a4f51743b1c83764d30b06ed146",
+    "labels": [
+      {
+        "color": "f7e101",
+        "description": "Area: The main tokio crate",
+        "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+        "name": "A-tokio"
+      },
+      {
+        "color": "f7b101",
+        "description": "Module: tokio/task/blocking",
+        "id": "MDU6TGFiZWwxOTkzNTQxNTU5",
+        "name": "M-blocking"
+      }
+    ],
+    "mergedAt": "2026-04-28T10:47:49Z",
+    "number": 8068,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "mattiapitossi"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "4d47482e9d85ac37c324e73f7ba7b1e817b52f7e"
+        },
+        "id": "PRR_kwDOBAsbdc72c0g2",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-04-18T16:56:19Z"
+      },
+      {
+        "author": {
+          "login": "hawkw"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "dc7c542551105fea223934dbbb5bcebca2f0eb8e"
+        },
+        "id": "PRR_kwDOBAsbdc72dAnS",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-04-21T20:46:30Z"
+      },
+      {
+        "author": {
+          "login": "alex"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "dc7c542551105fea223934dbbb5bcebca2f0eb8e"
+        },
+        "id": "PRR_kwDOBAsbdc73bYbH",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-04-21T22:45:48Z"
+      },
+      {
+        "author": {
+          "login": "alex"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "dc7c542551105fea223934dbbb5bcebca2f0eb8e"
+        },
+        "id": "PRR_kwDOBAsbdc73bZR9",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-04-21T22:47:00Z"
+      },
+      {
+        "author": {
+          "login": "alex"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "dc7c542551105fea223934dbbb5bcebca2f0eb8e"
+        },
+        "id": "PRR_kwDOBAsbdc73bZ6_",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-04-21T22:47:59Z"
+      },
+      {
+        "author": {
+          "login": "alex"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "dc7c542551105fea223934dbbb5bcebca2f0eb8e"
+        },
+        "id": "PRR_kwDOBAsbdc73baDG",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-04-21T22:48:12Z"
+      },
+      {
+        "author": {
+          "login": "hawkw"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "90fe9863f964ce1bca051d648a28b8f18e049dfd"
+        },
+        "id": "PRR_kwDOBAsbdc73bwW7",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-04-21T23:14:48Z"
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks.",
+        "commit": {
+          "oid": "109929f732bb5a4f51743b1c83764d30b06ed146"
+        },
+        "id": "PRR_kwDOBAsbdc75n6rs",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2026-04-28T10:47:23Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "introduce a regression test for #8056",
+    "url": "https://github.com/tokio-rs/tokio/pull/8068"
+  }
+}

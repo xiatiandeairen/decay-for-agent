@@ -1,0 +1,271 @@
+{
+  "case_id": "serde-rs-json-314",
+  "refs": [
+    {
+      "detail": {
+        "body": "I’m currently trying out the [`pandoc_ast`](https://github.com/oli-obk/pandoc-ast) crate, which contains [a handful of recursive algebraic data types](https://github.com/oli-obk/pandoc-ast/blob/92060b1d3503557376313074cf7bd3033eda8634/src/lib.rs) with the `Serialize` and `Deserialize` traits derived.  When I tried the minimal example below with optimizations on (`--release`), it took a whole minute to compile!\r\n\r\n```rust\r\nextern crate pandoc_ast;\r\nfn main() {\r\n    pandoc_ast::filter(String::new(), |p| p);\r\n}\r\n```\r\n\r\nI cloned the `pandoc_ast` repo and messed around a bit: it seems that the library itself takes practically no time to compile, but if I add a concrete function that instantiates `serde_json::from_str<Pandoc>`, the compile time spikes to 60 seconds or so.  I'm not sure if this is caused by `serde`, `serde_derive`, or `serde_json`.\r\n\r\nFor the smaller nonrecursive enums (e.g. `pandoc_ast::MathType`) with only a few variants, it takes about 2-3 seconds to instantiate.  The larger ones (e.g. `pandoc_ast::Block`, which contains many variants as well as `pandoc_ast::Inline`, which itself contains even more variants) take about 50 sec.\r\n\r\nEnvironment:\r\n\r\n  - rustc 1.19.0-nightly (777ee2079 2017-05-01)\r\n  - Linux 4.10.13\r\n  - incremental compilation was not used\r\n  - `cargo (build|test) --release`",
+        "closedAt": null,
+        "comments": [
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Thanks for reporting this! That is definitely substantially longer than expected. Looks like practically all of that time is spent in LLVM:\r\n\r\n```rust\r\n$ cargo rustc --release -- -Z time-passes\r\n\r\n  time: 1.637; rss: 275MB\ttranslation\r\n  time: 0.000; rss: 275MB\tassert dep graph\r\n  time: 0.000; rss: 275MB\tserialize dep graph\r\n    time: 1.474; rss: 276MB\tllvm function passes [0]\r\n    time: 52.386; rss: 317MB\tllvm module passes [0]\r\n    time: 8.498; rss: 318MB\tcodegen passes [0]\r\n    time: 0.001; rss: 318MB\tcodegen passes [0]\r\n  time: 62.364; rss: 318MB\tLLVM passes\r\n  time: 0.000; rss: 318MB\tserialize work products\r\n    time: 0.247; rss: 170MB\trunning linker\r\n  time: 0.248; rss: 170MB\tlinking\r\n      Finished release [optimized] target(s) in 64.62 secs\r\n```\r\n\r\nI will try to narrow down whether a specific pattern on our end is triggering slow behavior.",
+            "createdAt": "2017-05-03T00:39:19Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI5ODc5OTAxOQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/313#issuecomment-298799019",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "On my computer the compile time behaves extremely predictably. It is uniformly 2.6 seconds per Deserialize impl that is instantiated. I was able to predict compile time to +/-0.1 seconds as I added and removed types in the AST. Nothing else matters—number of variants, recursive ADTs, size of types, etc.\r\n\r\nI think this is the same root cause as https://github.com/serde-rs/serde/issues/286. There is no inherent reason it needs to be slow, we just need to work through and eliminate the unnecessary instantiations listed in https://github.com/serde-rs/serde/issues/286#issuecomment-279325284.",
+            "createdAt": "2017-05-03T01:33:56Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI5ODgwNDk0OQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/313#issuecomment-298804949",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Here are the size (first column) and count (second column) of instantiations resulting from the following line.\r\n\r\n```rust\r\nlet _ = serde_json::from_str::<Pandoc>(\"\");\r\n```\r\n\r\n#### Release mode\r\n\r\n```\r\n  356849   39  <serde::private::de::content::ContentDeserializer<E> as serde::de::Deserializer<'de>>::deserialize_any\r\n  160228   27  <serde_json::de::Deserializer<R>>::parse_value\r\n   56303   12  <core::marker::PhantomData<T> as serde::de::DeserializeSeed<'de>>::deserialize\r\n   44933    2  <testing::_IMPL_DESERIALIZE_FOR_Inline::<impl serde::de::Deserialize<'de> for testing::Inline>::deserialize::__Seed<'de> as serde::de::DeserializeSeed<'de>>::deserialize\r\n   42779    7  <&'a mut A as serde::de::SeqAccess<'de>>::next_element\r\n   34129    2  <serde::de::impls::TupleVisitor3<T0, T1, T2> as serde::de::Visitor<'de>>::visit_seq\r\n   34097    5  <serde::private::de::content::ContentDeserializer<E> as serde::de::Deserializer<'de>>::deserialize_tuple\r\n   27098   65  <serde_json::de::Deserializer<R>>::parse_integer\r\n   25895    2  <testing::_IMPL_DESERIALIZE_FOR_Block::<impl serde::de::Deserialize<'de> for testing::Block>::deserialize::__Seed<'de> as serde::de::DeserializeSeed<'de>>::deserialize\r\n   20787    2  <testing::_IMPL_DESERIALIZE_FOR_Citation::<impl serde::de::Deserialize<'de> for testing::Citation>::deserialize::__Visitor<'de> as serde::de::Visitor<'de>>::visit_map\r\n   20175    1  <<testing::_IMPL_DESERIALIZE_FOR_Block::<impl serde::de::Deserialize<'de> for testing::Block>::deserialize::__Seed<'de> as serde::de::DeserializeSeed<'de>>::deserialize::__Visitor<'de> as serde::de::Visitor<'de>>::visit_seq\r\n   19642   65  <serde_json::de::Deserializer<R>>::parse_exponent\r\n   18695   59  <serde_json::de::Deserializer<R>>::parse_number\r\n   17630   65  <serde_json::de::Deserializer<R>>::parse_decimal\r\n   17287   65  <serde_json::de::Deserializer<R>>::parse_exponent_overflow\r\n   16642   61  <serde_json::de::Deserializer<R>>::visit_f64_from_parts\r\n```\r\n\r\n#### Debug mode\r\n\r\n```\r\n  365748   65  <serde_json::de::Deserializer<R>>::parse_value\r\n  340968   75  <serde::private::de::content::ContentDeserializer<E> as serde::de::Deserializer<'de>>::deserialize_any\r\n  132646   65  <serde_json::de::Deserializer<R>>::parse_integer\r\n  129274   65  <serde_json::de::Deserializer<R>>::parse_exponent\r\n  125120   65  <serde_json::de::Deserializer<R>>::parse_decimal\r\n   54869   65  <serde_json::de::Deserializer<R>>::visit_f64_from_parts\r\n   53625   65  <serde_json::de::Deserializer<R>>::parse_number\r\n   51207   38  <serde_json::de::SeqAccess<'a, R> as serde::de::SeqAccess<'de>>::next_element_seed\r\n   50035   79  <core::option::Option<T>>::map\r\n   49701   65  <serde_json::de::Deserializer<R>>::parse_long_integer\r\n   48402   65  <serde_json::de::Deserializer<R>>::parse_exponent_overflow\r\n   40370   82  <core::result::Result<T, E>>::map\r\n   36836   16  <<testing::_IMPL_DESERIALIZE_FOR_Inline::<impl serde::de::Deserialize<'de> for testing::Inline>::deserialize::__Seed<'de> as serde::de::DeserializeSeed<'de>>::deserialize::__Visitor<'de> as serde::de::Visitor<'de>>::visit_seq\r\n   35970   12  <serde::private::de::content::TaggedContentVisitor<T> as serde::de::Visitor<'de>>::visit_map\r\n   35250   75  <serde::de::value::MapDeserializer<'de, I, E>>::end\r\n   31802   12  <<testing::_IMPL_DESERIALIZE_FOR_Block::<impl serde::de::Deserialize<'de> for testing::Block>::deserialize::__Seed<'de> as serde::de::DeserializeSeed<'de>>::deserialize::__Visitor<'de> as serde::de::Visitor<'de>>::visit_seq\r\n```\r\n\r\n@Rufflewind would you be interested in helping us eliminate these? The number parsing code (parse_integer, parse_decimal, etc) are probably the easiest place to get started and would be super impactful. Those functions are all generic on the Visitor but do nothing with the Visitor until the number is fully parsed - so all of that should be factored out into a helper that can be instantiated once.",
+            "createdAt": "2017-05-03T01:51:03Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI5ODgwNjYyMw==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/313#issuecomment-298806623",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Rufflewind"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Here’s an attempt: #314\r\n\r\nI started off with the easiest cases where the visitor method being called is unconditionally known.\r\n\r\nHere’s the call graph of the original code for reference.  (Hopefully I didn’t miss anything?)\r\n\r\n![graph](https://cloud.githubusercontent.com/assets/6571068/25650181/39cd037a-2fa9-11e7-90d8-6cf964645f95.gif)\r\n",
+            "createdAt": "2017-05-03T06:36:55Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI5ODgzMzMyNA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/313#issuecomment-298833324",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "The next avenue I would look at would be reducing instantiation of Visitor methods. Currently in serde_json if you have a Deserialize impl that calls deserialize_struct, it gets forwarded to deserialize_any which means it instantiates every possible method on the Visitor. We know that structs can only be deserialized successfully from map and seq, so only those should need to be instantiated. And similar deal for almost all of the other Deserializer methods. We need to implement them explicitly in serde_json rather than forwarding, and have them instantiate only the relevant Visitor methods.\r\n\r\nIt doesn't show up in the symbol profile above because each individual method of each individual visitor is instantiated only once, but there are *so many of them* that I expect it adds up.",
+            "createdAt": "2017-05-03T16:45:34Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI5ODk2ODIxNg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/313#issuecomment-298968216",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Rufflewind"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Assuming I understood correctly, I tried to add a specialization called `parse_aggregate` which only calls `visit_{seq,map}` (see patch below).  However, I didn’t notice any performance changes with this change (neither time nor memory usage).\r\n\r\n<details>\r\n\r\n```diff\r\n--- src/de.rs\r\n+++ src/de.rs\r\n@@ -174,6 +174,32 @@ impl<'de, R: Read<'de>> Deserializer<R> {\r\n         }\r\n     }\r\n \r\n+    fn parse_aggregate<V>(&mut self, visitor: V) -> Result<V::Value>\r\n+    where\r\n+        V: de::Visitor<'de>,\r\n+    {\r\n+        let value = self.parse_aggregate_inner(visitor);\r\n+        match value {\r\n+            Ok(value) => Ok(value),\r\n+            Err(err) => Err(self.fix_error(err)),\r\n+        }\r\n+    }\r\n+\r\n+    fn parse_aggregate_inner<V>(&mut self, visitor: V) -> Result<V::Value>\r\n+    where\r\n+        V: de::Visitor<'de>,\r\n+    {\r\n+        let agg = match try!(self.parse_value_begin()) {\r\n+            Value::Aggregate(agg) => agg,\r\n+            _ => return Err(self.error(ErrorCode::ExpectedSomeValue)),\r\n+        };\r\n+        let ret = match agg {\r\n+            Aggregate::Seq => visitor.visit_seq(SeqAccess::new(self)),\r\n+            Aggregate::Map => visitor.visit_map(MapAccess::new(self)),\r\n+        };\r\n+        self.parse_value_end(agg, ret)\r\n+    }\r\n+\r\n     fn parse_value<V>(&mut self, visitor: V) -> Result<V::Value>\r\n     where\r\n         V: de::Visitor<'de>,\r\n@@ -780,9 +806,22 @@ impl<'de, 'a, R: Read<'de>> de::Deserializer<'de> for &'a mut Deserializer<R> {\r\n         self.deserialize_bytes(visitor)\r\n     }\r\n \r\n+    #[inline]\r\n+    fn deserialize_struct<V>(\r\n+        self,\r\n+        name: &'static str,\r\n+        fields: &'static [&'static str],\r\n+        visitor: V\r\n+    ) -> Result<V::Value>\r\n+    where\r\n+        V: de::Visitor<'de>,\r\n+    {\r\n+        self.parse_aggregate(visitor)\r\n+    }\r\n+\r\n     forward_to_deserialize_any! {\r\n         bool i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 char str string unit\r\n-        unit_struct seq tuple tuple_struct map struct identifier ignored_any\r\n+        unit_struct seq tuple tuple_struct map identifier ignored_any\r\n     }\r\n }\r\n \r\n```\r\n\r\n</details>",
+            "createdAt": "2017-05-05T04:13:26Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI5OTM2NTg2OA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/313#issuecomment-299365868",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Arzte"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Any update on what’s needed to solve this? Willing to help however needed, as this currently effects my workflow.",
+            "createdAt": "2017-11-23T00:15:45Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM0NjUwNjYwOQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/313#issuecomment-346506609",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Practically all the time is spent in LLVM passes, so we just need to find a way to make less work for LLVM. I made a little tool [`cargo llvm-lines`](https://github.com/dtolnay/cargo-llvm-lines) to add up the number of lines of LLVM IR by function. I don't know whether this is the best way to prioritize what needs to be fixed, but it should get us started. Here is what it has to say about the [`json-benchmark`](https://github.com/serde-rs/json-benchmark) repo.\r\n\r\nThe first column is the total number of lines of LLVM IR, the second column is the number of copies of the function that were instantiated with different generic parameters. @Coding-Doctors maybe try this on your codebase and tackle whatever is resulting in the most IR.\r\n\r\n```\r\n$ cargo llvm-lines --bin json-benchmark --no-default-features --features parse-struct,stringify-struct,all-files,lib-serde | head -30\r\n\r\n 102456   84  <serde_json::de::Deserializer<R>>::parse_value\r\n  24834   63  <serde_json::de::SeqAccess<'a, R> as serde::de::SeqAccess<'de>>::next_element_seed\r\n  10044   54  <serde_json::ser::Compound<'a, W, F> as serde::ser::SerializeMap>::serialize_value\r\n   8718   26  <serde_json::de::MapAccess<'a, R> as serde::de::MapAccess<'de>>::next_key_seed\r\n   8029    1  <json_benchmark::copy::twitter::_IMPL_DESERIALIZE_FOR_User::<impl serde::de::Deserialize<'de> for json_benchmark::copy::twitter::User>::deserialize::__Visitor<'de> as serde::de::Visitor<'de>>::visit_map\r\n   7728   84  serde_json::error::Error::fix_position\r\n   7462  395  core::ptr::drop_in_place\r\n   6597   59  <core::result::Result<T, E>>::map\r\n   5205    1  <json_benchmark::copy::twitter::_IMPL_DESERIALIZE_FOR_User::<impl serde::de::Deserialize<'de> for json_benchmark::copy::twitter::User>::deserialize::__Visitor<'de> as serde::de::Visitor<'de>>::visit_seq\r\n   4839    1  <json_benchmark::copy::twitter::_IMPL_DESERIALIZE_FOR_Status::<impl serde::de::Deserialize<'de> for json_benchmark::copy::twitter::Status>::deserialize::__Visitor<'de> as serde::de::Visitor<'de>>::visit_map\r\n   4574   52  <serde_json::de::MapAccess<'a, R> as serde::de::MapAccess<'de>>::next_value_seed\r\n   4131   51  <serde_json::ser::Compound<'a, W, F> as serde::ser::SerializeStruct>::serialize_field\r\n   3807   13  serde::ser::Serializer::collect_seq\r\n   3399   83  serde::de::Visitor::visit_bool\r\n   3389    1  <json_benchmark::copy::citm_catalog::_IMPL_DESERIALIZE_FOR_CitmCatalog::<impl serde::de::Deserialize<'de> for json_benchmark::copy::citm_catalog::CitmCatalog>::deserialize::__Visitor<'de> as serde::de::Visitor<'de>>::visit_map\r\n   3286   84  serde_json::de::Number::visit\r\n   3185    1  <json_benchmark::copy::twitter::_IMPL_DESERIALIZE_FOR_Status::<impl serde::de::Deserialize<'de> for json_benchmark::copy::twitter::Status>::deserialize::__Visitor<'de> as serde::de::Visitor<'de>>::visit_seq\r\n   3150   83  serde::de::Visitor::visit_f64\r\n   3092   17  <alloc::raw_vec::RawVec<T, A>>::double\r\n   2960   78  serde::de::Visitor::visit_i64\r\n   2910   15  <serde_json::ser::Compound<'a, W, F> as serde::ser::SerializeSeq>::serialize_element\r\n   2895    1  <json_benchmark::copy::twitter::_IMPL_DESERIALIZE_FOR_Media::<impl serde::de::Deserialize<'de> for json_benchmark::copy::twitter::Media>::deserialize::__Visitor<'de> as serde::de::Visitor<'de>>::visit_map\r\n   2654   83  serde::de::Visitor::visit_unit\r\n   2636   13  <serde::de::impls::<impl serde::de::Deserialize<'de> for alloc::vec::Vec<T>>::deserialize::SeqVisitor<T> as serde::de::Visitor<'de>>::visit_seq\r\n   2627   29  <core::option::Option<T>>::map\r\n   2440   52  serde::de::Visitor::visit_str\r\n   2348   56  serde::de::Visitor::visit_map\r\n   2072    1  <json_benchmark::copy::citm_catalog::_IMPL_DESERIALIZE_FOR_CitmCatalog::<impl serde::de::Deserialize<'de> for json_benchmark::copy::citm_catalog::CitmCatalog>::deserialize::__Visitor<'de> as serde::de::Visitor<'de>>::visit_seq\r\n   2048   54  serde::de::Visitor::visit_u64\r\n   1969    1  json_benchmark::copy::twitter::_IMPL_SERIALIZE_FOR_User::<impl serde::ser::Serialize for json_benchmark::copy::twitter::User>::serialize\r\n```",
+            "createdAt": "2017-11-30T08:45:07Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM0ODEyMDc1Mw==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/serde-rs/json/issues/313#issuecomment-348120753",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "oli-obk"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Have you checked whether building with mir optimizations makes a difference? They run on generic code, instead of on the monomorphized versions",
+            "createdAt": "2017-11-30T08:58:31Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM0ODEyMzgwNg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/313#issuecomment-348123806",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Good idea! I tried on rustc 1.24.0-nightly (0a2e9ade8 2017-11-29):\r\n\r\n```\r\ncargo rustc ... -- -Zmir-opt-level=3\r\n```\r\n\r\nwith MIR opt level 3 and 4, with and without `--release`, and it did not seem to help.",
+            "createdAt": "2017-11-30T09:22:44Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM0ODEyOTc3Ng==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/313#issuecomment-348129776",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "@oli-obk suggested in IRC looking at the generated MIR and filing suggestions for MIR optimizations that could have an impact.\r\n\r\n```\r\ncargo rustc ... -- --emit=mir\r\n```\r\n\r\n(then look in `target/release/deps/my_crate-111111hash111111.mir`)",
+            "createdAt": "2017-11-30T09:22:53Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM0ODEyOTgxMA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/313#issuecomment-348129810",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "I found a 20% improvement in #388.",
+            "createdAt": "2017-12-04T00:35:38Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM0ODgzMzc0NQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/313#issuecomment-348833745",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "#389 was another 30% improvement.",
+            "createdAt": "2017-12-04T06:11:09Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM0ODg2OTA5OQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "HOORAY",
+                "users": {
+                  "totalCount": 5
+                }
+              }
+            ],
+            "url": "https://github.com/serde-rs/json/issues/313#issuecomment-348869099",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Marwes"
+            },
+            "authorAssociation": "NONE",
+            "body": "I tried factoring out the non-visitor parts of https://github.com/serde-rs/json/blob/92ddbdf493f338eead7d2632f72deeec2f94776d/src/de.rs#L1480-L1511 and https://github.com/serde-rs/json/blob/92ddbdf493f338eead7d2632f72deeec2f94776d/src/de.rs#L1430-L1459 but did not see any improvements.",
+            "createdAt": "2017-12-04T18:03:59Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM0OTA0OTYyNg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/313#issuecomment-349049626",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Thanks @Marwes. I tried those as well and saw the same thing. It would be worth looking into *why* that does not result in an improvement, as it is a fairly large chunk of logic that is instantiated quite a lot. Understanding why the current implementations compile fast or the refactored implementations compile slow would help prioritize what to look at next.",
+            "createdAt": "2017-12-04T18:11:37Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM0OTA1MTk3Mg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/313#issuecomment-349051972",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2017-05-02T23:24:27Z",
+        "labels": [
+          {
+            "color": "84b6eb",
+            "description": "",
+            "id": "MDU6TGFiZWwzNzc1NTA4MDA=",
+            "name": "performance"
+          }
+        ],
+        "number": 313,
+        "state": "OPEN",
+        "title": "Serialize/Deserialize implementations are very slow to compile",
+        "url": "https://github.com/serde-rs/json/issues/313"
+      },
+      "target": {
+        "number": 313,
+        "reason": "Number parser compile-size/performance context.",
+        "repo": "serde-rs/json",
+        "type": "issue"
+      }
+    }
+  ]
+}

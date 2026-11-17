@@ -1,0 +1,3 @@
+M	src/client/client.rs
+M	tests/integration.rs
+M	tests/support/mod.rs

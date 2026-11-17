@@ -1,0 +1,182 @@
+{
+  "candidate": {
+    "id": "hyperium-hyper-1159",
+    "repo": "hyperium/hyper",
+    "url": "https://github.com/hyperium/hyper/pull/1159"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "34323962de16d82ce6d2f559e9ec7c3550e30634",
+    "body": "In the spirit of Postel's law, ignore invalid cookies rather than\r\ncompletely discard the entire Cookie header, which is what the current\r\ncode does, and which will lead to confusion when dealing with headers\r\nwith invalid cookies injected by proxies and intermediate apps servers.\r\n\r\nCookies are injected at multiple different layers between the browser and the end server, proxies, load balancers, security appliances, A/B testing appliances, etc... some of them inject invalid cookies, it's fine to discard those, but in I'm opinion it is wrong to discard every cookie because one field is bad. The separation of cookies between semi-colon makes it easy enough to cleanly separate cookies, ignore the invalid ones, and keep the good ones.\r\n\r\n- [X] The commit messages match the guidelines in https://github.com/hyperium/hyper/blob/master/CONTRIBUTING.md#git-commit-guidelines\r\n",
+    "comments": [
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Hm, I can look later, but I'm curious what other libraries do. I'd probably want to keep to whatever others do: either drop the whole thing on the floor, or accept all valid cookies.",
+        "createdAt": "2017-04-30T05:32:28Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5ODIxMjU1Mw==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/1159#issuecomment-298212553",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "dorfsmay"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Three different results out of three direfferent libraries so far!\r\n\r\nhttps://github.com/dorfsmay/Invalid_cookies_in_Cookie_header\r\n\r\nThinking more about this, if ignoring bad cookies while accepting good ones from a given header is not acceptable by virtue of being rigorous with our inputs, shouldn't we return an http 400 or 422 then? If we're being rigorous to the extreme, isn't discarding the entire header as bad as just ignore what we assume are bad cookies?\r\n\r\nAgain, genuinely interested, not trying to push my opinions/PR here.",
+        "createdAt": "2017-04-30T19:42:03Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5ODI1MjM0MQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/1159#issuecomment-298252341",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "I'm thinking that rejecting the request outright should be up to the user of hyper. They can optionally compare `headers.get_raw` and `headers.get` if they want to be sure it parses entirely.\r\n\r\nLooking at your linked document (which is awesome, by the way!), I'm kind of scared at how some libraries just accept broken cookies as if they were legit. In reality, though, any application that is used cookies for security purposes should be signing and encrypting them, or they're doomed anyways.\r\n\r\nIt looks like hyper should:\r\n\r\n- Be lenient about a trailing `;`\r\n- Either drop the whole header on parse errors, or drop the current `;` section. I'm not certain which is better, still.",
+        "createdAt": "2017-05-02T01:38:22Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5ODQ3NjQ0NQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/1159#issuecomment-298476445",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "dorfsmay"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Yes, very interesting how different libraries behaves fundamentally differently. Sadly, [RFC6265](https://tools.ietf.org/html/rfc6265), leaves a lot of space for interpretation...\r\n\r\nOne thing I found out since I have started this document is that it seems that in the early days of the web sites used singular cookie without name, so a simple string without equal sign was interpreted as a value, which Django still supports. I'm surprised by golang behaviour given Google inc involvement in that language and their prominent presence on the web, they use strings with missing equal sign as a name. I'm wondering if this is due to a naive parsing with no consideration for this case, or the result of a conscious choice.\r\n\r\nAs far as current support for hyper, my thoughts are:\r\n* I agree with being lenient with the trailing semi-colon. I am yet to see a server which does not.\r\n* discarding all cookies because some of them are invalid seems like an optimization gone bad, especially given how cookies can be injected by third parties. Let say your session starts failing, silently, because of this, how do you debug this‽\r\n* I understand how discarding bad cookies only and keeping the good ones could be considered an optimization, or an interpretation, which, although I think is the right thing to do, could lead to unforeseen  consequences, but, should I system rely on invalid cookies (or anything) to start with? Again considering how cookies are regularly inject by third parties, which can sometime be difficult, or even impossible to fix, I think this not doing this would be unfair to  a client and a server with are using the right format. This is how \"express\" and \"ring\", two widely used libraries are doing it.\r\n* Please note how \"hapi\" (a javascript framework used by some large companies) behaves: It has a very strict interpretation of the RFC, and returns http 400 on anything not following the RFC, including a space between the value and the semi-colon! Although I think this is too strict, I think if good cookies are going to be discarded because of bad ones present, this is how it should be done, a clear failure that forces the issue to be dealt with.\r\n\r\nA compromise?\r\nWhat about having one behaviour by default and an option for the other one. For example, discard bad cookies and keep the good one by default, but have a \"strict_rfc_6265 option returning http 400 on malformed Cookie header. If anything, having that option in the docs will highlight the fact that this can be an issue.",
+        "createdAt": "2017-05-04T10:15:15Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5OTE0NjI2NQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/1159#issuecomment-299146265",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "It would seem the behavior from Go is just treating a `cookie-string` as a list of `cookie-av; * (cookie-av)` from the `Set-Cookie` behavior. That is what allows `Set-Cookie: foo=bar; HttpOnly`. Understanding that, I am warming up to that way, actually.\r\n\r\nAs for application behavior, I don't think hyper should try to be like Hapi. Hapi is a large server framework, trying to do a lot of things for you automatically. hyper should just give the user the information, and let them decide how to react. (Besides, since typed headers are parsed lazily, the time the typed `Cookie` would know of invalid strings is once the user tries to access it, and generation of the `Response` is entirely in their hands.)",
+        "createdAt": "2017-05-04T23:57:14Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5OTM0MDY4NQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/1159#issuecomment-299340685",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "dorfsmay"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "I don't understand the concern about being able to parse a Set-Cookie header when receiving a Cookie header... Regardless, this would be a much better option than the current behaviour (accepting the request but discard the entire Cookie header).",
+        "createdAt": "2017-05-08T13:21:47Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5OTg2NTAxMg==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/1159#issuecomment-299865012",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "I think I've found in discussing this that the exact behavior isn't all that important to me. As long as it is documented, and not **wrong**, any of the options seem fine to me. Anyone who wants a different behavior can create their own type and implement `Header`.",
+        "createdAt": "2017-05-08T17:15:32Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5OTkzMDE4OQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/1159#issuecomment-299930189",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "dorfsmay"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Do you consider the behaviour from this PR, discarding all the invalid invalid cookies and keep all the valid cookies, wrong?\r\n\r\nIs it worth that I add/change the documentation to reflect this behaviour?\r\n",
+        "createdAt": "2017-05-08T20:06:51Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5OTk3NTY4OA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/1159#issuecomment-299975688",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "No, by wrong I meant that if the parsing were too permissive to the point that a value were to contain other name-values. The behavior in this PR could work.",
+        "createdAt": "2017-05-08T20:39:12Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5OTk4NDA0Mg==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/1159#issuecomment-299984042",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks for this!",
+        "createdAt": "2017-05-09T05:47:00Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDMwMDA2NzM2Mg==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/1159#issuecomment-300067362",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 38,
+        "changeType": "MODIFIED",
+        "deletions": 12,
+        "path": "src/header/common/cookie.rs"
+      }
+    ],
+    "headRefName": "ignore_invalid_cookies",
+    "headRefOid": "310d98d50b929b8bde898cbb1137df95da5e0840",
+    "labels": [],
+    "mergedAt": "2017-05-09T05:46:52Z",
+    "number": 1159,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "Ignore invalid cookies",
+    "url": "https://github.com/hyperium/hyper/pull/1159"
+  }
+}

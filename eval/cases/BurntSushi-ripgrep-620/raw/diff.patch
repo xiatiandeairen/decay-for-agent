@@ -1,0 +1,369 @@
+diff --git a/src/search_stream.rs b/src/search_stream.rs
+index e558c2d..b2b49d2 100644
+--- a/src/search_stream.rs
++++ b/src/search_stream.rs
+@@ -222,160 +222,169 @@ impl<'a, R: io::Read, W: WriteColor> Searcher<'a, R, W> {
+         self.opts.invert_match = yes;
+         self
+     }
+ 
+     /// If enabled, compute line numbers and prefix each line of output with
+     /// them.
+     pub fn line_number(mut self, yes: bool) -> Self {
+         self.opts.line_number = yes;
+         self
+     }
+ 
+     /// Limit the number of matches to the given count.
+     ///
+     /// The default is None, which corresponds to no limit.
+     pub fn max_count(mut self, count: Option<u64>) -> Self {
+         self.opts.max_count = count;
+         self
+     }
+ 
+     /// If enabled, don't show any output and quit searching after the first
+     /// match is found.
+     pub fn quiet(mut self, yes: bool) -> Self {
+         self.opts.quiet = yes;
+         self
+     }
+ 
+     /// If enabled, search binary files as if they were text.
+     pub fn text(mut self, yes: bool) -> Self {
+         self.opts.text = yes;
+         self.inp.text(yes);
+         self
+     }
+ 
+     /// Execute the search. Results are written to the printer and the total
+     /// number of matches is returned.
+     #[inline(never)]
+     pub fn run(mut self) -> Result<u64, Error> {
+         self.inp.reset();
+         self.match_count = 0;
+         self.line_count = if self.opts.line_number { Some(0) } else { None };
+         self.last_match = Match::default();
+         self.after_context_remaining = 0;
+         while !self.terminate() {
+             let upto = self.inp.lastnl;
+             self.print_after_context(upto);
+             if !try!(self.fill()) {
+                 break;
+             }
+             while !self.terminate() && self.inp.pos < self.inp.lastnl {
+                 let matched = self.grep.read_match(
+                     &mut self.last_match,
+                     &self.inp.buf[..self.inp.lastnl],
+                     self.inp.pos);
+                 if self.opts.invert_match {
+                     let upto =
+                         if matched {
+                             self.last_match.start()
+                         } else {
+                             self.inp.lastnl
+                         };
+                     if upto > self.inp.pos {
+                         let upto_context = self.inp.pos;
+                         self.print_after_context(upto_context);
+                         self.print_before_context(upto_context);
+                         self.print_inverted_matches(upto);
+                     }
+                 } else if matched {
+                     let start = self.last_match.start();
+                     let end = self.last_match.end();
+                     self.print_after_context(start);
+                     self.print_before_context(start);
+                     self.print_match(start, end);
+                 }
+                 if matched {
+                     self.inp.pos = self.last_match.end();
+                 } else {
+                     self.inp.pos = self.inp.lastnl;
+                 }
+             }
+         }
++        if self.after_context_remaining > 0 {
++            if self.last_printed == self.inp.lastnl {
++                try!(self.fill());
++            }
++            let upto = self.inp.lastnl;
++            if upto > 0 {
++                self.print_after_context(upto);
++            }
++        }
+         if self.match_count > 0 {
+             if self.opts.count {
+                 self.printer.path_count(self.path, self.match_count);
+             } else if self.opts.files_with_matches {
+                 self.printer.path(self.path);
+             }
+         } else if self.opts.files_without_matches {
+             self.printer.path(self.path);
+         }
+         Ok(self.match_count)
+     }
+ 
+     #[inline(always)]
+     fn terminate(&self) -> bool {
+         self.opts.terminate(self.match_count)
+     }
+ 
+     #[inline(always)]
+     fn fill(&mut self) -> Result<bool, Error> {
+         let mut keep = self.inp.lastnl;
+         if self.opts.before_context > 0 || self.opts.after_context > 0 {
+             let lines = 1 + cmp::max(
+                 self.opts.before_context, self.opts.after_context);
+             keep = start_of_previous_lines(
+                 self.opts.eol,
+                 &self.inp.buf,
+                 self.inp.lastnl.saturating_sub(1),
+                 lines);
+         }
+         if keep < self.last_printed {
+             self.last_printed -= keep;
+         } else {
+             self.last_printed = 0;
+         }
+         if keep <= self.last_line {
+             self.last_line -= keep;
+         } else {
+             self.count_lines(keep);
+             self.last_line = 0;
+         }
+         let ok = try!(self.inp.fill(&mut self.haystack, keep).map_err(|err| {
+             Error::from_io(err, &self.path)
+         }));
+         Ok(ok)
+     }
+ 
+     #[inline(always)]
+     fn print_inverted_matches(&mut self, upto: usize) {
+         debug_assert!(self.opts.invert_match);
+         let mut it = IterLines::new(self.opts.eol, self.inp.pos);
+         while let Some((start, end)) = it.next(&self.inp.buf[..upto]) {
+             if self.terminate() {
+                 return;
+             }
+             self.print_match(start, end);
+             self.inp.pos = end;
+         }
+     }
+ 
+     #[inline(always)]
+     fn print_before_context(&mut self, upto: usize) {
+         if self.opts.skip_matches() || self.opts.before_context == 0 {
+             return;
+         }
+         let start = self.last_printed;
+         let end = upto;
+         if start >= end {
+             return;
+         }
+         let before_context_start =
+             start + start_of_previous_lines(
+                 self.opts.eol,
+                 &self.inp.buf[start..],
+                 end - start - 1,
+                 self.opts.before_context);
+         let mut it = IterLines::new(self.opts.eol, before_context_start);
+         while let Some((s, e)) = it.next(&self.inp.buf[..end]) {
+             self.print_separator(s);
+             self.print_context(s, e);
+         }
+@@ -1170,160 +1179,194 @@ fn main() {
+ /baz.rs:9:    // Wrap the stdin reader in a Snappy reader.
+ /baz.rs:10:    let mut rdr = snap::Reader::new(stdin.lock());
+ ");
+     }
+ 
+     #[test]
+     fn before_context_two5() {
+         let (count, out) = search("stdout", CODE, |s| {
+             s.line_number(true).before_context(2)
+         });
+         assert_eq!(2, count);
+         assert_eq!(out, "\
+ /baz.rs-5-fn main() {
+ /baz.rs-6-    let stdin = io::stdin();
+ /baz.rs:7:    let stdout = io::stdout();
+ --
+ /baz.rs-9-    // Wrap the stdin reader in a Snappy reader.
+ /baz.rs-10-    let mut rdr = snap::Reader::new(stdin.lock());
+ /baz.rs:11:    let mut wtr = stdout.lock();
+ ");
+     }
+ 
+     #[test]
+     fn before_context_three1() {
+         let (count, out) = search_smallcap("Sherlock", SHERLOCK, |s| {
+                 s.line_number(true).before_context(3)
+             });
+         assert_eq!(2, count);
+         assert_eq!(out, "\
+ /baz.rs:1:For the Doctor Watsons of this world, as opposed to the Sherlock
+ /baz.rs-2-Holmeses, success in the province of detective work must always
+ /baz.rs:3:be, to a very large extent, the result of luck. Sherlock Holmes
+ ");
+     }
+ 
+     #[test]
+     fn after_context_one1() {
+         let (count, out) = search_smallcap("Sherlock", SHERLOCK, |s| {
+             s.line_number(true).after_context(1)
+         });
+         assert_eq!(2, count);
+         assert_eq!(out, "\
+ /baz.rs:1:For the Doctor Watsons of this world, as opposed to the Sherlock
+ /baz.rs-2-Holmeses, success in the province of detective work must always
+ /baz.rs:3:be, to a very large extent, the result of luck. Sherlock Holmes
+ /baz.rs-4-can extract a clew from a wisp of straw or a flake of cigar ash;
+ ");
+     }
+ 
+     #[test]
+     fn after_context_invert_one1() {
+         let (count, out) = search_smallcap("Sherlock", SHERLOCK, |s| {
+             s.line_number(true).after_context(1).invert_match(true)
+         });
+         assert_eq!(4, count);
+         assert_eq!(out, "\
+ /baz.rs:2:Holmeses, success in the province of detective work must always
+ /baz.rs-3-be, to a very large extent, the result of luck. Sherlock Holmes
+ /baz.rs:4:can extract a clew from a wisp of straw or a flake of cigar ash;
+ /baz.rs:5:but Doctor Watson has to have it taken out for him and dusted,
+ /baz.rs:6:and exhibited clearly, with a label attached.
+ ");
+     }
+ 
+     #[test]
+     fn after_context_invert_one2() {
+         let (count, out) = search_smallcap(" a ", SHERLOCK, |s| {
+             s.line_number(true).after_context(1).invert_match(true)
+         });
+         assert_eq!(3, count);
+         assert_eq!(out, "\
+ /baz.rs:1:For the Doctor Watsons of this world, as opposed to the Sherlock
+ /baz.rs:2:Holmeses, success in the province of detective work must always
+ /baz.rs-3-be, to a very large extent, the result of luck. Sherlock Holmes
+ --
+ /baz.rs:5:but Doctor Watson has to have it taken out for him and dusted,
+ /baz.rs-6-and exhibited clearly, with a label attached.
+ ");
+     }
+ 
++    #[test]
++    fn after_context_invert_one_max_count_two() {
++        let (count, out) = search_smallcap("Sherlock", SHERLOCK, |s| {
++            s.line_number(true)
++             .invert_match(true)
++             .after_context(1)
++             .max_count(Some(2))
++        });
++        assert_eq!(2, count);
++        assert_eq!(out, "\
++/baz.rs:2:Holmeses, success in the province of detective work must always
++/baz.rs-3-be, to a very large extent, the result of luck. Sherlock Holmes
++/baz.rs:4:can extract a clew from a wisp of straw or a flake of cigar ash;
++/baz.rs-5-but Doctor Watson has to have it taken out for him and dusted,
++");
++    }
++
+     #[test]
+     fn after_context_two1() {
+         let (count, out) = search_smallcap("Sherlock", SHERLOCK, |s| {
+             s.line_number(true).after_context(2)
+         });
+         assert_eq!(2, count);
+         assert_eq!(out, "\
+ /baz.rs:1:For the Doctor Watsons of this world, as opposed to the Sherlock
+ /baz.rs-2-Holmeses, success in the province of detective work must always
+ /baz.rs:3:be, to a very large extent, the result of luck. Sherlock Holmes
+ /baz.rs-4-can extract a clew from a wisp of straw or a flake of cigar ash;
+ /baz.rs-5-but Doctor Watson has to have it taken out for him and dusted,
+ ");
+     }
+ 
+     #[test]
+     fn after_context_two2() {
+         let (count, out) = search_smallcap("dusted", SHERLOCK, |s| {
+             s.line_number(true).after_context(2)
+         });
+         assert_eq!(1, count);
+         assert_eq!(out, "\
+ /baz.rs:5:but Doctor Watson has to have it taken out for him and dusted,
+ /baz.rs-6-and exhibited clearly, with a label attached.
+ ");
+     }
+ 
+     #[test]
+     fn after_context_two3() {
+         let (count, out) = search_smallcap(
+             "success|attached", SHERLOCK, |s| {
+                 s.line_number(true).after_context(2)
+             });
+         assert_eq!(2, count);
+         assert_eq!(out, "\
+ /baz.rs:2:Holmeses, success in the province of detective work must always
+ /baz.rs-3-be, to a very large extent, the result of luck. Sherlock Holmes
+ /baz.rs-4-can extract a clew from a wisp of straw or a flake of cigar ash;
+ --
+ /baz.rs:6:and exhibited clearly, with a label attached.
+ ");
+     }
+ 
++    #[test]
++    fn after_context_two_max_count_two() {
++        let (count, out) = search_smallcap(
++            "Doctor", SHERLOCK, |s| {
++                s.line_number(true).after_context(2).max_count(Some(2))
++            });
++        assert_eq!(2, count);
++        assert_eq!(out, "\
++/baz.rs:1:For the Doctor Watsons of this world, as opposed to the Sherlock
++/baz.rs-2-Holmeses, success in the province of detective work must always
++/baz.rs-3-be, to a very large extent, the result of luck. Sherlock Holmes
++--
++/baz.rs:5:but Doctor Watson has to have it taken out for him and dusted,
++/baz.rs-6-and exhibited clearly, with a label attached.
++");
++    }
++
+     #[test]
+     fn after_context_three1() {
+         let (count, out) = search_smallcap("Sherlock", SHERLOCK, |s| {
+             s.line_number(true).after_context(3)
+         });
+         assert_eq!(2, count);
+         assert_eq!(out, "\
+ /baz.rs:1:For the Doctor Watsons of this world, as opposed to the Sherlock
+ /baz.rs-2-Holmeses, success in the province of detective work must always
+ /baz.rs:3:be, to a very large extent, the result of luck. Sherlock Holmes
+ /baz.rs-4-can extract a clew from a wisp of straw or a flake of cigar ash;
+ /baz.rs-5-but Doctor Watson has to have it taken out for him and dusted,
+ /baz.rs-6-and exhibited clearly, with a label attached.
+ ");
+     }
+ 
+     #[test]
+     fn before_after_context_two1() {
+         let (count, out) = search(
+             r"fn main|let mut rdr", CODE, |s| {
+                 s.line_number(true).after_context(2).before_context(2)
+             });
+         assert_eq!(2, count);
+         assert_eq!(out, "\
+ /baz.rs-3-use std::io;
+ /baz.rs-4-
+ /baz.rs:5:fn main() {
+ /baz.rs-6-    let stdin = io::stdin();
+ /baz.rs-7-    let stdout = io::stdout();
+ /baz.rs-8-
+ /baz.rs-9-    // Wrap the stdin reader in a Snappy reader.
+ /baz.rs:10:    let mut rdr = snap::Reader::new(stdin.lock());
+ /baz.rs-11-    let mut wtr = stdout.lock();
+ /baz.rs-12-    io::copy(&mut rdr, &mut wtr).expect(\"I/O operation failed\");
+ ");
+     }
+ }

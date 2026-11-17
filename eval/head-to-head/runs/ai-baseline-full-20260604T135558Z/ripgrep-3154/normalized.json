@@ -1,0 +1,29 @@
+{
+  "case_id": "ripgrep-3154",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "count.max(1)"
+      ],
+      "rank": 1,
+      "rationale": "Floors sink_match_count to >=1 even when find_iter_at_in_context yields 0; this value flows into stats.add_matches, so --count output can be inflated for multi-line look-around patterns where the re-\u2026",
+      "risk_signal": "assumption_boundary",
+      "subject": "crates/printer/src/summary.rs:matched",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "\"--files-with-matches\",\n                r\"(?s)Start(?=.*thing2)\""
+      ],
+      "rank": 2,
+      "rationale": "New regression test only exercises --files-with-matches (binary path presence) for the multi-line PCRE2 look-around case; the --count summary kind that directly consumes the new count.max(1) value vi\u2026",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tests/regression.rs:r3139_multiline_lookahead_files_with_matches",
+      "value": "supporting"
+    }
+  ]
+}

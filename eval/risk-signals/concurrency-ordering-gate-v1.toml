@@ -1,0 +1,73 @@
+version = "concurrency-ordering-gate.v1"
+risk_item = "concurrency_ordering_change"
+
+[gates]
+raw_contract_valid_rate_min = 1.0
+detection_precision_min = 1.0
+detection_recall_min = 1.0
+review_worthy_precision_min = 1.0
+boundary_honesty_rate_min = 1.0
+duplicate_wrapper_case_count_max = 0
+
+[[cases]]
+id = "tokio-rs-tokio-7922"
+role = "high_value_positive"
+expected_detection = "detect"
+expected_judgement = "review_worthy_concurrency_ordering_change"
+max_wrapper_count = 1
+ground_truth_summary = "Blocking pool shutdown must not race with idle-thread accounting and lose wakeup or shutdown progress."
+why_high_value = "Scheduler shutdown races are low-frequency but high-impact runtime correctness failures."
+
+[[cases]]
+id = "hyperium-hyper-3952"
+role = "high_value_positive"
+expected_detection = "detect"
+expected_judgement = "review_worthy_concurrency_ordering_change"
+max_wrapper_count = 1
+ground_truth_summary = "HTTP/1 poll loop must re-poll write readiness instead of waiting without a guaranteed wakeup."
+why_high_value = "Wakeup-ordering stalls can deadlock caller-visible I/O even when readiness already changed."
+
+[[cases]]
+id = "tokio-rs-tokio-7983"
+role = "boundary_positive"
+expected_detection = "detect"
+expected_judgement = "needs_more_context_before_review_claim"
+max_wrapper_count = 1
+ground_truth_summary = "Completed io_uring open operations change cleanup ordering when cancellation wins before re-poll."
+why_high_value = "Completion-versus-cancel cleanup is a real async resource-lifecycle risk, but wrapper-only evidence should stay conservative."
+
+[[cases]]
+id = "hyperium-hyper-3616"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "This is a graceful-shutdown lifecycle-ordering fix, not a concurrency-ordering case."
+why_high_value = "Concurrency wrapper must stay silent on lifecycle-only ordering without scheduler or wakeup signals."
+
+[[cases]]
+id = "tokio-rs-tokio-8021"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "This is a terminal-state preservation case, not a concurrency-ordering case."
+why_high_value = "Concurrency wrapper should not absorb state-only invariants without wakeup or interleaving evidence."
+
+[[cases]]
+id = "hyper-4056"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "This is an integer-boundary fix, not a concurrency-ordering case."
+why_high_value = "Concurrency wrapper should stay silent on pointer-sized arithmetic fixes."
+
+[[cases]]
+id = "serde-rs-json-757"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "This is malformed-input error propagation, not a concurrency-ordering case."
+why_high_value = "Concurrency wrapper should not absorb panic-to-error parsing fixes."

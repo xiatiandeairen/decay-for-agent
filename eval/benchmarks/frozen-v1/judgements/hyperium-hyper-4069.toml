@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "hyperium-hyper-4069"
+repo = "hyperium/hyper"
+pr = 4069
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "HTTP/1 dispatcher drop mid-body silent truncation."
+
+[fact_only]
+top3_total = 3
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 3
+notes = "True risk is HTTP/1 dispatcher drop mid-body silent truncation. Fact top3 includes touched_existing_risky src/proto/h1/dispatch.rs:poll_read, the relevant dispatcher path, but is otherwise broad quality noise."
+
+[semantic_filtered]
+top3_total = 2
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 2
+notes = "Semantic drops the h1 dispatch function clue and focuses on dependency/http2 prod-change evidence, missing mid-body h1 dispatcher truncation."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = true
+notes = "Semantic filtering regresses by losing the only relevant h1 dispatch evidence."

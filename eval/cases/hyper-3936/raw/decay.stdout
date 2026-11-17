@@ -7,51 +7,80 @@ Diff context:
   changed_files=10
 
 Top risk findings:
-1. [high] src/client/conn.rs:handshake
+1. [high] src/client/client.rs
+   1 public API function added
+   action: review runtime failure and boundary-safety invariants
+2. [high] src/client/conn.rs
+   1 public API function added
+   action: review runtime failure and boundary-safety invariants
+3. [high] src/server/conn.rs
+   1 public API function added
+   action: review runtime failure and boundary-safety invariants
+4. [high] src/server/conn/http1.rs
+   1 public API function added
+   action: review runtime failure and boundary-safety invariants
+5. [high] src/server/server.rs
+   1 public API function added
+   action: review runtime failure and boundary-safety invariants
+6. [high] src/client/conn.rs:handshake
    complexity worsened
    action: review function complexity and add focused regression tests
-2. [high] src/proto/h1/role.rs:parse
+7. [high] src/proto/h1/role.rs:parse
    complexity worsened
    action: review function complexity and add focused regression tests
-3. [high] src/proto/h1/role.rs:parse
+8. [high] src/proto/h1/role.rs:parse
    complexity worsened
    action: review function complexity and add focused regression tests
-4. [medium] src/client/client.rs
+9. [medium] src/client/client.rs
    quality blast_radius
    action: split the diff or document the shared review rationale
-5. [medium] src/client/client.rs
+10. [medium] src/client/client.rs
    quality mixed_concerns
    action: split the diff or document the shared review rationale
-6. [medium] src/proto/h1/io.rs:parse
-   complexity touched_existing_risky
-   action: review function complexity and add focused regression tests
+  truncated=true remaining=2
 
 Complexity impact:
   changed_functions=28 evidence=4 partial=false diagnostics=0
   value_note=direct for worsened/new_high_risk; touched_existing_risky is supporting context, not proof of current-diff risk
-- id=1 category=complexity kind=worsened subject=function source=diff_hunk+ast_snapshot
+- id=1 category=complexity kind=worsened subject=function source=diff_hunk+ast_snapshot confidence=high value=direct
   function=src/client/conn.rs:handshake
   metrics=cognitive:13->13, cyclomatic:11->11, statements:27->28
-- id=2 category=complexity kind=touched_existing_risky subject=function source=diff_hunk+ast_snapshot
+- id=2 category=complexity kind=touched_existing_risky subject=function source=diff_hunk+ast_snapshot confidence=low value=context
   function=src/proto/h1/io.rs:parse
   metrics=cognitive:24->24, cyclomatic:12->12, statements:31->31
-- id=3 category=complexity kind=worsened subject=function source=diff_hunk+ast_snapshot
+- id=3 category=complexity kind=worsened subject=function source=diff_hunk+ast_snapshot confidence=high value=direct
   function=src/proto/h1/role.rs:parse
   metrics=cognitive:50->54, cyclomatic:32->33, statements:92->95
-- id=4 category=complexity kind=worsened subject=function source=diff_hunk+ast_snapshot
+- id=4 category=complexity kind=worsened subject=function source=diff_hunk+ast_snapshot confidence=high value=direct
   function=src/proto/h1/role.rs:parse
   metrics=cognitive:70->76, cyclomatic:31->32, statements:66->69
 
-Stability impact:
+Coverage impact:
   evidence=0
+  value_note=scan coverage gaps limit decay confidence; this is tool coverage evidence, not proof of product code risk
+
+Stability impact:
+  evidence=5
   value_note=direct for newly introduced unsafe/panic/public-api evidence; move/refactor diffs can weaken this signal
+- id=5 category=stability kind=public_api_function_added subject=http10_disable_keep_alive source=stability confidence=high value=direct
+  file=src/client/client.rs
+- id=6 category=stability kind=public_api_function_added subject=http10_disable_keep_alive source=stability confidence=high value=direct
+  file=src/client/conn.rs
+- id=7 category=stability kind=public_api_function_added subject=http10_disable_keep_alive source=stability confidence=high value=direct
+  file=src/server/conn.rs
+- id=8 category=stability kind=public_api_function_added subject=http10_disable_keep_alive source=stability confidence=high value=direct
+  file=src/server/conn/http1.rs
+- id=9 category=stability kind=public_api_function_added subject=http10_disable_keep_alive source=stability confidence=high value=direct
+  file=src/server/server.rs
 
 Quality impact:
-  evidence=2 prod_files_changed=10 test_files_changed=2 docs_files_changed=0
+  evidence=3 prod_files_changed=10 test_files_changed=2 docs_files_changed=0
   value_note=missing-test signals are supporting evidence; broad scope signals are weak unless paired with direct diff evidence
-- id=5 category=quality kind=blast_radius subject=multiple crates or domains source=quality
+- id=10 category=quality kind=prod_change_with_tests subject=production code changed with test changes source=quality confidence=low value=supporting
   file=src/client/client.rs
-- id=6 category=quality kind=mixed_concerns subject=multiple production domains source=quality
+- id=11 category=quality kind=blast_radius subject=multiple crates or domains source=quality confidence=low value=context
+  file=src/client/client.rs
+- id=12 category=quality kind=mixed_concerns subject=multiple production domains source=quality confidence=low value=context
   file=src/client/client.rs
 
 Semantic impact:
@@ -61,4 +90,4 @@ Semantic impact:
 History impact:
   evidence=0
   value_note=context only; excluded from top risk unless direct diff evidence exists
-recorded=true changeset=1 evidence_saved=6
+recorded=true changeset=1 evidence_saved=12

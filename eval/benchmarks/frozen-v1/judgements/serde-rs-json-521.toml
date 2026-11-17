@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "serde-rs-json-521"
+repo = "serde-rs/json"
+pr = 521
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Adjacently tagged f32 roundtrip regression."
+
+[fact_only]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 3
+notes = "True risk is adjacently tagged f32 roundtrip regression in number handling. Fact output reports parse coverage gap, generic prod/test, and dependency change, but misses f32/roundtrip semantics."
+
+[semantic_filtered]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 3
+notes = "Semantic explains partial coverage and generic number.rs review but does not identify f32 roundtrip behavior."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = false
+notes = "No product-risk improvement."

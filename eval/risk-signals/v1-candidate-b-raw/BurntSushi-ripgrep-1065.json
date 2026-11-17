@@ -1,0 +1,55 @@
+{
+  "candidate": {
+    "id": "BurntSushi-ripgrep-1065",
+    "repo": "BurntSushi/ripgrep",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/1065"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "f72c2dfd90f98cfbd678d3d957e3d104237ab15b",
+    "body": "* Fixes #1052 (panic when searching Ruby source checkout)\r\n* Fixes #1055 (suggest `-U/--multiline` when `\\n` is used in pattern)\r\n* Fixes #1064 (fix missing match for `a(.*c)`)",
+    "comments": [],
+    "files": [
+      {
+        "additions": 3,
+        "changeType": "MODIFIED",
+        "deletions": 3,
+        "path": "Cargo.lock"
+      },
+      {
+        "additions": 24,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "grep-regex/src/literal.rs"
+      },
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "grep-searcher/Cargo.toml"
+      },
+      {
+        "additions": 15,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/args.rs"
+      },
+      {
+        "additions": 6,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/regression.rs"
+      }
+    ],
+    "headRefName": "ag/fix-match-bugs",
+    "headRefOid": "2019ddccf89de3e7f389c310a45e0e0b15436050",
+    "labels": [],
+    "mergedAt": "2018-09-25T20:56:05Z",
+    "number": 1065,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "fix a few bugs",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/1065"
+  }
+}

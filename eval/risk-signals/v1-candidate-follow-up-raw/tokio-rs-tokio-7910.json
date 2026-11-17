@@ -1,0 +1,49 @@
+{
+  "case_id": "tokio-rs-tokio-7910",
+  "refs": [
+    {
+      "detail": {
+        "body": "**Version**\r\nTokio v1.37.0\r\n\r\n**Description**\r\n`BlockingPool num_idle_threads` is doubly increased, when shutting down before the `condvar wait_timeout`.\r\n\r\nThe whole code is:\r\nhttps://github.com/tokio-rs/tokio/blob/9c337ca1a306be38e3474082be14bdef4bcb45b5/tokio/src/runtime/blocking/pool.rs#L519-L564\r\n\r\nWhen `BlockingPool` is shutting down, \r\nthe `num_idle_threads` will be increased at first in \r\nhttps://github.com/tokio-rs/tokio/blob/9c337ca1a306be38e3474082be14bdef4bcb45b5/tokio/src/runtime/blocking/pool.rs#L519\r\n\r\nand then it will doubly be increased in this\r\nhttps://github.com/tokio-rs/tokio/blob/9c337ca1a306be38e3474082be14bdef4bcb45b5/tokio/src/runtime/blocking/pool.rs#L564\r\n",
+        "closedAt": "2026-02-17T07:19:52Z",
+        "comments": [],
+        "createdAt": "2024-03-29T05:45:55Z",
+        "labels": [
+          {
+            "color": "f5f1fd",
+            "description": "Category: This is a bug.",
+            "id": "MDU6TGFiZWw0Mzk4OTcxODg=",
+            "name": "C-bug"
+          },
+          {
+            "color": "f7e101",
+            "description": "Area: The main tokio crate",
+            "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+            "name": "A-tokio"
+          },
+          {
+            "color": "f7b101",
+            "description": "Module: tokio/runtime",
+            "id": "MDU6TGFiZWwxOTkzNTEwODc4",
+            "name": "M-runtime"
+          },
+          {
+            "color": "f7b101",
+            "description": "Module: tokio/runtime/metrics",
+            "id": "MDU6TGFiZWwzMjk5NDUwNDUw",
+            "name": "M-metrics"
+          }
+        ],
+        "number": 6439,
+        "state": "CLOSED",
+        "title": "BlockingPool num_idle_threads is wrongly double-increased when shutting down",
+        "url": "https://github.com/tokio-rs/tokio/issues/6439"
+      },
+      "target": {
+        "number": 6439,
+        "reason": "Blocking pool idle metric over-count report.",
+        "repo": "tokio-rs/tokio",
+        "type": "issue"
+      }
+    }
+  ]
+}

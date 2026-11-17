@@ -1,35 +1,15 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 
 
-SECTION_HEADERS = (
-    "Diff context:",
-    "Top risk findings:",
-    "Complexity impact:",
-    "Stability impact:",
-    "Quality impact:",
-    "Semantic impact:",
-    "History impact:",
-)
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
-
-def section(stdout: str, header: str) -> str:
-    start = stdout.find(header)
-    if start < 0:
-        return ""
-    rest = stdout[start + len(header) :]
-    next_positions = [rest.find(other) for other in SECTION_HEADERS if other != header]
-    next_positions = [pos for pos in next_positions if pos >= 0]
-    end = min(next_positions) if next_positions else len(rest)
-    return rest[:end].strip()
-
-
-def evidence_ids(stdout: str) -> list[int]:
-    return [int(match) for match in re.findall(r"^- id=(\d+)\b", stdout, re.MULTILINE)]
+from decay_evidence import SECTION_HEADERS, evidence_ids, section
 
 
 def build_prompt(stdout: str) -> str:

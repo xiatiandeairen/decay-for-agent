@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "semantic-confidence-evidence.v1",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "wrapper_id": {
+            "type": "string"
+          },
+          "risk_summary": {
+            "type": "string"
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "supporting_evidence_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "uncertainties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "recommended_next_check": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "wrapper_id",
+          "risk_summary",
+          "confidence",
+          "supporting_evidence_ids",
+          "uncertainties",
+          "recommended_next_check"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "version",
+    "items"
+  ],
+  "type": "object"
+}

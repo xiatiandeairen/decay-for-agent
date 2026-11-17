@@ -43,7 +43,7 @@ decay diff <from> <to>
 
 `doctor` 只能说明“当前哪里复杂”，不能说明“这次改动是否让它变复杂”。因此产品验证必须看 `diff`，不能只看 `doctor`。
 
-v0.1.1 的 `decay diff <git-ref>` 已进入 fact evidence 路径：直接输出 `Complexity impact`、`Stability impact`、`Quality impact`、`Semantic impact`、`History impact`，并把 changeset、file changes 和 evidence 写入本地 SQLite。该行为不新增 `--evidence` flag。两个命名 baseline 之间的 `decay diff <from> <to>` 仍走 baseline snapshot 对比路径。
+v0.1.1 的 `decay diff <git-ref>` 已进入 fact evidence 路径：直接输出 `Complexity impact`、`Coverage impact`、`Stability impact`、`Quality impact`、`Semantic impact`、`History impact`，并把 changeset、file changes 和 evidence 写入本地 SQLite。该行为不新增 `--evidence` flag。两个命名 baseline 之间的 `decay diff <from> <to>` 仍走 baseline snapshot 对比路径。
 
 v0.2.0 的方向是在 fact evidence 之上增加 semantic selection layer。事实层继续负责客观扫描，语义层负责把事实组合成可复核的 review 证据：
 
@@ -217,8 +217,8 @@ v0.1.1 git-ref diff 额外保存：
 
 v0.2.0 计划继续扩展：
 
-- semantic findings：claim、confidence、limitation、review action。
-- fact-to-claim links：每条 semantic finding 关联的 evidence item id 和外部 source ref。
+- confidence evidence：每条 fact evidence 的 confidence、value、limitation。
+- evidence-to-analysis links：AI 分析输出关联的 evidence item id 和外部 source ref。
 - judgement feedback：useful / plausible / noise / missed、是否进入 top risk、是否改变 review action。
 
 同一 changeset 重复运行会保持幂等，不重复堆积 evidence。当前 schema 仍只承诺本地 dogfood 使用，不承诺外部稳定接口。

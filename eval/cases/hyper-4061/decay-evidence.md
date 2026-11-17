@@ -1,0 +1,84 @@
+# Decay Evidence
+
+- evidence_count: 7
+
+## Top risk findings
+
+```text
+1. [high] src/proto/h2/mod.rs
+   1 panic-like additions
+   action: review runtime failure and boundary-safety invariants
+2. [high] src/proto/h2/mod.rs
+   semantic boundary_condition_changed while me.body_tx.capacity() == 0 {
+   action: review changed boundary condition and require focused edge-case tests
+3. [high] src/proto/h2/mod.rs
+   semantic boundary_condition_changed if len == 0 {
+   action: review changed boundary condition and require focused edge-case tests
+4. [high] src/proto/h2/mod.rs
+   semantic error_propagation_changed .map_err(crate::Error::new_body_write)?;
+   action: review caller-visible error propagation and require focused regression coverage
+5. [high] src/proto/h2/mod.rs:poll
+   complexity worsened
+   action: review function complexity and add focused regression tests
+6. [medium] src/proto/h2/mod.rs
+   quality prod_change_with_tests
+   action: review changed behavior invariants and confirm regression tests cover the risky path
+```
+
+## Complexity impact
+
+```text
+changed_functions=2 evidence=1 partial=false diagnostics=0
+  value_note=direct for worsened/new_high_risk; touched_existing_risky is supporting context, not proof of current-diff risk
+- id=1 category=complexity kind=worsened subject=function source=diff_hunk+ast_snapshot confidence=high value=direct
+  function=src/proto/h2/mod.rs:poll
+  metrics=cognitive:34->43, cyclomatic:16->19, statements:31->45
+```
+
+## Coverage impact
+
+```text
+evidence=0
+  value_note=scan coverage gaps limit decay confidence; this is tool coverage evidence, not proof of product code risk
+```
+
+## Stability impact
+
+```text
+evidence=1
+  value_note=direct for newly introduced unsafe/panic/public-api evidence; move/refactor diffs can weaken this signal
+- id=2 category=stability kind=panic_like_added subject=line 167 source=stability confidence=high value=direct
+  file=src/proto/h2/mod.rs
+```
+
+## Quality impact
+
+```text
+evidence=1 prod_files_changed=1 test_files_changed=1 docs_files_changed=0
+  value_note=missing-test signals are supporting evidence; broad scope signals are weak unless paired with direct diff evidence
+- id=3 category=quality kind=prod_change_with_tests subject=production code changed with test changes source=quality confidence=low value=supporting
+  file=src/proto/h2/mod.rs
+```
+
+## Semantic impact
+
+```text
+evidence=3
+  value_note=high confidence only for explicit scanned patterns; this is not general semantic understanding
+- id=4 category=semantic kind=boundary_condition_changed subject=while me.body_tx.capacity() == 0 { source=semantic_diff confidence=high value=direct
+  file=src/proto/h2/mod.rs
+- id=5 category=semantic kind=boundary_condition_changed subject=if len == 0 { source=semantic_diff confidence=high value=direct
+  file=src/proto/h2/mod.rs
+- id=6 category=semantic kind=error_propagation_changed subject=.map_err(crate::Error::new_body_write)?; source=semantic_diff confidence=medium value=direct
+  file=src/proto/h2/mod.rs
+```
+
+## History impact
+
+```text
+evidence=1
+  value_note=context only; excluded from top risk unless direct diff evidence exists
+- id=7 category=history kind=recently_bugfixed_area subject=fix(http2): cancel sending client request body on response future drop (#4042) source=git_history confidence=low value=context
+  file=src/proto/h2/mod.rs
+recorded=true changeset=1 evidence_saved=7
+```

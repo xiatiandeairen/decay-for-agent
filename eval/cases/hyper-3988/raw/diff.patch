@@ -1,0 +1,1137 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 4441bdcd..d3808624 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -1,134 +1,136 @@
+ [package]
+ name = "hyper"
+ version = "1.8.1"
+ description = "A protective and efficient HTTP library for all."
+ readme = "README.md"
+ homepage = "https://hyper.rs"
+ documentation = "https://docs.rs/hyper"
+ repository = "https://github.com/hyperium/hyper"
+ license = "MIT"
+ authors = ["Sean McArthur <sean@seanmonstar.com>"]
+ keywords = ["http", "hyper", "hyperium"]
+ categories = ["network-programming", "web-programming::http-client", "web-programming::http-server"]
+ edition = "2021"
+ rust-version = "1.63" # keep in sync with MSRV.md dev doc
+ 
+ include = [
+   "Cargo.toml",
+   "LICENSE",
+   "src/**/*",
+ ]
+ 
+ [dependencies]
+ bytes = "1.2"
+ http = "1"
+ http-body = "1"
+ tokio = { version = "1", features = ["sync"] }
+ 
+ # Optional
+ 
+ atomic-waker = { version = "1.1.2", optional = true }
+ futures-channel = { version = "0.3", optional = true }
+ futures-core = { version = "0.3.31", optional = true }
+ futures-util = { version = "0.3", default-features = false, features = ["alloc"], optional = true }
+ h2 = { version = "0.4.2", optional = true }
+ http-body-util = { version = "0.1", optional = true }
+ httparse = { version = "1.9", optional = true }
+ httpdate = { version = "1.0", optional = true }
+ itoa = { version = "1", optional = true }
+ pin-project-lite = { version = "0.2.4", optional = true }
+ pin-utils = { version = "0.1", optional = true } # TODO: replace with std::pin::pin! once MSRV >= 1.68
+ smallvec = { version = "1.12", features = ["const_generics", "const_new"], optional = true }
+ tracing = { version = "0.1", default-features = false, features = ["std"], optional = true }
+ want = { version = "0.3", optional = true }
+ 
+ [dev-dependencies]
+ form_urlencoded = "1"
+ futures-channel = { version = "0.3", features = ["sink"] }
+ futures-util = { version = "0.3", default-features = false, features = ["alloc", "sink"] }
+ http-body-util = "0.1"
+ pretty_env_logger = "0.5"
+ pin-project-lite = "0.2.4"
+ spmc = "0.3"
+ serde = { version = "1.0", features = ["derive"] }
+ serde_json = "1.0"
++tracing = "0.1"
++tracing-subscriber = "0.3"
+ tokio = { version = "1", features = [
+     "fs",
+     "macros",
+     "net",
+     "io-std",
+     "io-util",
+     "rt",
+     "rt-multi-thread", # so examples can use #[tokio::main]
+     "sync",
+     "time",
+     "test-util",
+ ] }
+ tokio-test = "0.4"
+ tokio-util = "0.7.10"
+ 
+ [features]
+ # Nothing by default
+ default = []
+ 
+ # Easily turn it all on
+ full = [
+     "client",
+     "http1",
+     "http2",
+     "server",
+ ]
+ 
+ # HTTP versions
+ http1 = ["dep:atomic-waker", "dep:futures-channel", "dep:futures-core", "dep:httparse", "dep:itoa", "dep:pin-utils"]
+ http2 = ["dep:futures-channel", "dep:futures-core", "dep:h2"]
+ 
+ # Client/Server
+ client = ["dep:want", "dep:pin-project-lite", "dep:smallvec"]
+ server = ["dep:httpdate", "dep:pin-project-lite", "dep:smallvec"]
+ 
+ # C-API support (currently unstable (no semver))
+ ffi = ["dep:http-body-util", "dep:futures-util"]
+ capi = []
+ 
+ # Utilize tracing (currently unstable)
+ tracing = ["dep:tracing"]
+ 
+ # internal features used in CI
+ nightly = []
+ 
+ [lints.rust.unexpected_cfgs]
+ level = "warn"
+ check-cfg = [
+     'cfg(hyper_unstable_tracing)',
+     'cfg(hyper_unstable_ffi)'
+ ]
+ 
+ [package.metadata.docs.rs]
+ features = ["ffi", "full", "tracing"]
+ rustdoc-args = ["--cfg", "hyper_unstable_ffi", "--cfg", "hyper_unstable_tracing"]
+ 
+ [package.metadata.playground]
+ features = ["full"]
+ 
+ [package.metadata.capi.header]
+ generation = false
+ subdirectory = false
+ 
+ [package.metadata.capi.install.include]
+ asset = [{ from="capi/include/hyper.h" }]
+ 
+ [profile.release]
+ codegen-units = 1
+ incremental = false
+ 
+ [profile.bench]
+ codegen-units = 1
+ incremental = false
+ 
+ [[example]]
+ name = "client"
+ path = "examples/client.rs"
+ required-features = ["full"]
+ 
+ [[example]]
+@@ -162,84 +164,94 @@ path = "examples/http_proxy.rs"
+ required-features = ["full"]
+ 
+ [[example]]
+ name = "multi_server"
+ path = "examples/multi_server.rs"
+ required-features = ["full"]
+ 
+ [[example]]
+ name = "params"
+ path = "examples/params.rs"
+ required-features = ["full"]
+ 
+ [[example]]
+ name = "send_file"
+ path = "examples/send_file.rs"
+ required-features = ["full"]
+ 
+ [[example]]
+ name = "service_struct_impl"
+ path = "examples/service_struct_impl.rs"
+ required-features = ["full"]
+ 
+ [[example]]
+ name = "single_threaded"
+ path = "examples/single_threaded.rs"
+ required-features = ["full"]
+ 
+ [[example]]
+ name = "state"
+ path = "examples/state.rs"
+ required-features = ["full"]
+ 
+ [[example]]
+ name = "upgrades"
+ path = "examples/upgrades.rs"
+ required-features = ["full"]
+ 
+ 
+ [[example]]
+ name = "web_api"
+ path = "examples/web_api.rs"
+ required-features = ["full"]
+ 
+ 
+ [[bench]]
+ name = "body"
+ path = "benches/body.rs"
+ required-features = ["full"]
+ 
+ [[bench]]
+ name = "connect"
+ path = "benches/connect.rs"
+ required-features = ["full"]
+ 
+ [[bench]]
+ name = "end_to_end"
+ path = "benches/end_to_end.rs"
+ required-features = ["full"]
+ 
+ [[bench]]
+ name = "pipeline"
+ path = "benches/pipeline.rs"
+ required-features = ["full"]
+ 
+ [[bench]]
+ name = "server"
+ path = "benches/server.rs"
+ required-features = ["full"]
+ 
+ 
+ [[test]]
+ name = "client"
+ path = "tests/client.rs"
+ required-features = ["full"]
+ 
+ [[test]]
+ name = "integration"
+ path = "tests/integration.rs"
+ required-features = ["full"]
+ 
++[[test]]
++name = "ready_on_poll_stream"
++path = "tests/ready_on_poll_stream.rs"
++required-features = ["full"]
++
++[[test]]
++name = "unbuffered_stream"
++path = "tests/unbuffered_stream.rs"
++required-features = ["full"]
++
+ [[test]]
+ name = "server"
+ path = "tests/server.rs"
+ required-features = ["full"]
+diff --git a/src/proto/h1/dispatch.rs b/src/proto/h1/dispatch.rs
+index 5daeb5eb..91defd32 100644
+--- a/src/proto/h1/dispatch.rs
++++ b/src/proto/h1/dispatch.rs
+@@ -93,179 +93,202 @@ where
+ 
+         // If keep alive has been disabled and no read or write has been seen on
+         // the connection yet, we must be in a state where the server is being asked to
+         // shut down before any data has been seen on the connection
+         if self.conn.is_write_closed() || self.conn.has_initial_read_write_state() {
+             self.close();
+         }
+     }
+ 
+     pub(crate) fn into_inner(self) -> (I, Bytes, D) {
+         let (io, buf) = self.conn.into_inner();
+         (io, buf, self.dispatch)
+     }
+ 
+     /// Run this dispatcher until HTTP says this connection is done,
+     /// but don't call `Write::shutdown` on the underlying IO.
+     ///
+     /// This is useful for old-style HTTP upgrades, but ignores
+     /// newer-style upgrade API.
+     pub(crate) fn poll_without_shutdown(
+         &mut self,
+         cx: &mut Context<'_>,
+     ) -> Poll<crate::Result<()>> {
+         Pin::new(self).poll_catch(cx, false).map_ok(|ds| {
+             if let Dispatched::Upgrade(pending) = ds {
+                 pending.manual();
+             }
+         })
+     }
+ 
+     fn poll_catch(
+         &mut self,
+         cx: &mut Context<'_>,
+         should_shutdown: bool,
+     ) -> Poll<crate::Result<Dispatched>> {
+         Poll::Ready(ready!(self.poll_inner(cx, should_shutdown)).or_else(|e| {
+             // Be sure to alert a streaming body of the failure.
+             if let Some(mut body) = self.body_tx.take() {
+                 body.send_error(crate::Error::new_body("connection error"));
+             }
+             // An error means we're shutting down either way.
+             // We just try to give the error to the user,
+             // and close the connection with an Ok. If we
+             // cannot give it to the user, then return the Err.
+             self.dispatch.recv_msg(Err(e))?;
+             Ok(Dispatched::Shutdown)
+         }))
+     }
+ 
+     fn poll_inner(
+         &mut self,
+         cx: &mut Context<'_>,
+         should_shutdown: bool,
+     ) -> Poll<crate::Result<Dispatched>> {
+         T::update_date();
+ 
+         ready!(self.poll_loop(cx))?;
+ 
+         if self.is_done() {
+             if let Some(pending) = self.conn.pending_upgrade() {
+                 self.conn.take_error()?;
+                 return Poll::Ready(Ok(Dispatched::Upgrade(pending)));
+             } else if should_shutdown {
+                 ready!(self.conn.poll_shutdown(cx)).map_err(crate::Error::new_shutdown)?;
+             }
+             self.conn.take_error()?;
+             Poll::Ready(Ok(Dispatched::Shutdown))
+         } else {
+             Poll::Pending
+         }
+     }
+ 
+     fn poll_loop(&mut self, cx: &mut Context<'_>) -> Poll<crate::Result<()>> {
+         // Limit the looping on this connection, in case it is ready far too
+         // often, so that other futures don't starve.
+         //
+         // 16 was chosen arbitrarily, as that is number of pipelined requests
+         // benchmarks often use. Perhaps it should be a config option instead.
+         for _ in 0..16 {
+             let _ = self.poll_read(cx)?;
+-            let _ = self.poll_write(cx)?;
+-            let _ = self.poll_flush(cx)?;
++            let write_ready = self.poll_write(cx)?.is_ready();
++            let flush_ready = self.poll_flush(cx)?.is_ready();
++
++            // If we can write more body and the connection is ready, we should
++            // write again. If we return `Ready(Ok(())` here, we will yield
++            // without a guaranteed wake-up from the write side of the connection.
++            // This would lead to a deadlock if we also don't expect reads.
++            let wants_write_again = self.can_write_again() && (write_ready || flush_ready);
+ 
+             // This could happen if reading paused before blocking on IO,
+             // such as getting to the end of a framed message, but then
+             // writing/flushing set the state back to Init. In that case,
+             // if the read buffer still had bytes, we'd want to try poll_read
+             // again, or else we wouldn't ever be woken up again.
+             //
+             // Using this instead of task::current() and notify() inside
+             // the Conn is noticeably faster in pipelined benchmarks.
+-            if !self.conn.wants_read_again() {
+-                //break;
++            let wants_read_again = self.conn.wants_read_again();
++
++            // If we cannot write or read again, we yield and rely on the
++            // wake-up from the connection futures.
++            if !(wants_write_again || wants_read_again) {
+                 return Poll::Ready(Ok(()));
+             }
+-        }
+ 
++            // If we are continuing only because "wants_write_again", check if write is ready.
++            if !wants_read_again && wants_write_again {
++                // If write was ready, just proceed with the loop
++                if write_ready {
++                    continue;
++                }
++                // Write was previously pending, but may have become ready since polling flush, so
++                // we need to check it again. If we simply proceeded, the case of an unbuffered
++                // writer where flush is always ready would cause us to hot loop.
++                if self.poll_write(cx)?.is_pending() {
++                    // write is pending, so it is safe to yield and rely on wake-up from connection
++                    // futures.
++                    return Poll::Ready(Ok(()));
++                }
++            }
++        }
+         trace!("poll_loop yielding (self = {:p})", self);
+-
+         task::yield_now(cx).map(|never| match never {})
+     }
+ 
+     fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<crate::Result<()>> {
+         loop {
+             if self.is_closing {
+                 return Poll::Ready(Ok(()));
+             } else if self.conn.can_read_head() {
+                 ready!(self.poll_read_head(cx))?;
+             } else if let Some(mut body) = self.body_tx.take() {
+                 if self.conn.can_read_body() {
+                     match body.poll_ready(cx) {
+                         Poll::Ready(Ok(())) => (),
+                         Poll::Pending => {
+                             self.body_tx = Some(body);
+                             return Poll::Pending;
+                         }
+                         Poll::Ready(Err(_canceled)) => {
+                             // user doesn't care about the body
+                             // so we should stop reading
+                             trace!("body receiver dropped before eof, draining or closing");
+                             self.conn.poll_drain_or_close_read(cx);
+                             continue;
+                         }
+                     }
+                     match self.conn.poll_read_body(cx) {
+                         Poll::Ready(Some(Ok(frame))) => {
+                             if frame.is_data() {
+                                 let chunk = frame.into_data().unwrap_or_else(|_| unreachable!());
+                                 match body.try_send_data(chunk) {
+                                     Ok(()) => {
+                                         self.body_tx = Some(body);
+                                     }
+                                     Err(_canceled) => {
+                                         if self.conn.can_read_body() {
+                                             trace!("body receiver dropped before eof, closing");
+                                             self.conn.close_read();
+                                         }
+                                     }
+                                 }
+                             } else if frame.is_trailers() {
+                                 let trailers =
+                                     frame.into_trailers().unwrap_or_else(|_| unreachable!());
+                                 match body.try_send_trailers(trailers) {
+                                     Ok(()) => {
+                                         self.body_tx = Some(body);
+                                     }
+                                     Err(_canceled) => {
+                                         if self.conn.can_read_body() {
+                                             trace!("body receiver dropped before eof, closing");
+                                             self.conn.close_read();
+                                         }
+                                     }
+                                 }
+                             } else {
+                                 // we should have dropped all unknown frames in poll_read_body
+                                 error!("unexpected frame");
+                             }
+                         }
+                         Poll::Ready(None) => {
+                             // just drop, the body will close automatically
+                         }
+                         Poll::Pending => {
+                             self.body_tx = Some(body);
+                             return Poll::Pending;
+                         }
+                         Poll::Ready(Some(Err(e))) => {
+                             body.send_error(crate::Error::new_body(e));
+                         }
+                     }
+                 } else {
+                     // just drop, the body will close automatically
+                 }
+             } else {
+                 return self.conn.poll_read_keep_alive(cx);
+             }
+         }
+     }
+ 
+     fn poll_read_head(&mut self, cx: &mut Context<'_>) -> Poll<crate::Result<()>> {
+@@ -356,160 +379,165 @@ where
+             } else if !self.conn.can_buffer_body() {
+                 ready!(self.poll_flush(cx))?;
+             } else {
+                 // A new scope is needed :(
+                 if let (Some(mut body), clear_body) =
+                     OptGuard::new(self.body_rx.as_mut()).guard_mut()
+                 {
+                     debug_assert!(!*clear_body, "opt guard defaults to keeping body");
+                     if !self.conn.can_write_body() {
+                         trace!(
+                             "no more write body allowed, user body is_end_stream = {}",
+                             body.is_end_stream(),
+                         );
+                         *clear_body = true;
+                         continue;
+                     }
+ 
+                     let item = ready!(body.as_mut().poll_frame(cx));
+                     if let Some(item) = item {
+                         let frame = item.map_err(|e| {
+                             *clear_body = true;
+                             crate::Error::new_user_body(e)
+                         })?;
+ 
+                         if frame.is_data() {
+                             let chunk = frame.into_data().unwrap_or_else(|_| unreachable!());
+                             let eos = body.is_end_stream();
+                             if eos {
+                                 *clear_body = true;
+                                 if chunk.remaining() == 0 {
+                                     trace!("discarding empty chunk");
+                                     self.conn.end_body()?;
+                                 } else {
+                                     self.conn.write_body_and_end(chunk);
+                                 }
+                             } else {
+                                 if chunk.remaining() == 0 {
+                                     trace!("discarding empty chunk");
+                                     continue;
+                                 }
+                                 self.conn.write_body(chunk);
+                             }
+                         } else if frame.is_trailers() {
+                             *clear_body = true;
+                             self.conn.write_trailers(
+                                 frame.into_trailers().unwrap_or_else(|_| unreachable!()),
+                             );
+                         } else {
+                             trace!("discarding unknown frame");
+                             continue;
+                         }
+                     } else {
+                         *clear_body = true;
+                         self.conn.end_body()?;
+                     }
+                 } else {
+                     // If there's no body_rx, end the body
+                     if self.conn.can_write_body() {
+                         self.conn.end_body()?;
+                     } else {
+                         return Poll::Pending;
+                     }
+                 }
+             }
+         }
+     }
+ 
+     fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<crate::Result<()>> {
+         self.conn.poll_flush(cx).map_err(|err| {
+             debug!("error writing: {}", err);
+             crate::Error::new_body_write(err)
+         })
+     }
+ 
+     fn close(&mut self) {
+         self.is_closing = true;
+         self.conn.close_read();
+         self.conn.close_write();
+     }
+ 
++    /// If there is pending data in body_rx, we can make progress writing if the connection is ready.
++    fn can_write_again(&mut self) -> bool {
++        self.body_rx.is_some()
++    }
++
+     fn is_done(&self) -> bool {
+         if self.is_closing {
+             return true;
+         }
+ 
+         let read_done = self.conn.is_read_closed();
+ 
+         if !T::should_read_first() && read_done {
+             // a client that cannot read may was well be done.
+             true
+         } else {
+             let write_done = self.conn.is_write_closed()
+                 || (!self.dispatch.should_poll() && self.body_rx.is_none());
+             read_done && write_done
+         }
+     }
+ }
+ 
+ impl<D, Bs, I, T> Future for Dispatcher<D, Bs, I, T>
+ where
+     D: Dispatch<
+             PollItem = MessageHead<T::Outgoing>,
+             PollBody = Bs,
+             RecvItem = MessageHead<T::Incoming>,
+         > + Unpin,
+     D::PollError: Into<Box<dyn StdError + Send + Sync>>,
+     I: Read + Write + Unpin,
+     T: Http1Transaction + Unpin,
+     Bs: Body + 'static,
+     Bs::Error: Into<Box<dyn StdError + Send + Sync>>,
+ {
+     type Output = crate::Result<Dispatched>;
+ 
+     #[inline]
+     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+         self.poll_catch(cx, true)
+     }
+ }
+ 
+ // ===== impl OptGuard =====
+ 
+ /// A drop guard to allow a mutable borrow of an Option while being able to
+ /// set whether the `Option` should be cleared on drop.
+ struct OptGuard<'a, T>(Pin<&'a mut Option<T>>, bool);
+ 
+ impl<'a, T> OptGuard<'a, T> {
+     fn new(pin: Pin<&'a mut Option<T>>) -> Self {
+         OptGuard(pin, false)
+     }
+ 
+     fn guard_mut(&mut self) -> (Option<Pin<&mut T>>, &mut bool) {
+         (self.0.as_mut().as_pin_mut(), &mut self.1)
+     }
+ }
+ 
+ impl<T> Drop for OptGuard<'_, T> {
+     fn drop(&mut self) {
+         if self.1 {
+             self.0.set(None);
+         }
+     }
+ }
+ 
+ // ===== impl Server =====
+ 
+ cfg_server! {
+     impl<S, B> Server<S, B>
+     where
+         S: HttpService<B>,
+     {
+         pub(crate) fn new(service: S) -> Server<S, B> {
+             Server {
+                 in_flight: Box::pin(None),
+                 service,
+             }
+         }
+ 
+         pub(crate) fn into_service(self) -> S {
+             self.service
+         }
+diff --git a/tests/h1_server/fixture.rs b/tests/h1_server/fixture.rs
+new file mode 100644
+index 00000000..6b31efec
+--- /dev/null
++++ b/tests/h1_server/fixture.rs
+@@ -0,0 +1,136 @@
++use http_body_util::StreamBody;
++use hyper::body::Bytes;
++use hyper::body::Frame;
++use hyper::server::conn::http1;
++use hyper::service::service_fn;
++use hyper::{Response, StatusCode};
++use std::convert::Infallible;
++use std::time::Duration;
++use tokio::sync::mpsc;
++use tokio::time::timeout;
++use tracing::{error, info};
++
++pub struct TestConfig {
++    pub total_chunks: usize,
++    pub chunk_size: usize,
++    pub chunk_timeout: Duration,
++}
++
++impl TestConfig {
++    pub fn with_timeout(chunk_timeout: Duration) -> Self {
++        Self {
++            total_chunks: 16,
++            chunk_size: 64 * 1024,
++            chunk_timeout,
++        }
++    }
++}
++
++pub struct Client {
++    pub rx: mpsc::UnboundedReceiver<Vec<u8>>,
++    pub tx: mpsc::UnboundedSender<Vec<u8>>,
++}
++
++pub async fn run<S>(server: S, mut client: Client, config: TestConfig)
++where
++    S: hyper::rt::Read + hyper::rt::Write + Send + Unpin + 'static,
++{
++    let mut http_builder = http1::Builder::new();
++    http_builder.max_buf_size(config.chunk_size);
++
++    let total_chunks = config.total_chunks;
++    let chunk_size = config.chunk_size;
++
++    let service = service_fn(move |_| {
++        let total_chunks = total_chunks;
++        let chunk_size = chunk_size;
++        async move {
++            info!(
++                "Creating payload of {} chunks of {} KiB each ({} MiB total)...",
++                total_chunks,
++                chunk_size / 1024,
++                total_chunks * chunk_size / (1024 * 1024)
++            );
++            let bytes = Bytes::from(vec![0; chunk_size]);
++            let data = vec![bytes.clone(); total_chunks];
++            let stream = futures_util::stream::iter(
++                data.into_iter()
++                    .map(|b| Ok::<_, Infallible>(Frame::data(b))),
++            );
++            let body = StreamBody::new(stream);
++            info!("Server: Sending data response...");
++            Ok::<_, hyper::Error>(
++                Response::builder()
++                    .status(StatusCode::OK)
++                    .header("content-type", "application/octet-stream")
++                    .header("content-length", (total_chunks * chunk_size).to_string())
++                    .body(body)
++                    .unwrap(),
++            )
++        }
++    });
++
++    let server_task = tokio::spawn(async move {
++        let conn = http_builder.serve_connection(Box::pin(server), service);
++        let conn_result = conn.await;
++        if let Err(e) = &conn_result {
++            error!("Server connection error: {}", e);
++        }
++        conn_result
++    });
++
++    let get_request = "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
++    client
++        .tx
++        .send(get_request.as_bytes().to_vec())
++        .map_err(|e| {
++            Box::new(std::io::Error::new(
++                std::io::ErrorKind::Other,
++                format!("Failed to send request: {}", e),
++            ))
++        })
++        .unwrap();
++
++    info!("Client is reading response...");
++    let mut bytes_received = 0;
++    let mut all_data = Vec::new();
++    loop {
++        match timeout(config.chunk_timeout, client.rx.recv()).await {
++            Ok(Some(chunk)) => {
++                bytes_received += chunk.len();
++                all_data.extend_from_slice(&chunk);
++            }
++            Ok(None) => break,
++            Err(_) => {
++                panic!(
++                    "Chunk timeout: chunk took longer than {:?}",
++                    config.chunk_timeout
++                );
++            }
++        }
++    }
++
++    // Clean up
++    let result = server_task.await.unwrap();
++    result.unwrap();
++
++    // Parse HTTP response to find body start
++    // HTTP response format: "HTTP/1.1 200 OK\r\n...headers...\r\n\r\n<body>"
++    let body_start = all_data
++        .windows(4)
++        .position(|w| w == b"\r\n\r\n")
++        .map(|pos| pos + 4)
++        .unwrap_or(0);
++
++    let body_bytes = bytes_received - body_start;
++    assert_eq!(
++        body_bytes,
++        config.total_chunks * config.chunk_size,
++        "Expected {} body bytes, got {} (total received: {}, headers: {})",
++        config.total_chunks * config.chunk_size,
++        body_bytes,
++        bytes_received,
++        body_start
++    );
++    info!(bytes_received, body_bytes, "Client done receiving bytes");
++}
+diff --git a/tests/h1_server/mod.rs b/tests/h1_server/mod.rs
+new file mode 100644
+index 00000000..7b2ee0a3
+--- /dev/null
++++ b/tests/h1_server/mod.rs
+@@ -0,0 +1,97 @@
++pub mod fixture;
++
++use hyper::rt::{Read, ReadBufCursor};
++use pin_project_lite::pin_project;
++use std::io;
++use std::pin::Pin;
++use std::task::{ready, Context, Poll};
++use tokio::sync::mpsc;
++
++// Common read half shared by both stream types
++pin_project! {
++    #[derive(Debug)]
++    pub struct StreamReadHalf {
++        #[pin]
++        read_rx: mpsc::UnboundedReceiver<Vec<u8>>,
++        read_buffer: Vec<u8>,
++    }
++}
++
++impl StreamReadHalf {
++    pub fn new(read_rx: mpsc::UnboundedReceiver<Vec<u8>>) -> Self {
++        Self {
++            read_rx,
++            read_buffer: Vec::new(),
++        }
++    }
++}
++
++impl Read for StreamReadHalf {
++    fn poll_read(
++        mut self: Pin<&mut Self>,
++        cx: &mut Context<'_>,
++        mut buf: ReadBufCursor<'_>,
++    ) -> Poll<io::Result<()>> {
++        let mut this = self.as_mut().project();
++
++        // First, try to satisfy the read request from the internal buffer
++        if !this.read_buffer.is_empty() {
++            let to_read = std::cmp::min(this.read_buffer.len(), buf.remaining());
++            // Copy data from internal buffer to the read buffer
++            buf.put_slice(&this.read_buffer[..to_read]);
++            // Remove the consumed data from the internal buffer
++            this.read_buffer.drain(..to_read);
++            return Poll::Ready(Ok(()));
++        }
++
++        // If internal buffer is empty, try to get data from the channel
++        match this.read_rx.as_mut().get_mut().try_recv() {
++            Ok(data) => {
++                // Copy as much data as we can fit in the buffer
++                let to_read = std::cmp::min(data.len(), buf.remaining());
++                buf.put_slice(&data[..to_read]);
++
++                // Store any remaining data in the internal buffer for next time
++                if to_read < data.len() {
++                    let remaining = &data[to_read..];
++                    this.read_buffer.extend_from_slice(remaining);
++                }
++                Poll::Ready(Ok(()))
++            }
++            Err(mpsc::error::TryRecvError::Empty) => {
++                match ready!(this.read_rx.poll_recv(cx)) {
++                    Some(data) => {
++                        // Copy as much data as we can fit in the buffer
++                        let to_read = std::cmp::min(data.len(), buf.remaining());
++                        buf.put_slice(&data[..to_read]);
++
++                        // Store any remaining data in the internal buffer for next time
++                        if to_read < data.len() {
++                            let remaining = &data[to_read..];
++                            this.read_buffer.extend_from_slice(remaining);
++                        }
++                        Poll::Ready(Ok(()))
++                    }
++                    None => Poll::Ready(Ok(())),
++                }
++            }
++            Err(mpsc::error::TryRecvError::Disconnected) => {
++                // Channel closed, return EOF
++                Poll::Ready(Ok(()))
++            }
++        }
++    }
++}
++
++pub fn init_tracing() {
++    use std::sync::Once;
++    static INIT: Once = Once::new();
++    INIT.call_once(|| {
++        tracing_subscriber::fmt()
++            .with_max_level(tracing::Level::INFO)
++            .with_target(true)
++            .with_thread_ids(true)
++            .with_thread_names(true)
++            .init();
++    });
++}
+diff --git a/tests/ready_on_poll_stream.rs b/tests/ready_on_poll_stream.rs
+new file mode 100644
+index 00000000..f393d31c
+--- /dev/null
++++ b/tests/ready_on_poll_stream.rs
+@@ -0,0 +1,139 @@
++#[path = "h1_server/mod.rs"]
++mod h1_server;
++
++use h1_server::{fixture, init_tracing, StreamReadHalf};
++use hyper::rt::{Read, ReadBufCursor, Write};
++use pin_project_lite::pin_project;
++use std::future::Future;
++use std::io;
++use std::pin::Pin;
++use std::task::{ready, Context, Poll};
++use std::time::Duration;
++use tokio::sync::mpsc;
++use tokio::time::Sleep;
++use tracing::error;
++
++pin_project! {
++    #[derive(Debug)]
++    pub struct ReadyOnPollStream {
++        #[pin]
++        read_half: StreamReadHalf,
++        write_tx: mpsc::UnboundedSender<Vec<u8>>,
++        #[pin]
++        pending_write: Option<Pin<Box<Sleep>>>,
++        poll_since_write: bool,
++        flush_count: usize,
++    }
++}
++
++impl ReadyOnPollStream {
++    fn new(
++        read_rx: mpsc::UnboundedReceiver<Vec<u8>>,
++        write_tx: mpsc::UnboundedSender<Vec<u8>>,
++    ) -> Self {
++        Self {
++            read_half: StreamReadHalf::new(read_rx),
++            write_tx,
++            poll_since_write: true,
++            flush_count: 0,
++            pending_write: None,
++        }
++    }
++
++    /// Create a new server stream and client pair.
++    /// Returns a server stream (Read+Write) and a client (rx/tx channels).
++    pub fn new_pair() -> (Self, fixture::Client) {
++        let (client_tx, server_rx) = mpsc::unbounded_channel();
++        let (server_tx, client_rx) = mpsc::unbounded_channel();
++        let server = Self::new(server_rx, server_tx);
++        let client = fixture::Client {
++            rx: client_rx,
++            tx: client_tx,
++        };
++        (server, client)
++    }
++}
++
++impl Read for ReadyOnPollStream {
++    fn poll_read(
++        mut self: Pin<&mut Self>,
++        cx: &mut Context<'_>,
++        buf: ReadBufCursor<'_>,
++    ) -> Poll<io::Result<()>> {
++        self.as_mut().project().read_half.poll_read(cx, buf)
++    }
++}
++
++const WRITE_DELAY: Duration = Duration::from_millis(100);
++
++impl Write for ReadyOnPollStream {
++    fn poll_write(
++        mut self: Pin<&mut Self>,
++        cx: &mut Context<'_>,
++        buf: &[u8],
++    ) -> Poll<io::Result<usize>> {
++        if let Some(sleep) = self.pending_write.as_mut() {
++            let sleep = sleep.as_mut();
++            ready!(Future::poll(sleep, cx));
++        }
++        {
++            let mut this = self.as_mut().project();
++            this.pending_write
++                .set(Some(Box::pin(tokio::time::sleep(WRITE_DELAY))));
++        }
++        let Some(sleep) = self.pending_write.as_mut() else {
++            panic!("Sleep should have just been set");
++        };
++        // poll the future so that we can woken
++        let sleep = sleep.as_mut();
++        let Poll::Pending = Future::poll(sleep, cx) else {
++            panic!("Sleep always be pending on first poll")
++        };
++
++        let this = self.project();
++        let buf = Vec::from(&buf[..buf.len()]);
++        let len = buf.len();
++
++        // Send data through the channel - this should always be ready for unbounded channels
++        match this.write_tx.send(buf) {
++            Ok(_) => Poll::Ready(Ok(len)),
++            Err(_) => {
++                error!("ReadyStream::poll_write failed - channel closed");
++                Poll::Ready(Err(io::Error::new(
++                    io::ErrorKind::BrokenPipe,
++                    "Write channel closed",
++                )))
++            }
++        }
++    }
++
++    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
++        self.flush_count += 1;
++        // We require two flushes to complete each chunk, simulating a success at the end of the old
++        // poll loop. After all chunks are written, we always succeed on flush to allow for finish.
++        const TOTAL_CHUNKS: usize = 16;
++        if self.flush_count % 2 != 0 && self.flush_count < TOTAL_CHUNKS * 2 {
++            if let Some(sleep) = self.pending_write.as_mut() {
++                let sleep = sleep.as_mut();
++                ready!(Future::poll(sleep, cx));
++            } else {
++                return Poll::Pending;
++            }
++        }
++        let mut this = self.as_mut().project();
++        this.pending_write.set(None);
++        Poll::Ready(Ok(()))
++    }
++
++    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
++        Poll::Ready(Ok(()))
++    }
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn body_test() {
++    init_tracing();
++    let (server, client) = ReadyOnPollStream::new_pair();
++    let config = fixture::TestConfig::with_timeout(WRITE_DELAY * 2);
++    fixture::run(server, client, config).await;
++}
+diff --git a/tests/unbuffered_stream.rs b/tests/unbuffered_stream.rs
+new file mode 100644
+index 00000000..9cea28d5
+--- /dev/null
++++ b/tests/unbuffered_stream.rs
+@@ -0,0 +1,126 @@
++#[path = "h1_server/mod.rs"]
++mod h1_server;
++
++use h1_server::{fixture, init_tracing, StreamReadHalf};
++use hyper::rt::{Read, ReadBufCursor, Write};
++use pin_project_lite::pin_project;
++use std::future::Future;
++use std::io;
++use std::pin::Pin;
++use std::task::{ready, Context, Poll};
++use std::time::Duration;
++use tokio::sync::mpsc;
++use tokio::time::Sleep;
++use tracing::error;
++
++pin_project! {
++    #[derive(Debug)]
++    pub struct UnbufferedStream {
++        #[pin]
++        read_half: StreamReadHalf,
++        #[pin]
++        pending_write: Option<Pin<Box<Sleep>>>,
++        write_tx: mpsc::UnboundedSender<Vec<u8>>,
++        poll_cnt: usize,
++    }
++}
++
++impl UnbufferedStream {
++    fn new(
++        read_rx: mpsc::UnboundedReceiver<Vec<u8>>,
++        write_tx: mpsc::UnboundedSender<Vec<u8>>,
++    ) -> Self {
++        Self {
++            read_half: StreamReadHalf::new(read_rx),
++            write_tx,
++            pending_write: None,
++            poll_cnt: 0,
++        }
++    }
++
++    /// Create a new server stream and client pair.
++    /// Returns a server stream (Read+Write) and a client (rx/tx channels).
++    pub fn new_pair() -> (Self, fixture::Client) {
++        let (client_tx, server_rx) = mpsc::unbounded_channel();
++        let (server_tx, client_rx) = mpsc::unbounded_channel();
++        let server = Self::new(server_rx, server_tx);
++        let client = fixture::Client {
++            rx: client_rx,
++            tx: client_tx,
++        };
++        (server, client)
++    }
++}
++
++const WRITE_DELAY: Duration = Duration::from_millis(100);
++
++impl Read for UnbufferedStream {
++    fn poll_read(
++        mut self: Pin<&mut Self>,
++        cx: &mut Context<'_>,
++        buf: ReadBufCursor<'_>,
++    ) -> Poll<io::Result<()>> {
++        let response = self.as_mut().project().read_half.poll_read(cx, buf);
++        response
++    }
++}
++
++impl Write for UnbufferedStream {
++    fn poll_write(
++        mut self: Pin<&mut Self>,
++        cx: &mut Context<'_>,
++        buf: &[u8],
++    ) -> Poll<io::Result<usize>> {
++        self.poll_cnt += 1;
++        let poll_cnt = self.poll_cnt;
++        if let Some(sleep) = self.pending_write.as_mut() {
++            let sleep = sleep.as_mut();
++            if poll_cnt > 4 {
++                return Poll::Ready(Err(io::Error::other("We are being hot polled!")));
++            }
++            ready!(Future::poll(sleep, cx));
++            let mut this = self.as_mut().project();
++            this.pending_write.set(None);
++            *this.poll_cnt = 0;
++        }
++        let len = buf.len();
++        {
++            let mut this = self.as_mut().project();
++            let buf = Vec::from(&buf[..buf.len()]);
++            // Send data through the channel - this should always be ready for unbounded channels
++            let Ok(_) = this.write_tx.send(buf) else {
++                error!("UnbufferedStream::poll_write failed - channel closed");
++                return Poll::Ready(Err(io::Error::new(
++                    io::ErrorKind::BrokenPipe,
++                    "Write channel closed",
++                )));
++            };
++            this.pending_write
++                .set(Some(Box::pin(tokio::time::sleep(WRITE_DELAY))))
++        }
++        let Some(sleep) = self.pending_write.as_mut() else {
++            panic!("Sleep should have just been set");
++        };
++        let sleep = sleep.as_mut();
++        let Poll::Pending = Future::poll(sleep, cx) else {
++            panic!("Sleep always be pending on first poll")
++        };
++        Poll::Ready(Ok(len))
++    }
++
++    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
++        Poll::Ready(Ok(()))
++    }
++
++    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
++        Poll::Ready(Ok(()))
++    }
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn body_test() {
++    init_tracing();
++    let (server, client) = UnbufferedStream::new_pair();
++    let config = fixture::TestConfig::with_timeout(WRITE_DELAY * 2);
++    fixture::run(server, client, config).await;
++}

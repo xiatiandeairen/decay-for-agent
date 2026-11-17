@@ -1,0 +1,43 @@
+{
+  "case_id": "hyperium-hyper-4069",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "-    pub fn reset_stream_duration(&mut self, dur: Duration) -> &mut Self {",
+        "-    pub fn header_table_size(&mut self, size: impl Into<Option<u32>>) -> &mut Self {"
+      ],
+      "rank": 1,
+      "rationale": "Two public builder methods removed (client reset_stream_duration, server header_table_size); downstream callers using these APIs will fail to compile.",
+      "risk_signal": "external_contract",
+      "subject": "src/client/conn/http2.rs:reset_stream_duration",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "-h2 = { version = \"0.4.14\", optional = true }",
+        "+h2 = { version = \"0.4.6\", optional = true }"
+      ],
+      "rank": 2,
+      "rationale": "h2 dependency minimum is downgraded from 0.4.14 to 0.4.6, weakening the version floor and dropping fixes/features delivered in 0.4.7\u20130.4.14 for users that resolve to the minimum.",
+      "risk_signal": "external_contract",
+      "subject": "Cargo.toml:h2",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "impl Drop for SenderDropGuard {",
+        "            sender.send_error(crate::Error::new_incomplete());"
+      ],
+      "rank": 3,
+      "rationale": "Dropping the Dispatcher while a body Sender is held now emits an incomplete-message error to the body receiver instead of silent EOF, changing observable end-of-stream semantics for body consumers.",
+      "risk_signal": "state_transition",
+      "subject": "src/proto/h1/dispatch.rs:SenderDropGuard",
+      "value": "direct"
+    }
+  ]
+}

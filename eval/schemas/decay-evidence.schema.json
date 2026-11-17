@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://decay.local/eval/schemas/decay-evidence.schema.json",
+  "title": "decay-evidence.v1",
+  "type": "object",
+  "required": [
+    "version",
+    "git_context",
+    "sections",
+    "evidence",
+    "diagnostics",
+    "warnings"
+  ],
+  "properties": {
+    "version": {
+      "const": "decay-evidence.v1"
+    },
+    "git_context": {
+      "type": "object",
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "repo_root": { "type": "string" },
+        "base_input": { "type": "string" },
+        "base": { "type": "string" },
+        "head": { "type": "string" },
+        "mode": { "const": "git_ref" },
+        "changed_files": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": {
+        "type": ["string", "integer"]
+      }
+    },
+    "sections": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["summary", "evidence"],
+        "properties": {
+          "summary": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "evidence": {
+            "type": "array",
+            "items": { "$ref": "#/$defs/evidenceItem" }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidenceItem" }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "evidenceItem": {
+      "type": "object",
+      "required": [
+        "id",
+        "category",
+        "kind",
+        "subject",
+        "source",
+        "confidence",
+        "value",
+        "details"
+      ],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1 },
+        "category": {
+          "enum": ["complexity", "coverage", "stability", "quality", "semantic", "history"]
+        },
+        "kind": { "type": "string", "minLength": 1 },
+        "subject": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "confidence": { "enum": ["high", "medium", "low"] },
+        "value": { "enum": ["direct", "supporting", "context", "coverage_limit"] },
+        "file": { "type": "string" },
+        "function": { "type": "string" },
+        "details": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

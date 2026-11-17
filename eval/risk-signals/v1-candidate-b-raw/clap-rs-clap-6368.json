@@ -1,0 +1,258 @@
+{
+  "candidate": {
+    "id": "clap-rs-clap-6368",
+    "repo": "clap-rs/clap",
+    "url": "https://github.com/clap-rs/clap/pull/6368"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "87ec1ad80dc174563cba130772823562e4427560",
+    "body": "Fixes #6367.\n\nThe fish env-completer registration line has two related escape bugs that I noticed while staring at the produced script for a path with a literal backslash:\n\n1. `complete --command BIN` runs `BIN` through `unescape_string` on top of fish's normal source-time unescape pass, so a backslash in the bin name is eaten on `source`-time evaluation. This is documented in fish-shell/fish-shell#12712.\n2. `complete --arguments \"...\"` is a fish double-quoted string whose contents fish unescapes once at source time and again at completion time. The completer interpolates into that string and so has to survive two passes; `shlex::try_quote` only quotes for one.\n\nFix:\n\n* Pass the bin as a positional argument, which only gets the source-time pass.\n* Replace the shlex hops with two fish-aware quoters: `fish_quote` for one pass (bin), `fish_quote_for_eval` for two (completer). The two-pass form lifts each metacharacter one escape level so the inner value survives the deferred eval.\n\nCoverage in `clap_complete::env::shells::tests`:\n\n* `fish_env_completer_path_with_backslash_round_trips`: fourfold-backslash round-trip on a `/p/dyn\\amic/foo` completer.\n* `fish_env_command_name_is_positional`: bin appears positionally and `--command` is gone.\n* `fish_quote_passes_safe_strings_through`, `fish_quote_single_quotes_special_chars`, `fish_quote_for_eval_lifts_each_escape_one_level`: unit coverage for the two helpers.\n\nThe existing `fish_env_completer_path_quoting_works` snapbox test was updated for the positional shape; the `tests/snapshots/.../exhaustive.fish` fixture also drops `--command`.\n",
+    "comments": [
+      {
+        "author": {
+          "login": "truffle-dev"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "1. Restructured to put `impl EnvCompleter for Fish` first and the helpers below per M-CALLER-CALLEE: 9f0d809\n2. Doc comment on `fish_quote` is one-line summary + blank line + details: 9f0d809\n3. Same shape on `fish_quote_for_eval`: 9f0d809\n4. All quoting tests now use `snapbox::assert_data_eq!(_, snapbox::str![...])`: cd4371e captures the master output, 9f0d809 updates the snapshots\n5. Split into the C-TEST two-commit shape: cd4371e adds the test cases at the current (broken) output, 9f0d809 changes the production code so the snapshots flip to the fixed form\n\nForce-pushed to fit `committed.toml` (50-char subject, 72-char body wrap); SHAs above are post-amend.",
+        "createdAt": "2026-05-10T04:15:10Z",
+        "id": "IC_kwDOAd3Usc8AAAABBx6Kwg",
+        "includesCreatedEdit": true,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/6368#issuecomment-4414409410",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "truffle-dev"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "1. Dropped the gate — these tests don't drive a real shell (06e7afdf).\n2. Dropped `.trim()` (06e7afdf).\n3. Reformatted to multi-line. The prior single-line literal was hand-written rather than snapbox-generated, and had the backslashes in the wrong positions (06e7afdf).\n4. Yes — both commits pass `rustfmt --check` independently (06e7afdf, 43ad9786).",
+        "createdAt": "2026-05-11T14:16:15Z",
+        "id": "IC_kwDOAd3Usc8AAAABB4s0SA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/6368#issuecomment-4421530696",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Note: the latest push only has test changes in the first commit. Please correct to follow https://epage.github.io/dev/pr-style/#c-test",
+        "createdAt": "2026-05-11T14:23:32Z",
+        "id": "IC_kwDOAd3Usc8AAAABB4wIcA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/6368#issuecomment-4421585008",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "truffle-dev"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Restructured per C-Test: test commit (e791004a) snapshots the current broken output, fix commit (49a05cdc) changes the impl and flips the snapshots. Each commit builds and tests pass independently.",
+        "createdAt": "2026-05-11T14:28:54Z",
+        "id": "IC_kwDOAd3Usc8AAAABB4yrPw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/6368#issuecomment-4421626687",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "truffle-dev"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Shell Integration flagged 4 fish testsuite tests (fish::complete, complete_dynamic_env_quoted_help/value, complete_dynamic_env_toplevel). Each has empty actual output against a multi-line expected; the registration this PR emits for the test's bin name (`exhaustive`) is byte-identical to before since fish_quote/fish_quote_for_eval take the no-quoting-needed fast path for alphanumeric inputs, and fish::register_dynamic_env (which would catch any divergence in the registration content) passes. Reads as a fish PTY flake rather than a real regression. Happy to no-op push if you want to re-trigger.",
+        "createdAt": "2026-05-11T14:38:31Z",
+        "id": "IC_kwDOAd3Usc8AAAABB43s2A",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/6368#issuecomment-4421709016",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks!",
+        "createdAt": "2026-05-11T18:43:55Z",
+        "id": "IC_kwDOAd3Usc8AAAABB60IUw",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/6368#issuecomment-4423747667",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 110,
+        "changeType": "MODIFIED",
+        "deletions": 3,
+        "path": "clap_complete/src/env/shells.rs"
+      }
+    ],
+    "headRefName": "fix/fish-env-escaping",
+    "headRefOid": "49a05cdc99c2151cdd48d5ec4c974151d21c026e",
+    "labels": [],
+    "mergedAt": "2026-05-11T18:44:00Z",
+    "number": 6368,
+    "reviewDecision": "",
+    "reviews": [
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "54d9d9abcc357b05e94613fc6044953aa8c7a4d0"
+        },
+        "id": "PRR_kwDOAd3Usc791xOH",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-05-10T01:53:32Z"
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "54d9d9abcc357b05e94613fc6044953aa8c7a4d0"
+        },
+        "id": "PRR_kwDOAd3Usc791xRq",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-05-10T01:53:57Z"
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "54d9d9abcc357b05e94613fc6044953aa8c7a4d0"
+        },
+        "id": "PRR_kwDOAd3Usc791xSt",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-05-10T01:54:04Z"
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "54d9d9abcc357b05e94613fc6044953aa8c7a4d0"
+        },
+        "id": "PRR_kwDOAd3Usc791x2f",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-05-10T01:58:06Z"
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "54d9d9abcc357b05e94613fc6044953aa8c7a4d0"
+        },
+        "id": "PRR_kwDOAd3Usc791yEF",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-05-10T01:59:42Z"
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "cd4371ecd0e4ace01cd4e6fc525ca8e6dcd22ad2"
+        },
+        "id": "PRR_kwDOAd3Usc7-K5t5",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-05-11T13:55:59Z"
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "cd4371ecd0e4ace01cd4e6fc525ca8e6dcd22ad2"
+        },
+        "id": "PRR_kwDOAd3Usc7-K6U-",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-05-11T13:56:17Z"
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "cd4371ecd0e4ace01cd4e6fc525ca8e6dcd22ad2"
+        },
+        "id": "PRR_kwDOAd3Usc7-K7Yy",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-05-11T13:56:46Z"
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "cd4371ecd0e4ace01cd4e6fc525ca8e6dcd22ad2"
+        },
+        "id": "PRR_kwDOAd3Usc7-K9-5",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-05-11T13:57:57Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix(complete): Escape fish env-completer for source and eval passes",
+    "url": "https://github.com/clap-rs/clap/pull/6368"
+  }
+}

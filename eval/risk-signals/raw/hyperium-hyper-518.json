@@ -1,0 +1,123 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Enriched candidate; production client connector behavior changed.",
+    "id": "hyperium-hyper-518",
+    "limitations": "Needs exact test evidence.",
+    "production_files": [
+      "src/client/mod.rs",
+      "src/client/pool.rs",
+      "src/mock.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "Setting an SSL verifier needed to keep the underlying connector.",
+    "signal_ids": [
+      "lifecycle_ordering",
+      "external_contract"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/518",
+      "eval/semantic-candidates/enriched.jsonl"
+    ],
+    "status": "candidate",
+    "test_files": [
+      "benches/client.rs"
+    ],
+    "url": "https://github.com/hyperium/hyper/pull/518",
+    "why_high_value": "TLS connector/verifier configuration affects client behavior and compatibility.",
+    "why_not_noise": "Specific connector preservation bug."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "38f40c7f6a17bd33951bbab1adddf542cbb96de6",
+    "body": "The client no longer drops the old `Connector` instance, along with its\nentire context (such as the settings and pooled connections in the case\nof a `Pool` connector); rather, it passes the SSL verifier on to the\n`Connector` so that it uses it for any future connections that it needs\nto establish.\n\nA regression test is included.\n\nCloses #495\n",
+    "comments": [
+      {
+        "author": {
+          "login": "coveralls"
+        },
+        "authorAssociation": "NONE",
+        "body": "[![Coverage Status](https://coveralls.io/builds/2525859/badge)](https://coveralls.io/builds/2525859)\n\nCoverage increased (+0.02%) to 85.47% when pulling **4988060a54ffbbefb3c21a102ca6dc33d887e231 on mlalic:fix-client-ssl-verifier** into **38f40c7f6a17bd33951bbab1adddf542cbb96de6 on hyperium:master**.\n",
+        "createdAt": "2015-05-09T18:06:40Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDEwMDUyNTU3Mg==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/518#issuecomment-100525572",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "coveralls"
+        },
+        "authorAssociation": "NONE",
+        "body": "[![Coverage Status](https://coveralls.io/builds/2525905/badge)](https://coveralls.io/builds/2525905)\n\nCoverage increased (+0.02%) to 85.47% when pulling **f4556d554faa2a1170fec0af5b4076c31e7c3600 on mlalic:fix-client-ssl-verifier** into **38f40c7f6a17bd33951bbab1adddf542cbb96de6 on hyperium:master**.\n",
+        "createdAt": "2015-05-09T18:17:41Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDEwMDUyNjEwNw==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/518#issuecomment-100526107",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Excellent, thank you!\n",
+        "createdAt": "2015-05-10T05:46:41Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDEwMDU4OTQ3Mg==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/518#issuecomment-100589472",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 4,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "benches/client.rs"
+      },
+      {
+        "additions": 38,
+        "changeType": "MODIFIED",
+        "deletions": 5,
+        "path": "src/client/mod.rs"
+      },
+      {
+        "additions": 21,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "src/client/pool.rs"
+      },
+      {
+        "additions": 38,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/mock.rs"
+      },
+      {
+        "additions": 15,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/net.rs"
+      }
+    ],
+    "headRefName": "fix-client-ssl-verifier",
+    "headRefOid": "f4556d554faa2a1170fec0af5b4076c31e7c3600",
+    "labels": [],
+    "mergedAt": "2015-05-10T05:46:43Z",
+    "number": 518,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "fix(client): keep the underlying connector when setting an SSL verifier",
+    "url": "https://github.com/hyperium/hyper/pull/518"
+  }
+}

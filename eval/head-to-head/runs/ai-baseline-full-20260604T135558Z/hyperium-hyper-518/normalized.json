@@ -1,0 +1,41 @@
+{
+  "case_id": "hyperium-hyper-518",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "fn set_ssl_verifier(&mut self, verifier: ContextVerifier);"
+      ],
+      "rank": 1,
+      "rationale": "Adds a required method to the public NetworkConnector trait with no default impl; every downstream implementor must add set_ssl_verifier or fail to compile.",
+      "risk_signal": "external_contract",
+      "subject": "src/net.rs:NetworkConnector",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "self.connector = with_connector(Pool::with_connector(",
+        "self.connector.set_ssl_verifier(verifier);"
+      ],
+      "rank": 2,
+      "rationale": "Old behavior replaced the connector with a fresh Pool<HttpConnector>, discarding any user-supplied connector and pooled conns; new behavior mutates the existing connector in place.",
+      "risk_signal": "state_transition",
+      "subject": "src/client/mod.rs:Client::set_ssl_verifier",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "self.0 = Some(verifier);"
+      ],
+      "rank": 3,
+      "rationale": "Assignment unconditionally overwrites any previously installed ContextVerifier with no warning or composition; repeated calls silently drop the prior closure.",
+      "risk_signal": "assumption_boundary",
+      "subject": "src/net.rs:HttpConnector::set_ssl_verifier",
+      "value": "supporting"
+    }
+  ]
+}

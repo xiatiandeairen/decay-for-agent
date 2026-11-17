@@ -1,0 +1,748 @@
+diff --git a/src/proto/h2/mod.rs b/src/proto/h2/mod.rs
+index 9d482615..f3159cf9 100644
+--- a/src/proto/h2/mod.rs
++++ b/src/proto/h2/mod.rs
+@@ -11,242 +11,288 @@ use http::header::{HeaderName, CONNECTION, TE, TRANSFER_ENCODING, UPGRADE};
+ use http::HeaderMap;
+ use pin_project_lite::pin_project;
+ 
+ use crate::body::Body;
+ 
+ pub(crate) mod ping;
+ pub(crate) mod upgrade;
+ 
+ cfg_client! {
+     pub(crate) mod client;
+     pub(crate) use self::client::ClientTask;
+ }
+ 
+ cfg_server! {
+     pub(crate) mod server;
+     pub(crate) use self::server::Server;
+ }
+ 
+ /// Default initial stream window size defined in HTTP2 spec.
+ pub(crate) const SPEC_WINDOW_SIZE: u32 = 65_535;
+ 
+ // List of connection headers from RFC 9110 Section 7.6.1
+ //
+ // TE headers are allowed in HTTP/2 requests as long as the value is "trailers", so they're
+ // tested separately.
+ static CONNECTION_HEADERS: [HeaderName; 4] = [
+     HeaderName::from_static("keep-alive"),
+     HeaderName::from_static("proxy-connection"),
+     TRANSFER_ENCODING,
+     UPGRADE,
+ ];
+ 
+ fn strip_connection_headers(headers: &mut HeaderMap, is_request: bool) {
+     for header in &CONNECTION_HEADERS {
+         if headers.remove(header).is_some() {
+             warn!("Connection header illegal in HTTP/2: {}", header.as_str());
+         }
+     }
+ 
+     if is_request {
+         if headers
+             .get(TE)
+             .map_or(false, |te_header| te_header != "trailers")
+         {
+             warn!("TE headers not set to \"trailers\" are illegal in HTTP/2 requests");
+             headers.remove(TE);
+         }
+     } else if headers.remove(TE).is_some() {
+         warn!("TE headers illegal in HTTP/2 responses");
+     }
+ 
+     if let Some(header) = headers.remove(CONNECTION) {
+         warn!(
+             "Connection header illegal in HTTP/2: {}",
+             CONNECTION.as_str()
+         );
+         // A `Connection` header may have a comma-separated list of names of other headers that
+         // are meant for only this specific connection.
+         //
+         // Iterate these names and remove them as headers. Connection-specific headers are
+         // forbidden in HTTP2, as that information has been moved into frame types of the h2
+         // protocol.
+         if let Ok(header_contents) = header.to_str() {
+             for name in header_contents.split(',') {
+                 let name = name.trim();
+                 headers.remove(name);
+             }
+         }
+     }
+ }
+ 
+ // body adapters used by both Client and Server
+ 
+ pin_project! {
+     pub(crate) struct PipeToSendStream<S>
+     where
+         S: Body,
+     {
+         body_tx: SendStream<SendBuf<S::Data>>,
+         data_done: bool,
++        // A data chunk that has been polled from the body but is still waiting
++        // for stream-level capacity before it can be shipped. Stored here so
++        // it survives across `Poll::Pending` returns from `poll_capacity`; if
++        // we left the chunk in a local, it would be dropped on every repoll.
++        buffered_data: Option<Peeked<S::Data>>,
+         #[pin]
+         stream: S,
+     }
+ }
+ 
++struct Peeked<D> {
++    data: D,
++    is_eos: bool,
++}
++
+ impl<S> PipeToSendStream<S>
+ where
+     S: Body,
+ {
+     fn new(stream: S, tx: SendStream<SendBuf<S::Data>>) -> PipeToSendStream<S> {
+         PipeToSendStream {
+             body_tx: tx,
+             data_done: false,
++            buffered_data: None,
+             stream,
+         }
+     }
+ 
+     #[cfg(feature = "client")]
+     fn send_reset(self: Pin<&mut Self>, reason: h2::Reason) {
+         self.project().body_tx.send_reset(reason);
+     }
+ }
+ 
+ impl<S> Future for PipeToSendStream<S>
+ where
+     S: Body,
+     S::Error: Into<Box<dyn StdError + Send + Sync>>,
+ {
+     type Output = crate::Result<()>;
+ 
+     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+         let mut me = self.project();
+         loop {
+-            // we don't have the next chunk of data yet, so just reserve 1 byte to make
+-            // sure there's some capacity available. h2 will handle the capacity management
+-            // for the actual body chunk.
+-            me.body_tx.reserve_capacity(1);
++            // Register for RST_STREAM notification while we wait for the next
++            // body chunk or for send capacity, so the task wakes up if the
++            // peer resets the stream.
++            if let Poll::Ready(reason) = me
++                .body_tx
++                .poll_reset(cx)
++                .map_err(crate::Error::new_body_write)?
++            {
++                debug!("stream received RST_STREAM: {:?}", reason);
++                return Poll::Ready(Err(crate::Error::new_body_write(::h2::Error::from(reason))));
++            }
+ 
+-            if me.body_tx.capacity() == 0 {
+-                loop {
++            // If a previously-polled chunk is still waiting for stream-level
++            // send capacity, drive that to completion before touching the
++            // body again.
++            if me.buffered_data.is_some() {
++                while me.body_tx.capacity() == 0 {
+                     match ready!(me.body_tx.poll_capacity(cx)) {
+                         Some(Ok(0)) => {}
+                         Some(Ok(_)) => break,
+                         Some(Err(e)) => return Poll::Ready(Err(crate::Error::new_body_write(e))),
+                         None => {
+                             // None means the stream is no longer in a
+                             // streaming state, we either finished it
+                             // somehow, or the remote reset us.
+                             return Poll::Ready(Err(crate::Error::new_body_write(
+                                 "send stream capacity unexpectedly closed",
+                             )));
+                         }
+                     }
+                 }
+-            } else if let Poll::Ready(reason) = me
+-                .body_tx
+-                .poll_reset(cx)
+-                .map_err(crate::Error::new_body_write)?
+-            {
+-                debug!("stream received RST_STREAM: {:?}", reason);
+-                return Poll::Ready(Err(crate::Error::new_body_write(::h2::Error::from(reason))));
++
++                let peeked = me.buffered_data.take().expect("checked is_some above");
++                let buf = SendBuf::Buf(peeked.data);
++                me.body_tx
++                    .send_data(buf, peeked.is_eos)
++                    .map_err(crate::Error::new_body_write)?;
++
++                if peeked.is_eos {
++                    return Poll::Ready(Ok(()));
++                }
++                continue;
+             }
+ 
++            // Poll for the next body frame *before* reserving any connection
++            // flow-control capacity. Reserving capacity speculatively (even a
++            // single byte) pins that capacity on the connection-level window,
++            // which can deadlock a second stream when talking to peers that
++            // only emit WINDOW_UPDATE once their receive window is fully
++            // exhausted. See #4003.
+             match ready!(me.stream.as_mut().poll_frame(cx)) {
+                 Some(Ok(frame)) => {
+                     if frame.is_data() {
+                         let chunk = frame.into_data().unwrap_or_else(|_| unreachable!());
+                         let is_eos = me.stream.is_end_stream();
+-                        trace!(
+-                            "send body chunk: {} bytes, eos={}",
+-                            chunk.remaining(),
+-                            is_eos,
+-                        );
++                        let len = chunk.remaining();
++                        trace!("send body chunk: {} bytes, eos={}", len, is_eos);
+ 
+-                        let buf = SendBuf::Buf(chunk);
+-                        me.body_tx
+-                            .send_data(buf, is_eos)
+-                            .map_err(crate::Error::new_body_write)?;
++                        if len == 0 {
++                            // Zero-length data frames need no capacity; send
++                            // them straight through so trailing empty frames
++                            // (e.g. an explicit end-of-stream marker) are
++                            // delivered.
++                            let buf = SendBuf::Buf(chunk);
++                            me.body_tx
++                                .send_data(buf, is_eos)
++                                .map_err(crate::Error::new_body_write)?;
+ 
+-                        if is_eos {
+-                            return Poll::Ready(Ok(()));
++                            if is_eos {
++                                return Poll::Ready(Ok(()));
++                            }
++                            continue;
+                         }
++
++                        // Reserve exactly the chunk size so we never pin more
++                        // connection-level flow-control window than we are
++                        // about to consume. Stash the chunk in `self` so it
++                        // survives the upcoming `poll_capacity` wait even if
++                        // it returns `Poll::Pending`.
++                        me.body_tx.reserve_capacity(len);
++                        *me.buffered_data = Some(Peeked {
++                            data: chunk,
++                            is_eos,
++                        });
+                     } else if frame.is_trailers() {
+                         // no more DATA, so give any capacity back
+                         me.body_tx.reserve_capacity(0);
+                         me.body_tx
+                             .send_trailers(frame.into_trailers().unwrap_or_else(|_| unreachable!()))
+                             .map_err(crate::Error::new_body_write)?;
+                         return Poll::Ready(Ok(()));
+                     } else {
+                         trace!("discarding unknown frame");
+                         // loop again
+                     }
+                 }
+                 Some(Err(e)) => return Poll::Ready(Err(me.body_tx.on_user_err(e))),
+                 None => {
+                     // no more frames means we're done here
+                     // but at this point, we haven't sent an EOS DATA, or
+                     // any trailers, so send an empty EOS DATA.
+                     return Poll::Ready(me.body_tx.send_eos_frame());
+                 }
+             }
+         }
+     }
+ }
+ 
+ trait SendStreamExt {
+     fn on_user_err<E>(&mut self, err: E) -> crate::Error
+     where
+         E: Into<Box<dyn std::error::Error + Send + Sync>>;
+     fn send_eos_frame(&mut self) -> crate::Result<()>;
+ }
+ 
+ impl<B: Buf> SendStreamExt for SendStream<SendBuf<B>> {
+     fn on_user_err<E>(&mut self, err: E) -> crate::Error
+     where
+         E: Into<Box<dyn std::error::Error + Send + Sync>>,
+     {
+         let err = crate::Error::new_user_body(err);
+         debug!("send body user stream error: {}", err);
+         self.send_reset(err.h2_reason());
+         err
+     }
+ 
+     fn send_eos_frame(&mut self) -> crate::Result<()> {
+         trace!("send body eos");
+         self.send_data(SendBuf::None, true)
+             .map_err(crate::Error::new_body_write)
+     }
+ }
+ 
+ #[repr(usize)]
+ enum SendBuf<B> {
+     Buf(B),
+     Cursor(Cursor<Box<[u8]>>),
+     None,
+ }
+ 
+ impl<B: Buf> Buf for SendBuf<B> {
+     #[inline]
+     fn remaining(&self) -> usize {
+         match *self {
+             Self::Buf(ref b) => b.remaining(),
+             Self::Cursor(ref c) => Buf::remaining(c),
+             Self::None => 0,
+         }
+     }
+ 
+     #[inline]
+     fn chunk(&self) -> &[u8] {
+         match *self {
+             Self::Buf(ref b) => b.chunk(),
+             Self::Cursor(ref c) => c.chunk(),
+             Self::None => &[],
+         }
+     }
+ 
+     #[inline]
+     fn advance(&mut self, cnt: usize) {
+         match *self {
+             Self::Buf(ref mut b) => b.advance(cnt),
+             Self::Cursor(ref mut c) => c.advance(cnt),
+diff --git a/tests/client.rs b/tests/client.rs
+index f74cec74..823cf401 100644
+--- a/tests/client.rs
++++ b/tests/client.rs
+@@ -1493,160 +1493,161 @@ test! {
+         request: {
+             method: GET,
+             url: "http://{addr}/foo",
+         },
+         response:
+             status: OK,
+             headers: {
+             },
+             body: &b"abc"[..],
+ }
+ 
+ test! {
+     name: client_allows_http09_when_requested,
+ 
+     server:
+         expected: "\
+             GET / HTTP/1.1\r\n\
+             host: {addr}\r\n\
+             \r\n\
+             ",
+         reply: "Mmmmh, baguettes.",
+ 
+     client:
+         options: {
+             http09_responses: true,
+         },
+         request: {
+             method: GET,
+             url: "http://{addr}/",
+         },
+         response:
+             status: OK,
+             headers: {},
+             body: &b"Mmmmh, baguettes."[..],
+ }
+ 
+ test! {
+     name: client_obs_fold_headers,
+ 
+     server:
+         expected: "\
+             GET / HTTP/1.1\r\n\
+             host: {addr}\r\n\
+             \r\n\
+             ",
+         reply: "\
+             HTTP/1.1 200 OK\r\n\
+             Content-Length: 0\r\n\
+             Fold: just\r\n some\r\n\t folding\r\n\
+             \r\n\
+             ",
+ 
+     client:
+         options: {
+             allow_obsolete_multiline_headers_in_responses: true,
+         },
+         request: {
+             method: GET,
+             url: "http://{addr}/",
+         },
+         response:
+             status: OK,
+             headers: {
+                 "fold" => "just some folding",
+             },
+             body: None,
+ }
+ 
+ mod conn {
+     use std::error::Error;
+     use std::io::{self, Read, Write};
+     use std::net::{SocketAddr, TcpListener};
+     use std::pin::Pin;
+     use std::task::{Context, Poll};
+     use std::thread;
+     use std::time::Duration;
+ 
+     use bytes::{Buf, Bytes};
+     use futures_channel::{mpsc, oneshot};
+     use futures_util::future::{self, poll_fn, FutureExt, TryFutureExt};
++    use http_body_util::combinators::BoxBody;
+     use http_body_util::{BodyExt, Empty, Full, StreamBody};
+     use hyper::rt::Timer;
+     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _, DuplexStream};
+     use tokio::net::{TcpListener as TkTcpListener, TcpStream};
+ 
+     use hyper::body::{Body, Frame};
+     use hyper::client::conn;
+     use hyper::upgrade::OnUpgrade;
+     use hyper::{Method, Request, Response, StatusCode};
+ 
+     use super::{concat, s, support, tcp_connect, FutureHyperExt};
+ 
+     use support::{TokioExecutor, TokioIo, TokioTimer};
+ 
+     fn setup_logger() {
+         let _ = pretty_env_logger::try_init();
+     }
+ 
+     async fn setup_tk_test_server() -> (TkTcpListener, SocketAddr) {
+         setup_logger();
+         let listener = TkTcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+             .await
+             .unwrap();
+         let addr = listener.local_addr().unwrap();
+         (listener, addr)
+     }
+ 
+     fn setup_std_test_server() -> (TcpListener, SocketAddr) {
+         setup_logger();
+         let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap();
+         let addr = listener.local_addr().unwrap();
+         (listener, addr)
+     }
+ 
+     fn setup_duplex_test_server() -> (DuplexStream, DuplexStream, SocketAddr) {
+         use std::net::{IpAddr, Ipv6Addr};
+         setup_logger();
+ 
+         const BUF_SIZE: usize = 1024;
+         let (ioa, iob) = tokio::io::duplex(BUF_SIZE);
+ 
+         /// A test address inside the 'documentation' address range.
+         /// See: <https://www.iana.org/assignments/iana-ipv6-special-registry/iana-ipv6-special-registry.xhtml>
+         const TEST_ADDR: IpAddr = IpAddr::V6(Ipv6Addr::new(0x3fff, 0, 0, 0, 0, 0, 0, 1));
+         const TEST_SOCKET: SocketAddr = SocketAddr::new(TEST_ADDR, 8080);
+ 
+         (ioa, iob, TEST_SOCKET)
+     }
+ 
+     #[tokio::test]
+     async fn get() {
+         let (listener, addr) = setup_tk_test_server().await;
+ 
+         let server = async move {
+             let mut sock = listener.accept().await.unwrap().0;
+             let mut buf = [0; 4096];
+             let n = sock.read(&mut buf).await.expect("read 1");
+ 
+             // Notably:
+             // - Just a path, since just a path was set
+             // - No host, since no host was set
+             let expected = "GET /a HTTP/1.1\r\n\r\n";
+             assert_eq!(s(&buf[..n]), expected);
+ 
+             sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                 .await
+                 .unwrap();
+         };
+ 
+         let client = async move {
+             let tcp = tcp_connect(&addr).await.expect("connect");
+             let (mut client, conn) = conn::http1::handshake(tcp).await.expect("handshake");
+ 
+             tokio::task::spawn(async move {
+                 conn.await.expect("http conn");
+             });
+ 
+             let req = Request::builder()
+                 .uri("/a")
+                 .body(Empty::<Bytes>::new())
+@@ -2913,98 +2914,264 @@ mod conn {
+     struct DebugStream {
+         tcp: TokioIo<TcpStream>,
+         shutdown_called: bool,
+     }
+ 
+     impl hyper::rt::Write for DebugStream {
+         fn poll_shutdown(
+             mut self: Pin<&mut Self>,
+             cx: &mut Context<'_>,
+         ) -> Poll<Result<(), io::Error>> {
+             self.shutdown_called = true;
+             Pin::new(&mut self.tcp).poll_shutdown(cx)
+         }
+ 
+         fn poll_flush(
+             mut self: Pin<&mut Self>,
+             cx: &mut Context<'_>,
+         ) -> Poll<Result<(), io::Error>> {
+             Pin::new(&mut self.tcp).poll_flush(cx)
+         }
+ 
+         fn poll_write(
+             mut self: Pin<&mut Self>,
+             cx: &mut Context<'_>,
+             buf: &[u8],
+         ) -> Poll<Result<usize, io::Error>> {
+             Pin::new(&mut self.tcp).poll_write(cx, buf)
+         }
+     }
+ 
+     impl hyper::rt::Read for DebugStream {
+         fn poll_read(
+             mut self: Pin<&mut Self>,
+             cx: &mut Context<'_>,
+             buf: hyper::rt::ReadBufCursor<'_>,
+         ) -> Poll<io::Result<()>> {
+             Pin::new(&mut self.tcp).poll_read(cx, buf)
+         }
+     }
+ 
+     // https://github.com/hyperium/hyper/issues/4040
+     #[tokio::test]
+     async fn h2_pipe_task_cancelled_on_response_future_drop() {
+         let (client_io, server_io, _) = setup_duplex_test_server();
+         let (rst_tx, rst_rx) = oneshot::channel::<bool>();
+ 
+         tokio::spawn(async move {
+             let mut builder = h2::server::Builder::new();
+             builder.initial_window_size(0);
+             let mut h2 = builder.handshake::<_, Bytes>(server_io).await.unwrap();
+             let (req, _respond) = h2.accept().await.unwrap().unwrap();
+             tokio::spawn(async move {
+                 let _ = poll_fn(|cx| h2.poll_closed(cx)).await;
+             });
+ 
+             let mut body = req.into_body();
+             let got_rst = tokio::time::timeout(Duration::from_secs(2), body.data())
+                 .await
+                 .map_or(false, |frame| matches!(frame, Some(Err(_)) | None));
+             let _ = rst_tx.send(got_rst);
+         });
+ 
+         let io = TokioIo::new(client_io);
+         let (mut client, conn) = conn::http2::Builder::new(TokioExecutor)
+             .handshake(io)
+             .await
+             .expect("http handshake");
+         tokio::spawn(async move {
+             let _ = conn.await;
+         });
+ 
+         let req = Request::post("http://localhost/")
+             .body(Full::new(Bytes::from(vec![b'x'; 50])))
+             .unwrap();
+         let res = tokio::time::timeout(Duration::from_millis(5), client.send_request(req)).await;
+         assert!(res.is_err(), "should timeout waiting for response");
+ 
+         let got_rst = rst_rx.await.expect("server task should complete");
+         assert!(got_rst, "server should receive RST_STREAM");
+     }
++
++    // https://github.com/hyperium/hyper/issues/4003
++    //
++    // An idle `PipeToSendStream` must not reserve any connection-level flow
++    // control capacity speculatively. If it does, a first stream that has
++    // filled the connection window will pin the remaining byte(s), and no
++    // second stream can make progress when talking to a peer that only emits
++    // `WINDOW_UPDATE` after its receive window is fully exhausted.
++    #[tokio::test]
++    async fn h2_idle_stream_does_not_pin_connection_window() {
++        use std::sync::{Arc, Mutex};
++
++        // The HTTP/2 spec fixes the initial connection-level window at 65535
++        // (RFC 9113 section 6.9.2), and it can only be increased via
++        // WINDOW_UPDATE. Stream A therefore sends 65534 bytes to leave exactly
++        // one byte of connection window for stream B.
++        const STREAM_A_LEN: usize = 65534;
++
++        let (client_io, server_io, _) = setup_duplex_test_server();
++        let (stream_a_full_tx, stream_a_full_rx) = oneshot::channel::<()>();
++        let (stream_b_got_tx, stream_b_got_rx) = oneshot::channel::<usize>();
++
++        // Raw h2 server that never calls `release_capacity`, so no
++        // connection-level WINDOW_UPDATE is ever sent — mimicking peers that
++        // only emit WINDOW_UPDATE after their receive window is fully
++        // exhausted. The main server task accepts streams in a loop so the
++        // h2 codec is driven continuously; each stream is dispatched to a
++        // spawned handler that reads the body without ever releasing
++        // capacity.
++        //
++        // The `stream_a_done` channel keeps stream A's server-side request
++        // alive until the test is done. Dropping the recv side of stream A
++        // would let h2 auto-release its in-flight recv capacity and emit a
++        // WINDOW_UPDATE, which would hide the bug.
++        let (stream_a_done_tx, stream_a_done_rx) = oneshot::channel::<()>();
++        let stream_a_full_tx = Arc::new(Mutex::new(Some(stream_a_full_tx)));
++        let stream_b_got_tx = Arc::new(Mutex::new(Some(stream_b_got_tx)));
++        let stream_a_done_rx = Arc::new(Mutex::new(Some(stream_a_done_rx)));
++        tokio::spawn(async move {
++            let mut h2 = h2::server::handshake(server_io).await.unwrap();
++            let mut seen = 0u32;
++            while let Some(result) = h2.accept().await {
++                let (req, mut respond) = result.unwrap();
++                seen += 1;
++                let which = seen;
++                let stream_a_full_tx = stream_a_full_tx.clone();
++                let stream_b_got_tx = stream_b_got_tx.clone();
++                let stream_a_done_rx = stream_a_done_rx.clone();
++                tokio::spawn(async move {
++                    let mut body = req.into_body();
++                    if which == 1 {
++                        // Stream A: drain the burst of body data without ever
++                        // releasing recv capacity, then park on the done
++                        // channel to hold on to the recv stream.
++                        let mut received = 0usize;
++                        while received < STREAM_A_LEN {
++                            let frame = match body.data().await {
++                                Some(Ok(f)) => f,
++                                _ => return,
++                            };
++                            received += frame.len();
++                            // Intentionally do NOT call release_capacity.
++                        }
++                        if let Some(tx) = stream_a_full_tx.lock().unwrap().take() {
++                            let _ = tx.send(());
++                        }
++                        // Keep the recv stream alive so that dropping it
++                        // cannot auto-release connection-level recv capacity
++                        // and emit a WINDOW_UPDATE mid-test.
++                        let done = stream_a_done_rx.lock().unwrap().take();
++                        if let Some(done) = done {
++                            let _ = done.await;
++                        }
++                        // Keep `body` in scope until here.
++                        drop(body);
++                    } else {
++                        // Stream B: record the first data frame and respond.
++                        let mut received = 0usize;
++                        if let Some(Ok(frame)) = body.data().await {
++                            received += frame.len();
++                        }
++                        if let Some(tx) = stream_b_got_tx.lock().unwrap().take() {
++                            let _ = tx.send(received);
++                        }
++                        let mut send = respond.send_response(Response::new(()), false).unwrap();
++                        let _ = send.send_data(Bytes::from_static(b"ok"), true);
++                    }
++                });
++            }
++        });
++
++        let io = TokioIo::new(client_io);
++        let (mut client, conn) = conn::http2::Builder::new(TokioExecutor)
++            .handshake::<_, BoxBody<Bytes, Box<dyn Error + Send + Sync>>>(io)
++            .await
++            .expect("http handshake");
++        tokio::spawn(async move {
++            let _ = conn.await;
++        });
++
++        // Request A: streaming body that sends STREAM_A_LEN bytes and then
++        // stays open, waiting for more data. This fills the advertised
++        // connection-level window down to one byte remaining.
++        let (mut tx_a, rx_a) =
++            mpsc::channel::<Result<Frame<Bytes>, Box<dyn Error + Send + Sync>>>(4);
++        let body_a: BoxBody<Bytes, Box<dyn Error + Send + Sync>> =
++            BodyExt::boxed(StreamBody::new(rx_a));
++        let req_a = Request::post("http://localhost/a").body(body_a).unwrap();
++        let mut client_a = client.clone();
++        let a_handle = tokio::spawn(async move { client_a.send_request(req_a).await });
++
++        // Push stream A's body in 16 KiB chunks to match the default h2
++        // `SETTINGS_MAX_FRAME_SIZE`.
++        use futures_util::SinkExt;
++        let mut remaining = STREAM_A_LEN;
++        while remaining > 0 {
++            let take = remaining.min(16_384);
++            let bytes = Bytes::from(vec![b'A'; take]);
++            tx_a.send(Ok(Frame::data(bytes)))
++                .await
++                .expect("stream A channel send");
++            remaining -= take;
++        }
++
++        // Wait for the server to confirm it received the full body on stream
++        // A, which means the connection window is now down to its last byte.
++        tokio::time::timeout(Duration::from_secs(5), stream_a_full_rx)
++            .await
++            .expect("server should receive full stream A body in time")
++            .expect("stream_a_full_rx");
++
++        // Give the client's `PipeToSendStream` for stream A a moment to park
++        // itself waiting for more body frames, which (with the bug) would
++        // speculatively reserve the last byte of connection-level capacity.
++        for _ in 0..16 {
++            tokio::task::yield_now().await;
++        }
++
++        // Request B: one byte of body. With the bug in `PipeToSendStream`,
++        // stream A pins the last byte of connection window via a speculative
++        // reserve, so stream B can never ship its data frame.
++        let body_b: BoxBody<Bytes, Box<dyn Error + Send + Sync>> = BodyExt::boxed(
++            http_body_util::Full::new(Bytes::from_static(b"b"))
++                .map_err(|never: std::convert::Infallible| match never {}),
++        );
++        let req_b = Request::post("http://localhost/b").body(body_b).unwrap();
++        let b_fut = client.send_request(req_b);
++
++        let received_b = tokio::time::timeout(Duration::from_secs(5), stream_b_got_rx)
++            .await
++            .expect("stream B must reach the server even while stream A is idle")
++            .expect("stream_b_got_rx");
++        assert_eq!(
++            received_b, 1,
++            "stream B should deliver its single body byte"
++        );
++
++        // Drive request B to completion so we don't leak the future.
++        let _ = tokio::time::timeout(Duration::from_secs(5), b_fut).await;
++
++        // Close stream A cleanly: first release the server-side handler so
++        // it drops the recv stream, then drop the body sender.
++        let _ = stream_a_done_tx.send(());
++        drop(tx_a);
++        let _ = tokio::time::timeout(Duration::from_secs(5), a_handle).await;
++    }
+ }
+ 
+ trait FutureHyperExt: TryFuture {
+     fn expect(self, msg: &'static str) -> Pin<Box<dyn Future<Output = Self::Ok>>>;
+ }
+ 
+ impl<F> FutureHyperExt for F
+ where
+     F: TryFuture + 'static,
+     F::Error: std::fmt::Debug,
+ {
+     fn expect(self, msg: &'static str) -> Pin<Box<dyn Future<Output = Self::Ok>>> {
+         Box::pin(
+             self.inspect_err(move |e| panic!("expect: {}; error={:?}", msg, e))
+                 .map(Result::unwrap),
+         )
+     }
+ }

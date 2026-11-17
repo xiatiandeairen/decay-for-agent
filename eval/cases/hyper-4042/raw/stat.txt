@@ -1,0 +1,5 @@
+ src/client/dispatch.rs |  3 +++
+ src/proto/h2/client.rs | 37 +++++++++++++++++++++++++++++++++++++
+ src/proto/h2/mod.rs    |  5 +++++
+ tests/client.rs        | 41 +++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 86 insertions(+)

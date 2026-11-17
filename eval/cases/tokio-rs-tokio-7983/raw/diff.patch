@@ -1,0 +1,615 @@
+diff --git a/tokio/src/runtime/io/driver/uring.rs b/tokio/src/runtime/io/driver/uring.rs
+index 89c97826..1b946c1b 100644
+--- a/tokio/src/runtime/io/driver/uring.rs
++++ b/tokio/src/runtime/io/driver/uring.rs
+@@ -1,282 +1,309 @@
+ use io_uring::{squeue::Entry, IoUring, Probe};
+ use mio::unix::SourceFd;
+ use slab::Slab;
+ 
++use crate::runtime::driver::op::CancelData;
++use crate::runtime::driver::op::CqeResult;
+ use crate::runtime::driver::op::{Cancellable, Lifecycle};
+ use crate::{io::Interest, loom::sync::Mutex};
+ 
+ use super::{Handle, TOKEN_WAKEUP};
+ 
+-use std::os::fd::{AsRawFd, RawFd};
++use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+ use std::{io, mem, task::Waker};
+ 
+ const DEFAULT_RING_SIZE: u32 = 256;
+ 
+ pub(crate) struct UringContext {
+     pub(crate) uring: Option<io_uring::IoUring>,
+     pub(crate) ops: slab::Slab<Lifecycle>,
+ }
+ 
+ impl UringContext {
+     pub(crate) fn new() -> Self {
+         Self {
+             ops: Slab::new(),
+             uring: None,
+         }
+     }
+ 
+     pub(crate) fn ring(&self) -> &io_uring::IoUring {
+         self.uring.as_ref().expect("io_uring not initialized")
+     }
+ 
+     pub(crate) fn ring_mut(&mut self) -> &mut io_uring::IoUring {
+         self.uring.as_mut().expect("io_uring not initialized")
+     }
+ 
+     /// Perform `io_uring_setup` system call, and Returns true if this
+     /// actually initialized the io_uring.
+     ///
+     /// If the machine doesn't support io_uring, then this will return an
+     /// `ENOSYS` error.
+     pub(crate) fn try_init(&mut self, probe: &mut Probe) -> io::Result<bool> {
+         if self.uring.is_some() {
+             // Already initialized.
+             return Ok(false);
+         }
+ 
+         let uring = IoUring::new(DEFAULT_RING_SIZE)?;
+ 
+         match uring.submitter().register_probe(probe) {
+             Ok(_) => {}
+             Err(e) if e.raw_os_error() == Some(libc::EINVAL) => {
+                 // The kernel does not support IORING_REGISTER_PROBE.
+                 return Err(io::Error::from_raw_os_error(libc::ENOSYS));
+             }
+             Err(e) => return Err(e),
+         }
+ 
+         self.uring.replace(uring);
+ 
+         Ok(true)
+     }
+ 
+     pub(crate) fn dispatch_completions(&mut self) {
+         let ops = &mut self.ops;
+         let Some(mut uring) = self.uring.take() else {
+             // Uring is not initialized yet.
+             return;
+         };
+ 
+         let cq = uring.completion();
+ 
+         for cqe in cq {
+             let idx = cqe.user_data() as usize;
+ 
+             match ops.get_mut(idx) {
+                 Some(Lifecycle::Waiting(waker)) => {
+                     waker.wake_by_ref();
+                     *ops.get_mut(idx).unwrap() = Lifecycle::Completed(cqe);
+                 }
+-                Some(Lifecycle::Cancelled(_)) => {
++                Some(Lifecycle::Cancelled(cancel_data)) => {
++                    if let CancelData::Open(_) = cancel_data {
++                        if let Ok(fd) = CqeResult::from(cqe).result {
++                            // SAFETY: the successful CQE result provides
++                            // a non-negative integer, and the event is
++                            // related to an open operation.
++                            unsafe { OwnedFd::from_raw_fd(fd as i32) };
++                        }
++                    }
+                     // Op future was cancelled, so we discard the result.
+-                    // We just remove the entry from the slab.
+                     ops.remove(idx);
+                 }
+                 Some(other) => {
+                     panic!("unexpected lifecycle for slot {idx}: {other:?}");
+                 }
+                 None => {
+                     panic!("no op at index {idx}");
+                 }
+             }
+         }
+ 
+         self.uring.replace(uring);
+ 
+         // `cq`'s drop gets called here, updating the latest head pointer
+     }
+ 
+     pub(crate) fn submit(&mut self) -> io::Result<()> {
+         loop {
+             // Errors from io_uring_enter: https://man7.org/linux/man-pages/man2/io_uring_enter.2.html#ERRORS
+             match self.ring().submit() {
+                 Ok(_) => {
+                     return Ok(());
+                 }
+ 
+                 // If the submission queue is full, we dispatch completions and try again.
+                 Err(ref e) if e.raw_os_error() == Some(libc::EBUSY) => {
+                     self.dispatch_completions();
+                 }
+                 // For other errors, we currently return the error as is.
+                 Err(e) => {
+                     return Err(e);
+                 }
+             }
+         }
+     }
+ 
+     pub(crate) fn remove_op(&mut self, index: usize) -> Lifecycle {
+         self.ops.remove(index)
+     }
+ }
+ 
+ /// Drop the driver, cancelling any in-progress ops and waiting for them to terminate.
+ impl Drop for UringContext {
+     fn drop(&mut self) {
+         if self.uring.is_none() {
+             // Uring is not initialized or not supported.
+             return;
+         }
+ 
+         // Make sure we flush the submission queue before dropping the driver.
+         while !self.ring_mut().submission().is_empty() {
+             self.submit().expect("Internal error when dropping driver");
+         }
+ 
+         let mut ops = std::mem::take(&mut self.ops);
+ 
+         // Remove all completed ops since we don't need to wait for them.
+         ops.retain(|_, lifecycle| !matches!(lifecycle, Lifecycle::Completed(_)));
+ 
+         while !ops.is_empty() {
+             // Wait until at least one completion is available.
+             self.ring_mut()
+                 .submit_and_wait(1)
+                 .expect("Internal error when dropping driver");
+ 
+             for cqe in self.ring_mut().completion() {
+                 let idx = cqe.user_data() as usize;
++
++                if let Some(Lifecycle::Cancelled(CancelData::Open(_))) = ops.get_mut(idx) {
++                    if let Ok(fd) = CqeResult::from(cqe).result {
++                        // SAFETY: the successful CQE result provides
++                        // a non-negative integer, and the event is
++                        // related to an open operation.
++                        unsafe { OwnedFd::from_raw_fd(fd as i32) };
++                    }
++                };
++
+                 ops.remove(idx);
+             }
+         }
+     }
+ }
+ 
+ impl Handle {
+     fn add_uring_source(&self, uringfd: RawFd) -> io::Result<()> {
+         let mut source = SourceFd(&uringfd);
+         self.registry
+             .register(&mut source, TOKEN_WAKEUP, Interest::READABLE.to_mio())
+     }
+ 
+     pub(crate) fn get_uring(&self) -> &Mutex<UringContext> {
+         &self.uring_context
+     }
+ 
+     /// Check if the io_uring context is initialized. If not, it will try to initialize it.
+     /// Then, check if the provided opcode is supported.
+     ///
+     /// If both the context initialization succeeds and the opcode is supported,
+     /// this returns `Ok(true)`.
+     /// If either io_uring is unsupported or the opcode is unsupported,
+     /// this returns `Ok(false)`.
+     /// An error is returned if an io_uring syscall returns an unexpected error value.
+     ///
+     /// TODO: This would like to be a synchronous function,
+     /// but we require `OnceLock::get_or_try_init`.
+     /// <https://github.com/rust-lang/rust/issues/109737>
+     pub(crate) async fn check_and_init(&self, opcode: u8) -> io::Result<bool> {
+         let probe = self
+             .uring_probe
+             .get_or_try_init(|| async {
+                 let mut probe = Probe::new();
+                 match self.try_init(&mut probe) {
+                     Ok(()) => Ok(Some(probe)),
+                     // If the system doesn't support io_uring, we set the probe to `None`.
+                     Err(e) if e.raw_os_error() == Some(libc::ENOSYS) => Ok(None),
+                     // If we get EPERM, io-uring syscalls may be blocked (for example, by seccomp).
+                     // In this case, we try to fall back to spawn_blocking for this and future operations.
+                     // See also: https://github.com/tokio-rs/tokio/issues/7691
+                     Err(e) if e.raw_os_error() == Some(libc::EPERM) => Ok(None),
+                     // For other system errors, we just return it.
+                     Err(e) => Err(e),
+                 }
+             })
+             .await?;
+ 
+         Ok(probe
+             .as_ref()
+             .is_some_and(|probe| probe.is_supported(opcode)))
+     }
+ 
+     /// Initialize the io_uring context if it hasn't been initialized yet.
+     fn try_init(&self, probe: &mut Probe) -> io::Result<()> {
+         let mut guard = self.get_uring().lock();
+         if guard.try_init(probe)? {
+             self.add_uring_source(guard.ring().as_raw_fd())?;
+         }
+ 
+         Ok(())
+     }
+ 
+     /// Register an operation with the io_uring.
+     ///
+     /// If this is the first io_uring operation, it will also initialize the io_uring context.
+     /// If io_uring isn't supported, this function returns an `ENOSYS` error, so the caller can
+     /// perform custom handling, such as falling back to an alternative mechanism.
+     ///
+     /// # Safety
+     ///
+     /// Callers must ensure that parameters of the entry (such as buffer) are valid and will
+     /// be valid for the entire duration of the operation, otherwise it may cause memory problems.
+     pub(crate) unsafe fn register_op(&self, entry: Entry, waker: Waker) -> io::Result<usize> {
+         assert!(self.uring_probe.initialized());
+ 
+         // Uring is initialized.
+ 
+         let mut guard = self.get_uring().lock();
+         let ctx = &mut *guard;
+         let index = ctx.ops.insert(Lifecycle::Waiting(waker));
+         let entry = entry.user_data(index as u64);
+ 
+         let submit_or_remove = |ctx: &mut UringContext| -> io::Result<()> {
+             if let Err(e) = ctx.submit() {
+                 // Submission failed, remove the entry from the slab and return the error
+                 ctx.remove_op(index);
+                 return Err(e);
+             }
+             Ok(())
+         };
+ 
+         // SAFETY: entry is valid for the entire duration of the operation
+         while unsafe { ctx.ring_mut().submission().push(&entry).is_err() } {
+             // If the submission queue is full, flush it to the kernel
+             submit_or_remove(ctx)?;
+         }
+ 
+         // Ensure that the completion queue is not full before submitting the entry.
+         while ctx.ring_mut().completion().is_full() {
+             ctx.dispatch_completions();
+         }
+ 
+         // Note: For now, we submit the entry immediately without utilizing batching.
+         submit_or_remove(ctx)?;
+ 
+         Ok(index)
+     }
+ 
+     pub(crate) fn cancel_op<T: Cancellable>(&self, index: usize, data: Option<T>) {
+         let mut guard = self.get_uring().lock();
+         let ctx = &mut *guard;
+         let ops = &mut ctx.ops;
+         let Some(lifecycle) = ops.get_mut(index) else {
+             // The corresponding index doesn't exist anymore, so this Op is already complete.
+             return;
+         };
+ 
+         // This Op will be cancelled. Here, we don't remove the lifecycle from the slab to keep
+         // uring data alive until the operation completes.
+ 
+         let cancel_data = data.expect("Data should be present").cancel();
+         match mem::replace(lifecycle, Lifecycle::Cancelled(cancel_data)) {
+             Lifecycle::Submitted | Lifecycle::Waiting(_) => (),
+             // The driver saw the completion, but it was never polled.
+-            Lifecycle::Completed(_) => {
++            Lifecycle::Completed(cqe) => {
++                if let Lifecycle::Cancelled(CancelData::Open(_)) = lifecycle {
++                    if let Ok(fd) = CqeResult::from(cqe).result {
++                        // SAFETY: the successful CQE result provides
++                        // a non-negative integer, and the event is
++                        // related to an open operation.
++                        unsafe { OwnedFd::from_raw_fd(fd as i32) };
++                    }
++                }
+                 // We can safely remove the entry from the slab, as it has already been completed.
+                 ops.remove(index);
+             }
+             prev => panic!("Unexpected state: {prev:?}"),
+         };
+     }
+ }
+diff --git a/tokio/tests/fs_uring_cancel_open.rs b/tokio/tests/fs_uring_cancel_open.rs
+new file mode 100644
+index 00000000..5f204020
+--- /dev/null
++++ b/tokio/tests/fs_uring_cancel_open.rs
+@@ -0,0 +1,71 @@
++//! Uring file operations tests.
++
++#![cfg(all(
++    tokio_unstable,
++    feature = "io-uring",
++    feature = "rt",
++    feature = "fs",
++    target_os = "linux"
++))]
++
++use futures::future::FutureExt;
++use std::fs;
++use std::future::poll_fn;
++use std::task::Poll;
++use tempfile::NamedTempFile;
++
++// see: https://github.com/tokio-rs/tokio/issues/7979
++#[tokio::test]
++async fn file_descriptors_are_closed_when_cancelling_open_op() {
++    let tmp = NamedTempFile::new().unwrap();
++    let path = tmp.path().to_path_buf();
++
++    let fd_count_before_opens = fs::read_dir("/proc/self/fd").unwrap().count();
++
++    for _ in 0..128 {
++        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
++
++        let path = path.clone();
++        let handle = tokio::spawn(async move {
++            poll_fn(|cx| {
++                let opt = {
++                    let mut opt = tokio::fs::OpenOptions::new();
++                    opt.read(true);
++                    opt
++                };
++
++                let fut = opt.open(&path);
++
++                // If io_uring is enabled (and not falling back to the thread pool),
++                // the first poll should return Pending. We don't check if the result
++                // is actually pending because we run some checks on old kernel that
++                // do not support uring.
++                let _pending = Box::pin(fut).poll_unpin(cx);
++
++                tx.send(()).unwrap();
++
++                Poll::<()>::Pending
++            })
++            .await;
++        });
++
++        // Wait for the first poll
++        rx.recv().await.unwrap();
++
++        handle.abort();
++
++        let res = handle.await.unwrap_err();
++        assert!(res.is_cancelled());
++    }
++
++    let fd_count_after_cancel = fs::read_dir("/proc/self/fd").unwrap().count();
++    let leaked = fd_count_after_cancel.saturating_sub(fd_count_before_opens);
++
++    // Since we are opening 128 files, we expect that the related fds
++    // related to this operation will be closed. Since some other fds
++    // can be opened in the meantime, we expect this number to be higher
++    // than the counter before opening the files. This number could be
++    // lower, but to avoid test flakiness we check that this is at most
++    // half the number of the file we opened to check if there's a leak.
++    assert!(leaked <= 64);
++}
+diff --git a/tokio/tests/fs_uring_completed_then_dropped_before_repoll.rs b/tokio/tests/fs_uring_completed_then_dropped_before_repoll.rs
+new file mode 100644
+index 00000000..359e298b
+--- /dev/null
++++ b/tokio/tests/fs_uring_completed_then_dropped_before_repoll.rs
+@@ -0,0 +1,130 @@
++#![cfg(all(
++    tokio_unstable,
++    feature = "io-uring",
++    feature = "rt",
++    feature = "fs",
++    target_os = "linux"
++))]
++
++use std::fs;
++use std::future::Future;
++use std::path::PathBuf;
++use std::pin::Pin;
++use std::task::{Context, Poll};
++use std::time::Duration;
++
++use tempfile::NamedTempFile;
++use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
++use tokio::time::timeout;
++
++/// Count currently-open fds in this process.
++fn fd_count() -> usize {
++    fs::read_dir("/proc/self/fd").unwrap().count()
++}
++
++/// First poll:
++/// - polls the inner `tokio::fs::OpenOptions::open()` future once,
++/// - expects `Pending` so we know we took the io_uring path,
++/// - registers the task waker with Tokio's uring machinery.
++///
++/// Second poll:
++/// - happens after the kernel completes the open and Tokio stores the CQE as
++///   `Lifecycle::Completed(cqe)` and wakes the task,
++/// - **intentionally does not poll the inner open future again**,
++/// - stays pending forever so the task can be aborted.
++///
++/// Aborting the task here drops the inner `open()` future while Tokio still has
++/// a completed CQE sitting in the slab.
++struct PollOpenOnceThenNeverRepoll<F> {
++    inner: Pin<Box<F>>,
++    first_poll_tx: Option<UnboundedSender<()>>,
++    second_poll_tx: Option<UnboundedSender<()>>,
++    polled_once: bool,
++}
++
++impl<F: Future> Future for PollOpenOnceThenNeverRepoll<F> {
++    type Output = ();
++
++    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
++        if !self.polled_once {
++            // We don't check if the result is actually pending because
++            // we run some checks on old kernel that do not support uring.
++            let _pending = self.inner.as_mut().poll(cx);
++
++            self.polled_once = true;
++            self.first_poll_tx.take().unwrap().send(()).unwrap();
++            return Poll::Pending;
++        }
++
++        // We were polled again after the inner open completed and woke the task.
++        // Crucially, we do *not* re-poll the inner future here.
++        if let Some(tx) = self.second_poll_tx.take() {
++            tx.send(()).unwrap();
++        }
++
++        Poll::Pending
++    }
++}
++
++async fn completed_then_dropped_before_repoll(path: PathBuf) {
++    let (first_tx, mut first_rx) = unbounded_channel();
++    let (second_tx, mut second_rx) = unbounded_channel();
++
++    let handle = tokio::spawn(async move {
++        let mut opt = tokio::fs::OpenOptions::new();
++        opt.read(true);
++
++        PollOpenOnceThenNeverRepoll {
++            inner: Box::pin(opt.open(&path)),
++            first_poll_tx: Some(first_tx),
++            second_poll_tx: Some(second_tx),
++            polled_once: false,
++        }
++        .await;
++    });
++
++    // Wait until the inner open has been polled once and registered with io_uring.
++    first_rx.recv().await.unwrap();
++
++    // Wait until Tokio wakes the task because the open completed. At this point
++    // the CQE should already be stored as `Lifecycle::Completed(cqe)`.
++    let _ = timeout(Duration::from_secs(2), second_rx.recv()).await;
++
++    // Abort now, before the inner open future gets re-polled and consumes the CQE.
++    handle.abort();
++    let err = handle.await.unwrap_err();
++    assert!(err.is_cancelled(), "task was not cancelled as expected");
++}
++
++#[test]
++fn uring_completed_then_dropped() {
++    let rt = tokio::runtime::Builder::new_multi_thread()
++        .worker_threads(1)
++        .enable_all()
++        .build()
++        .unwrap();
++
++    rt.block_on(async {
++        let before = fd_count();
++        let tmp = NamedTempFile::new().unwrap();
++        let path = tmp.path().to_path_buf();
++
++        for _ in 0..128 {
++            completed_then_dropped_before_repoll(path.clone()).await;
++        }
++
++        // Give completions a moment to settle before counting fds.
++        tokio::time::sleep(Duration::from_millis(250)).await;
++
++        let after = fd_count();
++        let leaked = after.saturating_sub(before);
++
++        // Since we are opening 128 files, we expect that the related fds
++        // related to this operation will be closed. Since some other fds
++        // can be opened in the meantime, we expect this number to be higher
++        // than the counter before opening the files. This number could be
++        // lower, but to avoid test flakiness we check that this is at most
++        // half the number of the file we opened to check if there's a leak.
++        assert!(leaked <= 64);
++    });
++}
+diff --git a/tokio/tests/fs_uring_runtime_shutdown.rs b/tokio/tests/fs_uring_runtime_shutdown.rs
+new file mode 100644
+index 00000000..429cfce1
+--- /dev/null
++++ b/tokio/tests/fs_uring_runtime_shutdown.rs
+@@ -0,0 +1,78 @@
++//! Uring file operations tests.
++
++#![cfg(all(
++    tokio_unstable,
++    feature = "io-uring",
++    feature = "rt",
++    feature = "fs",
++    target_os = "linux"
++))]
++
++use futures::FutureExt;
++use std::fs;
++use std::future::poll_fn;
++use std::task::Poll;
++use tempfile::NamedTempFile;
++use tokio::runtime::Builder;
++
++// see: https://github.com/tokio-rs/tokio/issues/7979
++#[test]
++fn shutdown_runtime_while_performing_io_uring_ops() {
++    let tmp = NamedTempFile::new().unwrap();
++    let path = tmp.path().to_path_buf();
++
++    let fd_count_before_opens = fs::read_dir("/proc/self/fd").unwrap().count();
++
++    let rt = Builder::new_multi_thread().enable_all().build().unwrap();
++
++    rt.block_on(async {
++        for _ in 0..128 {
++            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
++
++            let path = path.clone();
++            let handle = tokio::spawn(async move {
++                poll_fn(|cx| {
++                    let opt = {
++                        let mut opt = tokio::fs::OpenOptions::new();
++                        opt.read(true);
++                        opt
++                    };
++
++                    let fut = opt.open(&path);
++
++                    // If io_uring is enabled (and not falling back to the thread pool),
++                    // the first poll should return Pending. We don't check if the result
++                    // is actually a pending because we run some CI checks based on old
++                    // kernels that don't support uring.
++                    let _pending = Box::pin(fut).poll_unpin(cx);
++
++                    tx.send(()).unwrap();
++
++                    Poll::<()>::Pending
++                })
++                .await;
++            });
++
++            // Wait for the first poll
++            rx.recv().await.unwrap();
++
++            handle.abort();
++
++            let res = handle.await.unwrap_err();
++            assert!(res.is_cancelled());
++        }
++    });
++
++    rt.shutdown_background();
++
++    let fd_count_after_cancel = fs::read_dir("/proc/self/fd").unwrap().count();
++    let leaked = fd_count_after_cancel.saturating_sub(fd_count_before_opens);
++
++    // Since we are opening 128 files, we expect that the related fds
++    // related to this operation will be closed. Since some other fds
++    // can be opened in the meantime, we expect this number to be higher
++    // than the counter before opening the files. This number could be
++    // lower, but to avoid test flakiness we check that this is at most
++    // half the number of the file we opened to check if there's a leak.
++    assert!(leaked <= 64);
++}

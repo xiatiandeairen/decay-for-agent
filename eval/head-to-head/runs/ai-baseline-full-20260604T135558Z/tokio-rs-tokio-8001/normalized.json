@@ -1,0 +1,43 @@
+{
+  "case_id": "tokio-rs-tokio-8001",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "async_io(Interest::READABLE | Interest::ERROR, || self.io.recv(buf))"
+      ],
+      "rank": 1,
+      "rationale": "recv/recv_buf/recv_from/peek/peek_from/peek_sender now register Interest::ERROR alongside READABLE so error-state wakeups (e.g. ECONNREFUSED on connected UDP) surface from async_io instead of stallin\u2026",
+      "risk_signal": "state_transition",
+      "subject": "tokio/src/net/udp.rs:recv",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "drop(receiver);",
+        "time::timeout(Duration::from_secs(5), sender.recv(&mut recv_buf))",
+        "ConnectionRefused | io::ErrorKind::ConnectionReset"
+      ],
+      "rank": 2,
+      "rationale": "New test exercises connected-UDP after peer drop; relies on Interest::ERROR wakeup to deliver ECONNREFUSED/ECONNRESET. 5s timeout would mask a regression as a slow path.",
+      "risk_signal": "non_happy_path",
+      "subject": "tokio/tests/udp.rs:send_to_recv_closed_returns_err",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "pub fn poll_recv(&self, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {",
+        "self.io.registration().poll_read_io(cx, ||"
+      ],
+      "rank": 3,
+      "rationale": "poll_recv / poll_recv_from / poll_peek* still register only READABLE via poll_read_io; behavior diverges from async recv* which now surface ERROR events \u2014 inconsistent contract across the two API sur\u2026",
+      "risk_signal": "external_contract",
+      "subject": "tokio/src/net/udp.rs:poll_recv",
+      "value": "supporting"
+    }
+  ]
+}

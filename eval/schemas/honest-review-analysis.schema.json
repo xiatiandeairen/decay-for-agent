@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "honest-review-analysis.v1",
+      "type": "string"
+    },
+    "items": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "wrapper_id": {
+            "type": "string"
+          },
+          "risk_item": {
+            "type": "string"
+          },
+          "dimension_judgements": {
+            "additionalProperties": false,
+            "properties": {
+              "mechanism": {
+                "$ref": "#/$defs/dimension_judgement"
+              },
+              "impact": {
+                "$ref": "#/$defs/dimension_judgement"
+              },
+              "control": {
+                "$ref": "#/$defs/dimension_judgement"
+              }
+            },
+            "required": [
+              "mechanism",
+              "impact",
+              "control"
+            ],
+            "type": "object"
+          },
+          "overall_judgement": {
+            "type": "string"
+          },
+          "non_claims": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "uncertainties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "recommended_next_check": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "wrapper_id",
+          "risk_item",
+          "dimension_judgements",
+          "overall_judgement",
+          "non_claims",
+          "uncertainties",
+          "recommended_next_check"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "version",
+    "items"
+  ],
+  "type": "object",
+  "$defs": {
+    "dimension_judgement": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "confirmed",
+            "partial",
+            "weak",
+            "unknown",
+            "contradicted"
+          ],
+          "type": "string"
+        },
+        "supported_by": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "limits": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "supported_by",
+        "limits"
+      ],
+      "type": "object"
+    }
+  }
+}

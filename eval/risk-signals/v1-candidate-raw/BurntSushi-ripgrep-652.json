@@ -1,0 +1,159 @@
+{
+  "candidate": {
+    "id": "BurntSushi-ripgrep-652",
+    "repo": "BurntSushi/ripgrep",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/652"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "1aec4b11231ccb7de92e3008408e4d06a714d106",
+    "body": "When processing a rule that ends in a slash, we strip it off and set the\r\n`is_only_dir` flag.  We then apply the rule that paths that aren't\r\nabsolute should be given an implicit `**/` prefix, while avoiding\r\nadding that prefix if it already exists.\r\n\r\nHowever, this means that we miss the case in which we had already\r\nstripped off the trailing slash and set `is_only_dir`.  Correct this\r\nby also explicitly checking for that case.\r\n\r\nFixes #649",
+    "comments": [
+      {
+        "author": {
+          "login": "lambda"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "I think the build failure here on macOS is spurious. The same test passes on my own machine (running 10.12.6, while the build machine is 10.11.6), and the test that failed is one that is supposed to panic but failed with a `SIGBUS` instead.",
+        "createdAt": "2017-10-24T04:18:39Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDMzODg2ODc2OA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/652#issuecomment-338868768",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "lambda"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Huh, failed twice the exact same way, which I can't reproduce here with the exact same nightly compiler, though a different kernel. That's strange.",
+        "createdAt": "2017-10-24T04:46:30Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDMzODg3MjM0Mw==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/652#issuecomment-338872343",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "BurntSushi"
+        },
+        "authorAssociation": "OWNER",
+        "body": "That's... strange. I just kicked it again.\r\n\r\nLooks like a great fix, thank you. :-)",
+        "createdAt": "2017-10-24T11:24:40Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDMzODk1ODc2NA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/652#issuecomment-338958764",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "BurntSushi"
+        },
+        "authorAssociation": "OWNER",
+        "body": "Damn, defeated again. I'm not sure what's going on. I'm at work so I can't really dig into this at the moment, but I would at least like to try to get to the bottom of this before merging. (I can't imagine how this PR is causing this error though!)",
+        "createdAt": "2017-10-24T11:47:00Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDMzODk2MzY5MQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/652#issuecomment-338963691",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "lambda"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Yeah, it's really strange, I also don't see how this change could have caused this error, but it makes sense to get it worked out before merging since you do need to keep the CI working happily.\r\n\r\nI might try spinning up a 10.11 VM this evening and see if I can repro the issue.",
+        "createdAt": "2017-10-24T14:55:21Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDMzOTAxODY4OA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "HEART",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/652#issuecomment-339018688",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "BurntSushi"
+        },
+        "authorAssociation": "OWNER",
+        "body": "The same CI problem is happening with other PRs, so it's clearly not provoked by this specific PR. Therefore, I shall merge! Thanks again @lambda!",
+        "createdAt": "2017-11-01T11:10:30Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDM0MTA3ODA5OA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/652#issuecomment-341078098",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "lambda"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Wonder if the CI problem was rust-lang/rust#45866?",
+        "createdAt": "2017-11-15T11:03:58Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDM0NDU1OTY3NQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/652#issuecomment-344559675",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "BurntSushi"
+        },
+        "authorAssociation": "OWNER",
+        "body": "@lambda Ah yup, I believe it is! That particular test is also a `should_panic` test, which means it was invoking the backtrace stuff, which is consistent with that bug. Nice find. :-)",
+        "createdAt": "2017-11-15T11:44:04Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDM0NDU2ODU4NA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/652#issuecomment-344568584",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 3,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "ignore/src/gitignore.rs"
+      }
+    ],
+    "headRefName": "649-match-all-directories",
+    "headRefOid": "fa4dd343ee58c48778ee44cc67f54ad5a761f703",
+    "labels": [],
+    "mergedAt": "2017-11-01T11:10:34Z",
+    "number": 652,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "Properly match the rules \"**/\" and \"!**/\"",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/652"
+  }
+}

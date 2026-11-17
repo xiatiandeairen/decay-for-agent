@@ -1,0 +1,124 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Enriched candidate; drop behavior changed in request lifecycle.",
+    "id": "hyperium-hyper-310",
+    "limitations": "Older PR; external issue context may be sparse.",
+    "production_files": [
+      "src/http.rs",
+      "src/lib.rs",
+      "src/server/request.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "Server requests needed to drain on drop.",
+    "signal_ids": [
+      "lifecycle_ordering",
+      "non_happy_path"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/310",
+      "eval/semantic-candidates/enriched.jsonl"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/hyperium/hyper/pull/310",
+    "why_high_value": "Drop/drain behavior can affect connection reuse and cleanup.",
+    "why_not_noise": "Specific lifecycle behavior in production server request handling."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "f554c09e12da805a219675fe7eceeffca4e41fec",
+    "body": "If a client sent an illegal request (like a GET request with a message\nbody), or if there was a legal request with a body but the Handler\ndidn't read all of it, the remaining bytes would be left in the stream.\nThe next request to come from the same client would error, as the server\nwould confuse the remaining bytes, and think the request was malformed.\n\nFixes #197\nFixes #309\n",
+    "comments": [
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "@reem fixed the draining logic. I just use `copy` to a `NullWriter`.\n\nSwitching to new io will just require changing NullWriter to Sink. The EOF logic is handled inside copy, so nothing to screw up.\n",
+        "createdAt": "2015-02-14T19:21:38Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDc0Mzg4Mjc3",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/310#issuecomment-74388277",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "reem"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Looks great.\n",
+        "createdAt": "2015-02-14T22:36:12Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDc0Mzk0OTg2",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/310#issuecomment-74394986",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "reem"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Actually, this is a horrible idea security-wise, I think. I may start reading a request body, see it's super long, and quit. I do not expect hyper to silently read the other 40 GB of that request.\n",
+        "createdAt": "2015-02-14T23:12:47Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDc0Mzk2MTY1",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/310#issuecomment-74396165",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Oh dang, good catch. I'll look at nodejs for inspiration.\n\nOn Sat, Feb 14, 2015, 3:12 PM Jonathan Reem notifications@github.com\nwrote:\n\n> Actually, this is a horrible idea security-wise, I think. I may start\n> reading a request body, see it's super long, and quit. I do not expect\n> hyper to silently read the other 40 GB of that request.\n> \n> —\n> Reply to this email directly or view it on GitHub\n> https://github.com/hyperium/hyper/pull/310#issuecomment-74396165.\n",
+        "createdAt": "2015-02-14T23:23:52Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDc0Mzk2NDk2",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/310#issuecomment-74396496",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 22,
+        "changeType": "MODIFIED",
+        "deletions": 12,
+        "path": "src/http.rs"
+      },
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/lib.rs"
+      },
+      {
+        "additions": 51,
+        "changeType": "MODIFIED",
+        "deletions": 16,
+        "path": "src/server/request.rs"
+      }
+    ],
+    "headRefName": "server-request-drop",
+    "headRefOid": "3d0f423eb26c4f14aaf9f8a909b307f661a3c5d6",
+    "labels": [],
+    "mergedAt": "2015-02-14T22:36:46Z",
+    "number": 310,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "fix(server): Drain requests on drop.",
+    "url": "https://github.com/hyperium/hyper/pull/310"
+  }
+}

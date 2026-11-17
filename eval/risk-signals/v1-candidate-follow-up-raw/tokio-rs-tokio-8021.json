@@ -1,0 +1,116 @@
+{
+  "case_id": "tokio-rs-tokio-8021",
+  "refs": [
+    {
+      "detail": {
+        "body": "**Version**\ncommit ad8c59add6a1988d8c327fb3358beeeae3bbb5cd\n\n**Platform**\nmacos\n\n**Description**\nHi team, one weird issue that I found when I tried to forget permits from a closed semaphore: it's reopened again.\nI think there're a few acceptable behaviors:\n- Reject the forget operation by returning status\n- Decrement the permit count, but it should be kept closed\n\nI tried this code:\n```rust\n#[test]\nfn forget_permits_on_closed_semaphore_must_stay_closed() {\n    let s = Semaphore::new(10);\n    s.close();\n\n    assert!(s.is_closed());\n    assert_eq!(s.available_permits(), 10);\n    assert_eq!(s.forget_permits(4), 4);\n\n    // BUG: after forget_permits, the semaphore should still be closed,\n    // but forget_permits clears the CLOSED bit from the atomic permits counter.\n    assert!(\n        s.is_closed(),\n        \"semaphore should still be closed after forget_permits\"\n    );\n    assert_eq!(s.available_permits(), 6);\n}\n```\n",
+        "closedAt": "2026-04-08T08:00:00Z",
+        "comments": [],
+        "createdAt": "2026-04-07T21:56:47Z",
+        "labels": [
+          {
+            "color": "f5f1fd",
+            "description": "Category: This is a bug.",
+            "id": "MDU6TGFiZWw0Mzk4OTcxODg=",
+            "name": "C-bug"
+          },
+          {
+            "color": "f7e101",
+            "description": "Area: The main tokio crate",
+            "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+            "name": "A-tokio"
+          },
+          {
+            "color": "f7b101",
+            "description": "Module: tokio/sync",
+            "id": "MDU6TGFiZWwxOTkzNTExOTI3",
+            "name": "M-sync"
+          }
+        ],
+        "number": 8020,
+        "state": "CLOSED",
+        "title": "Forgetting permits on a closed semaphore reopens it",
+        "url": "https://github.com/tokio-rs/tokio/issues/8020"
+      },
+      "target": {
+        "number": 8020,
+        "reason": "Semaphore reopen behavior report.",
+        "repo": "tokio-rs/tokio",
+        "type": "issue"
+      }
+    },
+    {
+      "detail": {
+        "baseRefName": "master",
+        "baseRefOid": "c79121391db8f8d36d4213feeb25381caee110c7",
+        "body": "Fixes: #8020",
+        "comments": [
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Closing in favor of https://github.com/tokio-rs/tokio/pull/8021",
+            "createdAt": "2026-04-08T07:29:24Z",
+            "id": "IC_kwDOBAsbdc76nFer",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/pull/8022#issuecomment-4204550059",
+            "viewerDidAuthor": false
+          }
+        ],
+        "files": [
+          {
+            "additions": 6,
+            "changeType": "MODIFIED",
+            "deletions": 6,
+            "path": "tokio/src/sync/batch_semaphore.rs"
+          },
+          {
+            "additions": 54,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "tokio/tests/sync_semaphore.rs"
+          }
+        ],
+        "headRefName": "fix-8020",
+        "headRefOid": "623b008b41477057b56133f0f7716218f79ede2b",
+        "labels": [
+          {
+            "color": "f7e101",
+            "description": "Area: The main tokio crate",
+            "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+            "name": "A-tokio"
+          },
+          {
+            "color": "f7b101",
+            "description": "Module: tokio/sync",
+            "id": "MDU6TGFiZWwxOTkzNTExOTI3",
+            "name": "M-sync"
+          },
+          {
+            "color": "D9C0F1",
+            "description": "Run loom sync tests on this PR",
+            "id": "LA_kwDOBAsbdc8AAAABUo07bQ",
+            "name": "R-loom-sync"
+          }
+        ],
+        "mergedAt": null,
+        "number": 8022,
+        "reviewDecision": "REVIEW_REQUIRED",
+        "reviews": [],
+        "state": "CLOSED",
+        "title": "sync: do not reopen semaphore in `Semaphore::forget_permits`",
+        "url": "https://github.com/tokio-rs/tokio/pull/8022"
+      },
+      "target": {
+        "number": 8022,
+        "reason": "Duplicate maintainer fix with more exhaustive tests.",
+        "repo": "tokio-rs/tokio",
+        "type": "pr"
+      }
+    }
+  ]
+}

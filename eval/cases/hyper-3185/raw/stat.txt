@@ -1,0 +1,6 @@
+ src/proto/h1/conn.rs | 62 ++++++++++++++++++++++++++--------
+ src/proto/h1/io.rs   | 38 +--------------------
+ src/proto/h1/mod.rs  | 15 ---------
+ src/proto/h1/role.rs | 94 ----------------------------------------------------
+ tests/server.rs      | 21 ++++++++++++
+ 5 files changed, 71 insertions(+), 159 deletions(-)

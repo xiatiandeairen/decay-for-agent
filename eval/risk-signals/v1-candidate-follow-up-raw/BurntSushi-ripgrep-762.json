@@ -1,0 +1,55 @@
+{
+  "case_id": "BurntSushi-ripgrep-762",
+  "refs": [
+    {
+      "detail": {
+        "body": "This issue originally arose when using VS Code's search feature which actually uses `ripgrep`.  For specific details, you can see this issue:\r\nhttps://github.com/Microsoft/vscode/issues/42174\r\n\r\nThe issue seems to be, `ripgrep` is not ignoring the same files and folders as `git`.  If this is intended behavior, it isn't really stated as the documentation simply states it will be \"respecting your gitignore rules.\"  Currently, if I have a structure as the following:\r\n```\r\n- path1/\r\n  - file_to_exclude_1\r\n  - file_to_exclude_2\r\n  - file_to_exclude_3\r\n- path2/\r\n  - file_to_include_1\r\n  - path1/\r\n    - file_to_include_2\r\n```\r\nIf I also have a `.gitignore` which has the following entry:\r\n```\r\npath1/*\r\n```\r\n`git` will only ignore `./path1` in the Root of the project and not `./path2/path1`.  `ripgrep` seems to be ignoring both `./path1` and `./path2/path1` which is inconsistent with what `git` ignores when using these rules.",
+        "closedAt": "2018-01-29T19:11:00Z",
+        "comments": [
+          {
+            "author": {
+              "login": "Goblinlordx"
+            },
+            "authorAssociation": "NONE",
+            "body": "As a note, this rule seems to be explicitly stated on the `git` documentation page:\r\nhttps://git-scm.com/docs/gitignore\r\n\r\n> If the pattern does not contain a slash /, Git treats it as a shell glob pattern and checks for a match against the pathname relative to the location of the .gitignore file (relative to the toplevel of the work tree if not from a .gitignore file).\r\n\r\n> Otherwise, Git treats the pattern as a shell glob suitable for consumption by fnmatch(3) with the FNM_PATHNAME flag: wildcards in the pattern will not match a / in the pathname. For example, \"Documentation/*.html\" matches \"Documentation/git.html\" but not \"Documentation/ppc/ppc.html\" or \"tools/perf/Documentation/perf.html\".\r\n\r\nIn this case, it \"contains a /\" and so will ignore `./path1/some_file_or_folder` but not `./path2/path1/some_file_or_folder`.  I also found this exact same statement in the `man gitignore` pages on my git version:\r\n```\r\ngit version 2.14.0\r\nhub version 2.2.9\r\n```",
+            "createdAt": "2018-01-27T01:52:54Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM2MDk1MDU0MA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/761#issuecomment-360950540",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "okdana"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": ">For example, \"Documentation/*.html\" matches \"Documentation/git.html\" but not \"Documentation/ppc/ppc.html\" or \"tools/perf/Documentation/perf.html\".\r\n\r\nIf i'm looking at it right, it seems like the `ignore` crate deliberately rejects this — there is a test asserting that `src/*.rs` should ignore `src/grep/src/main.rs`, which contradicts both the quoted text and git's actual behaviour:\r\n\r\n```\r\n% echo 'path1/*.rs' > .gitignore\r\n% touch path1/foo.rs path2/path1/foo.rs\r\n% git check-ignore -v path1/foo.rs; echo $?\r\n.gitignore:1:path1/*.rs\tpath1/foo.rs\r\n0\r\n% git check-ignore -v path2/path1/foo.rs; echo $?\r\n1\r\n```\r\n\r\nWhat causes this behaviour (and the issue with `path1/*`) is the implicit prepending of `**/` to a rule even when it contains a `/`.",
+            "createdAt": "2018-01-27T03:11:30Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM2MDk1NTUzMw==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/761#issuecomment-360955533",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2018-01-27T01:39:46Z",
+        "labels": [],
+        "number": 761,
+        "state": "CLOSED",
+        "title": "Behavior of ignoring files/folders in .gitignore does not align with git",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/761"
+      },
+      "target": {
+        "number": 761,
+        "reason": "Gitignore slash-pattern behavior report.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    }
+  ]
+}

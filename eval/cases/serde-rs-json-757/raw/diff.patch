@@ -1,0 +1,317 @@
+diff --git a/src/read.rs b/src/read.rs
+index 522c0e0..574857c 100644
+--- a/src/read.rs
++++ b/src/read.rs
+@@ -510,161 +510,164 @@ impl<'a> Read<'a> for SliceRead<'a> {
+     fn position(&self) -> Position {
+         self.position_of_index(self.index)
+     }
+ 
+     fn peek_position(&self) -> Position {
+         // Cap it at slice.len() just in case the most recent call was next()
+         // and it returned the last byte.
+         self.position_of_index(cmp::min(self.slice.len(), self.index + 1))
+     }
+ 
+     fn byte_offset(&self) -> usize {
+         self.index
+     }
+ 
+     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'a, 's, str>> {
+         self.parse_str_bytes(scratch, true, as_str)
+     }
+ 
+     fn parse_str_raw<'s>(
+         &'s mut self,
+         scratch: &'s mut Vec<u8>,
+     ) -> Result<Reference<'a, 's, [u8]>> {
+         self.parse_str_bytes(scratch, false, |_, bytes| Ok(bytes))
+     }
+ 
+     fn ignore_str(&mut self) -> Result<()> {
+         loop {
+             while self.index < self.slice.len() && !ESCAPE[self.slice[self.index] as usize] {
+                 self.index += 1;
+             }
+             if self.index == self.slice.len() {
+                 return error(self, ErrorCode::EofWhileParsingString);
+             }
+             match self.slice[self.index] {
+                 b'"' => {
+                     self.index += 1;
+                     return Ok(());
+                 }
+                 b'\\' => {
+                     self.index += 1;
+                     tri!(ignore_escape(self));
+                 }
+                 _ => {
+                     return error(self, ErrorCode::ControlCharacterWhileParsingString);
+                 }
+             }
+         }
+     }
+ 
+     fn decode_hex_escape(&mut self) -> Result<u16> {
+         if self.index + 4 > self.slice.len() {
+             self.index = self.slice.len();
+             return error(self, ErrorCode::EofWhileParsingString);
+         }
+ 
+         let mut n = 0;
+         for _ in 0..4 {
+             let ch = decode_hex_val(self.slice[self.index]);
+             self.index += 1;
+             match ch {
+                 None => return error(self, ErrorCode::InvalidEscape),
+                 Some(val) => {
+                     n = (n << 4) + val;
+                 }
+             }
+         }
+         Ok(n)
+     }
+ 
+     #[cfg(feature = "raw_value")]
+     fn begin_raw_buffering(&mut self) {
+         self.raw_buffering_start_index = self.index;
+     }
+ 
+     #[cfg(feature = "raw_value")]
+     fn end_raw_buffering<V>(&mut self, visitor: V) -> Result<V::Value>
+     where
+         V: Visitor<'a>,
+     {
+         let raw = &self.slice[self.raw_buffering_start_index..self.index];
+-        let raw = str::from_utf8(raw).unwrap();
++        let raw = match str::from_utf8(raw) {
++            Ok(raw) => raw,
++            Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint),
++        };
+         visitor.visit_map(BorrowedRawDeserializer {
+             raw_value: Some(raw),
+         })
+     }
+ 
+     const should_early_return_if_failed: bool = false;
+ 
+     #[inline]
+     #[cold]
+     fn set_failed(&mut self, _failed: &mut bool) {
+         self.slice = &self.slice[..self.index];
+     }
+ }
+ 
+ //////////////////////////////////////////////////////////////////////////////
+ 
+ impl<'a> StrRead<'a> {
+     /// Create a JSON input source to read from a UTF-8 string.
+     pub fn new(s: &'a str) -> Self {
+         StrRead {
+             delegate: SliceRead::new(s.as_bytes()),
+             #[cfg(feature = "raw_value")]
+             data: s,
+         }
+     }
+ }
+ 
+ impl<'a> private::Sealed for StrRead<'a> {}
+ 
+ impl<'a> Read<'a> for StrRead<'a> {
+     #[inline]
+     fn next(&mut self) -> Result<Option<u8>> {
+         self.delegate.next()
+     }
+ 
+     #[inline]
+     fn peek(&mut self) -> Result<Option<u8>> {
+         self.delegate.peek()
+     }
+ 
+     #[inline]
+     fn discard(&mut self) {
+         self.delegate.discard();
+     }
+ 
+     fn position(&self) -> Position {
+         self.delegate.position()
+     }
+ 
+     fn peek_position(&self) -> Position {
+         self.delegate.peek_position()
+     }
+ 
+     fn byte_offset(&self) -> usize {
+         self.delegate.byte_offset()
+     }
+ 
+     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'a, 's, str>> {
+         self.delegate.parse_str_bytes(scratch, true, |_, bytes| {
+             // The input is assumed to be valid UTF-8 and the \u-escapes are
+             // checked along the way, so don't need to check here.
+             Ok(unsafe { str::from_utf8_unchecked(bytes) })
+         })
+     }
+ 
+     fn parse_str_raw<'s>(
+         &'s mut self,
+         scratch: &'s mut Vec<u8>,
+     ) -> Result<Reference<'a, 's, [u8]>> {
+         self.delegate.parse_str_raw(scratch)
+     }
+ 
+     fn ignore_str(&mut self) -> Result<()> {
+         self.delegate.ignore_str()
+     }
+ 
+     fn decode_hex_escape(&mut self) -> Result<u16> {
+         self.delegate.decode_hex_escape()
+     }
+ 
+diff --git a/tests/test.rs b/tests/test.rs
+index ffe58c9..2fe7c56 100644
+--- a/tests/test.rs
++++ b/tests/test.rs
+@@ -2124,123 +2124,142 @@ fn test_integer128() {
+ fn test_borrowed_raw_value() {
+     use serde_json::value::RawValue;
+ 
+     #[derive(Serialize, Deserialize)]
+     struct Wrapper<'a> {
+         a: i8,
+         #[serde(borrow)]
+         b: &'a RawValue,
+         c: i8,
+     }
+ 
+     let wrapper_from_str: Wrapper =
+         serde_json::from_str(r#"{"a": 1, "b": {"foo": 2}, "c": 3}"#).unwrap();
+     assert_eq!(r#"{"foo": 2}"#, wrapper_from_str.b.get());
+ 
+     let wrapper_to_string = serde_json::to_string(&wrapper_from_str).unwrap();
+     assert_eq!(r#"{"a":1,"b":{"foo": 2},"c":3}"#, wrapper_to_string);
+ 
+     let wrapper_to_value = serde_json::to_value(&wrapper_from_str).unwrap();
+     assert_eq!(json!({"a": 1, "b": {"foo": 2}, "c": 3}), wrapper_to_value);
+ 
+     let array_from_str: Vec<&RawValue> =
+         serde_json::from_str(r#"["a", 42, {"foo": "bar"}, null]"#).unwrap();
+     assert_eq!(r#""a""#, array_from_str[0].get());
+     assert_eq!(r#"42"#, array_from_str[1].get());
+     assert_eq!(r#"{"foo": "bar"}"#, array_from_str[2].get());
+     assert_eq!(r#"null"#, array_from_str[3].get());
+ 
+     let array_to_string = serde_json::to_string(&array_from_str).unwrap();
+     assert_eq!(r#"["a",42,{"foo": "bar"},null]"#, array_to_string);
+ }
+ 
+ #[cfg(feature = "raw_value")]
+ #[test]
+ fn test_boxed_raw_value() {
+     use serde_json::value::RawValue;
+ 
+     #[derive(Serialize, Deserialize)]
+     struct Wrapper {
+         a: i8,
+         b: Box<RawValue>,
+         c: i8,
+     }
+ 
+     let wrapper_from_str: Wrapper =
+         serde_json::from_str(r#"{"a": 1, "b": {"foo": 2}, "c": 3}"#).unwrap();
+     assert_eq!(r#"{"foo": 2}"#, wrapper_from_str.b.get());
+ 
+     let wrapper_from_reader: Wrapper =
+         serde_json::from_reader(br#"{"a": 1, "b": {"foo": 2}, "c": 3}"#.as_ref()).unwrap();
+     assert_eq!(r#"{"foo": 2}"#, wrapper_from_reader.b.get());
+ 
+     let wrapper_from_value: Wrapper =
+         serde_json::from_value(json!({"a": 1, "b": {"foo": 2}, "c": 3})).unwrap();
+     assert_eq!(r#"{"foo":2}"#, wrapper_from_value.b.get());
+ 
+     let wrapper_to_string = serde_json::to_string(&wrapper_from_str).unwrap();
+     assert_eq!(r#"{"a":1,"b":{"foo": 2},"c":3}"#, wrapper_to_string);
+ 
+     let wrapper_to_value = serde_json::to_value(&wrapper_from_str).unwrap();
+     assert_eq!(json!({"a": 1, "b": {"foo": 2}, "c": 3}), wrapper_to_value);
+ 
+     let array_from_str: Vec<Box<RawValue>> =
+         serde_json::from_str(r#"["a", 42, {"foo": "bar"}, null]"#).unwrap();
+     assert_eq!(r#""a""#, array_from_str[0].get());
+     assert_eq!(r#"42"#, array_from_str[1].get());
+     assert_eq!(r#"{"foo": "bar"}"#, array_from_str[2].get());
+     assert_eq!(r#"null"#, array_from_str[3].get());
+ 
+     let array_from_reader: Vec<Box<RawValue>> =
+         serde_json::from_reader(br#"["a", 42, {"foo": "bar"}, null]"#.as_ref()).unwrap();
+     assert_eq!(r#""a""#, array_from_reader[0].get());
+     assert_eq!(r#"42"#, array_from_reader[1].get());
+     assert_eq!(r#"{"foo": "bar"}"#, array_from_reader[2].get());
+     assert_eq!(r#"null"#, array_from_reader[3].get());
+ 
+     let array_to_string = serde_json::to_string(&array_from_str).unwrap();
+     assert_eq!(r#"["a",42,{"foo": "bar"},null]"#, array_to_string);
+ }
+ 
++#[cfg(feature = "raw_value")]
++#[test]
++fn test_raw_invalid_utf8() {
++    use serde_json::value::RawValue;
++
++    let j = &[b'"', b'\xCE', b'\xF8', b'"'];
++    let value_err = serde_json::from_slice::<Value>(j).unwrap_err();
++    let raw_value_err = serde_json::from_slice::<Box<RawValue>>(j).unwrap_err();
++
++    assert_eq!(
++        value_err.to_string(),
++        "invalid unicode code point at line 1 column 4",
++    );
++    assert_eq!(
++        raw_value_err.to_string(),
++        "invalid unicode code point at line 1 column 4",
++    );
++}
++
+ #[test]
+ fn test_borrow_in_map_key() {
+     #[derive(Deserialize, Debug)]
+     struct Outer {
+         map: BTreeMap<MyMapKey, ()>,
+     }
+ 
+     #[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
+     struct MyMapKey(usize);
+ 
+     impl<'de> Deserialize<'de> for MyMapKey {
+         fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+         where
+             D: de::Deserializer<'de>,
+         {
+             let s = <&str>::deserialize(deserializer)?;
+             let n = s.parse().map_err(de::Error::custom)?;
+             Ok(MyMapKey(n))
+         }
+     }
+ 
+     let value = json!({ "map": { "1": null } });
+     Outer::deserialize(&value).unwrap();
+ }
+ 
+ #[test]
+ fn test_value_into_deserializer() {
+     #[derive(Deserialize)]
+     struct Outer {
+         inner: Inner,
+     }
+ 
+     #[derive(Deserialize)]
+     struct Inner {
+         string: String,
+     }
+ 
+     let mut map = BTreeMap::new();
+     map.insert("inner", json!({ "string": "Hello World" }));
+ 
+     let outer = Outer::deserialize(map.into_deserializer()).unwrap();
+     assert_eq!(outer.inner.string, "Hello World");
+ }

@@ -1,0 +1,4 @@
+M	CHANGELOG.md
+M	crates/core/search.rs
+M	crates/printer/src/util.rs
+M	tests/regression.rs

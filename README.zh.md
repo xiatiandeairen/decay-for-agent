@@ -66,8 +66,10 @@ decay diff v1.0.0 v1.1.0 # 两个 baseline 互比
 对 git-ref 比较，`decay diff <ref>` 使用 evidence-first 路径，输出：
 
 - `Complexity impact`
+- `Coverage impact`
 - `Stability impact`
 - `Quality impact`
+- `Semantic impact`
 - `History impact`
 
 它也会把 changeset 和输出的 evidence 写入本地 SQLite。这是证据层，不是合入建议。

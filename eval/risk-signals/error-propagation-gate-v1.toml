@@ -1,0 +1,82 @@
+version = "error-propagation-gate.v1"
+risk_item = "error_propagation_change"
+
+[gates]
+raw_contract_valid_rate_min = 1.0
+detection_precision_min = 1.0
+detection_recall_min = 0.75
+review_worthy_precision_min = 1.0
+boundary_honesty_rate_min = 0.75
+duplicate_wrapper_case_count_max = 0
+
+[[cases]]
+id = "serde-rs-json-757"
+role = "high_value_positive"
+expected_detection = "detect"
+expected_judgement = "review_worthy_behavior_change"
+max_wrapper_count = 1
+ground_truth_summary = "Invalid UTF-8 RawValue panic path was changed to structured error propagation."
+why_high_value = "Malformed input should not crash deserialization."
+
+[[cases]]
+id = "hyperium-hyper-2544"
+role = "boundary_positive"
+expected_detection = "detect"
+expected_judgement = "needs_more_context_before_review_claim"
+max_wrapper_count = 1
+ground_truth_summary = "Malformed header parse panic was routed through Parse::Internal error handling."
+why_high_value = "Malformed network input must not crash HTTP parsing."
+
+[[cases]]
+id = "hyperium-hyper-3275"
+role = "boundary_positive"
+expected_detection = "detect"
+expected_judgement = "needs_more_context_before_review_claim"
+max_wrapper_count = 1
+ground_truth_summary = "HTTP/2 NO_ERROR handling changes caller-visible body/trailer propagation behavior."
+why_high_value = "Protocol error propagation affects interoperability and caller-visible response behavior."
+
+[[cases]]
+id = "hyper-3998"
+role = "boundary_positive"
+expected_detection = "detect"
+expected_judgement = "needs_more_context_before_review_claim"
+max_wrapper_count = 1
+ground_truth_summary = "HTTP client trailer and body error propagation were changed for early-response handling."
+why_high_value = "Incorrect error propagation changes caller-visible HTTP body/trailer behavior."
+
+[[cases]]
+id = "hyperium-hyper-4069"
+role = "known_miss_positive"
+expected_detection = "detect"
+expected_judgement = "needs_more_context_before_review_claim"
+max_wrapper_count = 1
+ground_truth_summary = "Drop/error path could silently truncate bytes instead of surfacing an error."
+why_high_value = "Silent truncation is a high-impact error propagation failure."
+
+[[cases]]
+id = "tokio-rs-tokio-8001"
+role = "known_miss_positive"
+expected_detection = "detect"
+expected_judgement = "needs_more_context_before_review_claim"
+max_wrapper_count = 1
+ground_truth_summary = "READABLE versus ERROR readiness changes socket error propagation on an OS-specific path."
+why_high_value = "Caller-visible socket error behavior changed on an error path."
+
+[[cases]]
+id = "hyper-4056"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "HTTP/1 body decoding fixed a 32-bit integer boundary."
+why_high_value = "This is an integer-boundary risk, not an error-propagation case."
+
+[[cases]]
+id = "hyper-4042"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "Cancellation behavior changed task lifetime and peer-visible protocol state."
+why_high_value = "This is primarily lifecycle/state risk, not an error-propagation case."

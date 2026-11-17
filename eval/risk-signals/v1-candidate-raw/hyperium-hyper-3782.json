@@ -1,0 +1,100 @@
+{
+  "candidate": {
+    "id": "hyperium-hyper-3782",
+    "repo": "hyperium/hyper",
+    "url": "https://github.com/hyperium/hyper/pull/3782"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "4694f3878204bfaa3232a36b7de4ac0a2fdd1e0d",
+    "body": "The patch #3528 added the ability for hyper users to configure `max_local_error_reset_streams` via the server builder to hyper v0.14.29. It was then pulled in to hyper v1.2.0 as well in #3530, where the wrong parameter `max_pending_accept_reset_streams` is passed to h2's builder as `max_local_error_reset_streams`.\r\n\r\nThis could lead to significant impact especially when a hyper user does not set `max_pending_accept_reset_streams`, because its default value is `None` and passing `None` to h2's `max_local_error_reset_streams` method will make the server vulnerable to DOS attacks.\r\n\r\nThis issue has been fixed in this patch, simply by passing the correct value to the h2's builder method.\r\n\r\nNote that the original patch merged into v0.14 does not suffer this problem.\r\n\r\n",
+    "comments": [
+      {
+        "author": {
+          "login": "magurotuna"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Looks like the hashbrown crate was recently released which bumped MSRV to 1.65.0. Do we want to bump our MSRV too?",
+        "createdAt": "2024-11-14T09:54:02Z",
+        "id": "IC_kwDOAWaYQc6TkxUX",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3782#issuecomment-2475889943",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> Do we want to bump our MSRV too?\n\nNah, in our MSRV job, we pin dependencies to a version that works with it. There's a couple others in the `CI.yml` file.",
+        "createdAt": "2024-11-14T10:38:12Z",
+        "id": "IC_kwDOAWaYQc6TlLXb",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3782#issuecomment-2475996635",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "I fixed the MSRV failure in #3783 ",
+        "createdAt": "2024-11-15T12:52:34Z",
+        "id": "IC_kwDOAWaYQc6TvrB2",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "HEART",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/hyperium/hyper/pull/3782#issuecomment-2478747766",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/proto/h2/server.rs"
+      }
+    ],
+    "headRefName": "fix_max_local_error_reset_streams",
+    "headRefOid": "320efcce5d7fffa7bb1987d330309ba892141a35",
+    "labels": [],
+    "mergedAt": "2024-11-15T12:59:48Z",
+    "number": 3782,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "320efcce5d7fffa7bb1987d330309ba892141a35"
+        },
+        "id": "PRR_kwDOAWaYQc6RWHxk",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2024-11-15T12:53:24Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix(http2): pass proper value to h2 `max_local_error_reset_streams`",
+    "url": "https://github.com/hyperium/hyper/pull/3782"
+  }
+}

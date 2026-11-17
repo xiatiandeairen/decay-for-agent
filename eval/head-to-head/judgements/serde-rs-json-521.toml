@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "serde-rs-json-521"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "Under arbitrary_precision, deserialize_any must accept f64 values whose stored string was produced by ryu (used during serialization), not only by f.to_string(). The equality check is widened to accept either formatter, so adjacently tagged f32 values round-trip through visit_f64 instead of falling through to the map path."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank 2 directly names assumption_boundary on the format-equality check — matches ground truth. Rank 1 (external_contract on deserialize_any) frames the same site as a contract-widening concern, plausible secondary. Rank 3 test-gap is supporting but reasonable. [mechanical-flag: ai_baseline: ai=2, mechanical=1]"

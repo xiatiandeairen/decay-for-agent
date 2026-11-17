@@ -29,7 +29,7 @@ fn open_empty_db_initializes_schema_version_and_tables() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(version, 2);
+    assert_eq!(version, 3);
 
     assert_eq!(
         table_count(
@@ -61,6 +61,8 @@ fn saving_diff_evidence_is_idempotent_for_same_changeset() {
         file: "src/lib.rs".to_string(),
         subject: "3 commits in 90d".to_string(),
         source: "git_history".to_string(),
+        confidence: "low".to_string(),
+        value: "context".to_string(),
     }];
 
     let first = store
@@ -138,6 +140,8 @@ fn saves_all_diff_evidence_categories_with_file_and_source() {
             file: "src/lib.rs".to_string(),
             subject: "target".to_string(),
             source: "diff_hunk+ast_snapshot".to_string(),
+            confidence: "high".to_string(),
+            value: "direct".to_string(),
         },
         DiffEvidenceRecord {
             category: "stability".to_string(),
@@ -145,6 +149,8 @@ fn saves_all_diff_evidence_categories_with_file_and_source() {
             file: "src/lib.rs".to_string(),
             subject: "line 7".to_string(),
             source: "stability".to_string(),
+            confidence: "high".to_string(),
+            value: "direct".to_string(),
         },
         DiffEvidenceRecord {
             category: "quality".to_string(),
@@ -152,6 +158,8 @@ fn saves_all_diff_evidence_categories_with_file_and_source() {
             file: "src/lib.rs".to_string(),
             subject: "production change without tests".to_string(),
             source: "quality".to_string(),
+            confidence: "low".to_string(),
+            value: "supporting".to_string(),
         },
         DiffEvidenceRecord {
             category: "history".to_string(),
@@ -159,6 +167,8 @@ fn saves_all_diff_evidence_categories_with_file_and_source() {
             file: "src/lib.rs".to_string(),
             subject: "fix: panic".to_string(),
             source: "git_history".to_string(),
+            confidence: "low".to_string(),
+            value: "context".to_string(),
         },
     ];
 
@@ -170,7 +180,7 @@ fn saves_all_diff_evidence_categories_with_file_and_source() {
     let categories = store
         .conn()
         .prepare(
-            "SELECT category || ':' || kind || ':' || file || ':' || source
+            "SELECT category || ':' || kind || ':' || file || ':' || source || ':' || confidence || ':' || value
              FROM evidence_items
              WHERE changeset_id = ?1
              ORDER BY category",
@@ -184,10 +194,10 @@ fn saves_all_diff_evidence_categories_with_file_and_source() {
     assert_eq!(
         categories,
         vec![
-            "complexity:worsened:src/lib.rs:diff_hunk+ast_snapshot",
-            "history:recently_bugfixed_area:src/lib.rs:git_history",
-            "quality:test_gap:src/lib.rs:quality",
-            "stability:unsafe_added:src/lib.rs:stability",
+            "complexity:worsened:src/lib.rs:diff_hunk+ast_snapshot:high:direct",
+            "history:recently_bugfixed_area:src/lib.rs:git_history:low:context",
+            "quality:test_gap:src/lib.rs:quality:low:supporting",
+            "stability:unsafe_added:src/lib.rs:stability:high:direct",
         ]
     );
 }

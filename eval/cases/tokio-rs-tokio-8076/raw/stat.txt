@@ -1,0 +1,3 @@
+ tokio/src/sync/rwlock.rs   | 12 +++++++++++-
+ tokio/tests/sync_rwlock.rs | 12 ++++++++++++
+ 2 files changed, 23 insertions(+), 1 deletion(-)

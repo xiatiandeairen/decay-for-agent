@@ -1,0 +1,340 @@
+{
+  "candidate": {
+    "ground_truth_summary": "PR body explains the incorrect assumption, links issue #7990, and adds regression coverage.",
+    "id": "tokio-rs-tokio-7991",
+    "limitations": "This candidate is a fix PR; extra follow-up tracing is still needed before frozen eval.",
+    "production_files": [
+      "tokio/src/sync/mpsc/chan.rs"
+    ],
+    "repo": "tokio-rs/tokio",
+    "risk_summary": "Chan::recv_many could panic because the closed-channel path asserted buffer emptiness instead of no consumed slots.",
+    "signal_ids": [
+      "assumption_boundary",
+      "non_happy_path",
+      "risk_path_test_gap"
+    ],
+    "source_refs": [
+      "https://github.com/tokio-rs/tokio/pull/7991",
+      "https://github.com/tokio-rs/tokio/issues/7990"
+    ],
+    "status": "candidate",
+    "test_files": [
+      "tokio/tests/sync_mpsc.rs"
+    ],
+    "url": "https://github.com/tokio-rs/tokio/pull/7991",
+    "why_high_value": "Runtime panic in a synchronization primitive on a closed-channel edge path.",
+    "why_not_noise": "Specific production code and regression test are tied to the described failure mode."
+  },
+  "pr": {
+    "baseRefName": "tokio-1.47.x",
+    "baseRefOid": "f320197693ee09e28f1fca0e55418081adcdfc25",
+    "body": "## Motivation\r\n\r\n`Chan::recv_many` intends to assert that no slots\r\nhave been consumed when exiting with `Ready` via\r\nthe `rx_closed` code path.\r\n\r\nInstead of asserting no items were added to the\r\nbuffer, it asserted buffer emptiness, incorrectly\r\nmaking assumptions about the provided buffer.\r\n\r\nWhen `recv_many` was called on an empty channel\r\nwith idle semaphore after the receiver was closed,\r\nthe method would panic.\r\n\r\n## Solution\r\n\r\nThe branch coverage had been previously missing.\r\n\r\nThis changeset corrects the assertion\r\nand adds tests covering the code path.\r\n\r\nFixes #7990.\r\n\r\n",
+    "comments": [
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "I'm going to backport this to Tokio 1.47, so I'm changing the base of this PR now.",
+        "createdAt": "2026-04-02T10:05:47Z",
+        "id": "IC_kwDOBAsbdc746nKm",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/tokio-rs/tokio/pull/7991#issuecomment-4176114342",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "LeoniePhiline"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Thank you!",
+        "createdAt": "2026-04-02T12:54:58Z",
+        "id": "IC_kwDOBAsbdc75Ai2Y",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/7991#issuecomment-4177669528",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 5,
+        "changeType": "MODIFIED",
+        "deletions": 9,
+        "path": "tokio/src/sync/mpsc/chan.rs"
+      },
+      {
+        "additions": 24,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tokio/tests/sync_mpsc.rs"
+      }
+    ],
+    "headRefName": "fix/7990-recv-many-rx-closed-non-empty-buffer",
+    "headRefOid": "bf18ed452d6aae438e84ae008a01a74776abdc19",
+    "labels": [
+      {
+        "color": "f7e101",
+        "description": "Area: The main tokio crate",
+        "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+        "name": "A-tokio"
+      },
+      {
+        "color": "f7b101",
+        "description": "Module: tokio/sync",
+        "id": "MDU6TGFiZWwxOTkzNTExOTI3",
+        "name": "M-sync"
+      },
+      {
+        "color": "D9C0F1",
+        "description": "Run loom sync tests on this PR",
+        "id": "LA_kwDOBAsbdc8AAAABUo07bQ",
+        "name": "R-loom-sync"
+      }
+    ],
+    "mergedAt": "2026-04-02T11:35:26Z",
+    "number": 7991,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks!\n\n> Merge without squash is recommended.\n\nIf you add the test first, then I will need to merge with squash. Otherwise bisection will not work on the main branch if someone hits the first commit in a bisection.",
+        "commit": {
+          "oid": "2222621764ca3b6fd70803874f76ccdc59885ca7"
+        },
+        "id": "PRR_kwDOBAsbdc7vkMMd",
+        "includesCreatedEdit": false,
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "state": "COMMENTED",
+        "submittedAt": "2026-03-27T06:55:00Z"
+      },
+      {
+        "author": {
+          "login": "martin-g"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "2222621764ca3b6fd70803874f76ccdc59885ca7"
+        },
+        "id": "PRR_kwDOBAsbdc7wCnXX",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-03-29T20:26:51Z"
+      },
+      {
+        "author": {
+          "login": "LeoniePhiline"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "2222621764ca3b6fd70803874f76ccdc59885ca7"
+        },
+        "id": "PRR_kwDOBAsbdc7wDMJC",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-03-29T23:12:33Z"
+      },
+      {
+        "author": {
+          "login": "LeoniePhiline"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "2222621764ca3b6fd70803874f76ccdc59885ca7"
+        },
+        "id": "PRR_kwDOBAsbdc7wDPZa",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-03-29T23:18:27Z"
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "2222621764ca3b6fd70803874f76ccdc59885ca7"
+        },
+        "id": "PRR_kwDOBAsbdc7wI0j4",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-03-30T08:17:13Z"
+      },
+      {
+        "author": {
+          "login": "LeoniePhiline"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "2222621764ca3b6fd70803874f76ccdc59885ca7"
+        },
+        "id": "PRR_kwDOBAsbdc7wLuuU",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-03-30T10:32:58Z"
+      },
+      {
+        "author": {
+          "login": "LeoniePhiline"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "2222621764ca3b6fd70803874f76ccdc59885ca7"
+        },
+        "id": "PRR_kwDOBAsbdc7wMnJe",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-03-30T11:18:27Z"
+      },
+      {
+        "author": {
+          "login": "LeoniePhiline"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "7dd98a368d9895c1add5cba91ac7b088088bb66b"
+        },
+        "id": "PRR_kwDOBAsbdc7wMqPl",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-03-30T11:20:47Z"
+      },
+      {
+        "author": {
+          "login": "LeoniePhiline"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "7dd98a368d9895c1add5cba91ac7b088088bb66b"
+        },
+        "id": "PRR_kwDOBAsbdc7wMut2",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-03-30T11:24:10Z"
+      },
+      {
+        "author": {
+          "login": "LeoniePhiline"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "2222621764ca3b6fd70803874f76ccdc59885ca7"
+        },
+        "id": "PRR_kwDOBAsbdc7wMzAA",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-03-30T11:27:07Z"
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "7dd98a368d9895c1add5cba91ac7b088088bb66b"
+        },
+        "id": "PRR_kwDOBAsbdc7wMzvB",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-03-30T11:27:40Z"
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks.",
+        "commit": {
+          "oid": "bf18ed452d6aae438e84ae008a01a74776abdc19"
+        },
+        "id": "PRR_kwDOBAsbdc7xYPyW",
+        "includesCreatedEdit": false,
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "state": "APPROVED",
+        "submittedAt": "2026-04-02T10:06:34Z"
+      },
+      {
+        "author": {
+          "login": "martin-g"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "bf18ed452d6aae438e84ae008a01a74776abdc19"
+        },
+        "id": "PRR_kwDOBAsbdc7xZOLw",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2026-04-02T10:59:27Z"
+      },
+      {
+        "author": {
+          "login": "mattiapitossi"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "bf18ed452d6aae438e84ae008a01a74776abdc19"
+        },
+        "id": "PRR_kwDOBAsbdc7xZT4h",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2026-04-02T11:04:49Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "sync: fix panic in `Chan::recv_many` when called with non-empty vector on closed channel",
+    "url": "https://github.com/tokio-rs/tokio/pull/7991"
+  }
+}

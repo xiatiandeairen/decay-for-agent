@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyper-4043"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "When poll_read_body decodes a trailers frame on a chunked request body, the reading state should transition to Reading::KeepAlive (body completed) instead of Reading::Closed, allowing the HTTP/1 connection to be reused for subsequent requests."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank 1 nails the exact mechanism: state_transition on poll_read_body, value=direct, citing the Reading::KeepAlive change. Rank 2 raises a plausible assumption_boundary concern on same function. Rank 3 is supporting test-gap context."

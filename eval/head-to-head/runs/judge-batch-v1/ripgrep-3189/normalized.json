@@ -1,0 +1,5 @@
+{
+  "case_id": "ripgrep-3189",
+  "reason": "ground_truth_draft: 'expected_behavior' length 413 exceeds max 400",
+  "status": "judge-failed"
+}

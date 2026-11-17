@@ -1,0 +1,104 @@
+# Working pool for filling the remaining frozen-v1 gap.
+#
+# These are not accepted cases. They are selected from the scored semantic
+# candidate pool for enrichment and strict review.
+
+[[cases]]
+id = "tokio-rs-tokio-8021"
+repo = "tokio-rs/tokio"
+url = "https://github.com/tokio-rs/tokio/pull/8021"
+
+[[cases]]
+id = "tokio-rs-tokio-7910"
+repo = "tokio-rs/tokio"
+url = "https://github.com/tokio-rs/tokio/pull/7910"
+
+[[cases]]
+id = "hyperium-hyper-2544"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/2544"
+
+[[cases]]
+id = "hyperium-hyper-3275"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3275"
+
+[[cases]]
+id = "hyperium-hyper-3538"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3538"
+
+[[cases]]
+id = "hyperium-hyper-3782"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3782"
+
+[[cases]]
+id = "hyperium-hyper-3557"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3557"
+
+[[cases]]
+id = "hyperium-hyper-3430"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3430"
+
+[[cases]]
+id = "serde-rs-json-521"
+repo = "serde-rs/json"
+url = "https://github.com/serde-rs/json/pull/521"
+
+[[cases]]
+id = "serde-rs-json-187"
+repo = "serde-rs/json"
+url = "https://github.com/serde-rs/json/pull/187"
+
+[[cases]]
+id = "serde-rs-json-384"
+repo = "serde-rs/json"
+url = "https://github.com/serde-rs/json/pull/384"
+
+[[cases]]
+id = "serde-rs-json-303"
+repo = "serde-rs/json"
+url = "https://github.com/serde-rs/json/pull/303"
+
+[[cases]]
+id = "BurntSushi-ripgrep-454"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/454"
+
+[[cases]]
+id = "BurntSushi-ripgrep-620"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/620"
+
+[[cases]]
+id = "BurntSushi-ripgrep-652"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/652"
+
+[[cases]]
+id = "BurntSushi-ripgrep-762"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/762"
+
+[[cases]]
+id = "BurntSushi-ripgrep-554"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/554"
+
+[[cases]]
+id = "clap-rs-clap-5836"
+repo = "clap-rs/clap"
+url = "https://github.com/clap-rs/clap/pull/5836"
+
+[[cases]]
+id = "clap-rs-clap-4049"
+repo = "clap-rs/clap"
+url = "https://github.com/clap-rs/clap/pull/4049"
+
+[[cases]]
+id = "serde-rs-json-770"
+repo = "serde-rs/json"
+url = "https://github.com/serde-rs/json/pull/770"

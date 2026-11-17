@@ -1,0 +1,1734 @@
+diff --git a/Cargo.toml b/Cargo.toml
+index 6c270b39..793745e8 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -1,114 +1,114 @@
+ [package]
+ name = "hyper"
+ version = "1.9.0"
+ description = "A protective and efficient HTTP library for all."
+ readme = "README.md"
+ homepage = "https://hyper.rs"
+ documentation = "https://docs.rs/hyper"
+ repository = "https://github.com/hyperium/hyper"
+ license = "MIT"
+ authors = ["Sean McArthur <sean@seanmonstar.com>"]
+ keywords = ["http", "hyper", "hyperium"]
+ categories = ["network-programming", "web-programming::http-client", "web-programming::http-server"]
+ edition = "2021"
+ rust-version = "1.63" # keep in sync with MSRV.md dev doc
+ 
+ include = [
+   "Cargo.toml",
+   "LICENSE",
+   "src/**/*",
+ ]
+ 
+ [dependencies]
+ bytes = "1.2"
+ http = "1"
+ http-body = "1"
+ tokio = { version = "1", features = ["sync"] }
+ 
+ # Optional
+ 
+ atomic-waker = { version = "1.1.2", optional = true }
+ futures-channel = { version = "0.3", optional = true }
+ futures-core = { version = "0.3.31", optional = true }
+ futures-util = { version = "0.3", default-features = false, features = ["alloc"], optional = true }
+-h2 = { version = "0.4.14", optional = true }
++h2 = { version = "0.4.6", optional = true }
+ http-body-util = { version = "0.1", optional = true }
+ httparse = { version = "1.9", optional = true }
+ httpdate = { version = "1.0", optional = true }
+ itoa = { version = "1", optional = true }
+ pin-project-lite = { version = "0.2.4", optional = true }
+ smallvec = { version = "1.12", features = ["const_generics", "const_new"], optional = true }
+ tracing = { version = "0.1", default-features = false, features = ["std"], optional = true }
+ want = { version = "0.3", optional = true }
+ 
+ [dev-dependencies]
+ form_urlencoded = "1"
+ futures-channel = { version = "0.3", features = ["sink"] }
+ futures-util = { version = "0.3", default-features = false, features = ["alloc", "sink"] }
+ http-body-util = "0.1"
+ pretty_env_logger = "0.5"
+ pin-project-lite = "0.2.4"
+ spmc = "0.3"
+ serde = { version = "1.0", features = ["derive"] }
+ serde_json = "1.0"
+ tracing = "0.1"
+ tracing-subscriber = "0.3"
+ tokio = { version = "1", features = [
+     "fs",
+     "macros",
+     "net",
+     "io-std",
+     "io-util",
+     "rt",
+     "rt-multi-thread",
+     "sync",
+     "time",
+     "test-util",
+ ] }
+ tokio-test = "0.4"
+ tokio-util = "0.7.10"
+ 
+ [features]
+ # Nothing by default
+ default = []
+ 
+ # Easily turn it all on
+ full = [
+     "client",
+     "http1",
+     "http2",
+     "server",
+ ]
+ 
+ # HTTP versions
+ http1 = ["dep:atomic-waker", "dep:futures-channel", "dep:futures-core", "dep:httparse", "dep:itoa"]
+ http2 = ["dep:futures-channel", "dep:futures-core", "dep:h2"]
+ 
+ # Client/Server
+ client = ["dep:want", "dep:pin-project-lite", "dep:smallvec"]
+ server = ["dep:httpdate", "dep:pin-project-lite", "dep:smallvec"]
+ 
+ # C-API support (currently unstable (no semver))
+ ffi = ["dep:http-body-util", "dep:futures-util"]
+ capi = []
+ 
+ # Utilize tracing (currently unstable)
+ tracing = ["dep:tracing"]
+ 
+ # internal features used in CI
+ nightly = []
+ 
+ [lints.rust.unexpected_cfgs]
+ level = "warn"
+ check-cfg = [
+     'cfg(hyper_unstable_tracing)',
+     'cfg(hyper_unstable_ffi)'
+ ]
+ 
+ [package.metadata.docs.rs]
+ features = ["ffi", "full", "tracing"]
+ rustdoc-args = ["--cfg", "hyper_unstable_ffi", "--cfg", "hyper_unstable_tracing"]
+ 
+ [package.metadata.playground]
+ features = ["full"]
+ 
+diff --git a/src/client/conn/http2.rs b/src/client/conn/http2.rs
+index f1bc4b1e..d62b4a4e 100644
+--- a/src/client/conn/http2.rs
++++ b/src/client/conn/http2.rs
+@@ -426,190 +426,160 @@ where
+     /// Pass `None` to disable HTTP2 keep-alive.
+     ///
+     /// Default is currently disabled.
+     pub fn keep_alive_interval(&mut self, interval: impl Into<Option<Duration>>) -> &mut Self {
+         self.h2_builder.keep_alive_interval = interval.into();
+         self
+     }
+ 
+     /// Sets a timeout for receiving an acknowledgement of the keep-alive ping.
+     ///
+     /// If the ping is not acknowledged within the timeout, the connection will
+     /// be closed. Does nothing if `keep_alive_interval` is disabled.
+     ///
+     /// Default is 20 seconds.
+     pub fn keep_alive_timeout(&mut self, timeout: Duration) -> &mut Self {
+         self.h2_builder.keep_alive_timeout = timeout;
+         self
+     }
+ 
+     /// Sets whether HTTP2 keep-alive should apply while the connection is idle.
+     ///
+     /// If disabled, keep-alive pings are only sent while there are open
+     /// request/responses streams. If enabled, pings are also sent when no
+     /// streams are active. Does nothing if `keep_alive_interval` is
+     /// disabled.
+     ///
+     /// Default is `false`.
+     pub fn keep_alive_while_idle(&mut self, enabled: bool) -> &mut Self {
+         self.h2_builder.keep_alive_while_idle = enabled;
+         self
+     }
+ 
+     /// Sets the maximum number of HTTP2 concurrent locally reset streams.
+     ///
+     /// See the documentation of [`h2::client::Builder::max_concurrent_reset_streams`] for more
+     /// details.
+     ///
+     /// The default value is determined by the `h2` crate.
+     ///
+     /// [`h2::client::Builder::max_concurrent_reset_streams`]: https://docs.rs/h2/client/struct.Builder.html#method.max_concurrent_reset_streams
+     pub fn max_concurrent_reset_streams(&mut self, max: usize) -> &mut Self {
+         self.h2_builder.max_concurrent_reset_streams = Some(max);
+         self
+     }
+ 
+     /// Set the maximum write buffer size for each HTTP/2 stream.
+     ///
+     /// Default is currently 1MB, but may change.
+     ///
+     /// # Panics
+     ///
+     /// The value must be no larger than `u32::MAX`.
+     pub fn max_send_buf_size(&mut self, max: usize) -> &mut Self {
+         assert!(max <= u32::MAX as usize);
+         self.h2_builder.max_send_buffer_size = max;
+         self
+     }
+ 
+     /// Configures the maximum number of pending reset streams allowed before a GOAWAY will be sent.
+     ///
+     /// This will default to the default value set by the [`h2` crate](https://crates.io/crates/h2).
+     /// As of v0.4.0, it is 20.
+     ///
+     /// See <https://github.com/hyperium/hyper/issues/2877> for more information.
+     pub fn max_pending_accept_reset_streams(&mut self, max: impl Into<Option<usize>>) -> &mut Self {
+         self.h2_builder.max_pending_accept_reset_streams = max.into();
+         self
+     }
+ 
+     /// Configures the maximum number of local resets due to protocol errors made by the remote end.
+     ///
+     /// See the documentation of [`h2::client::Builder::max_local_error_reset_streams`] for more
+     /// details.
+     ///
+     /// The default value is 1024.
+     pub fn max_local_error_reset_streams(&mut self, max: impl Into<Option<usize>>) -> &mut Self {
+         self.h2_builder.max_local_error_reset_streams = max.into();
+         self
+     }
+ 
+-    /// Sets the duration to remember locally reset streams.
+-    ///
+-    /// When a stream is explicitly reset by either the client or the server,
+-    /// the HTTP/2 specification requires that any further frames received for
+-    /// that stream must be ignored for "some time".
+-    ///
+-    /// In order to satisfy the specification, internal state must be maintained
+-    /// to implement the behavior. This state grows linearly with the number of
+-    /// streams that are locally reset.
+-    ///
+-    /// The `reset_stream_duration` setting configures the max amount of time
+-    /// this state will be maintained in memory. Once the duration elapses, the
+-    /// stream state is purged from memory.
+-    ///
+-    /// Once the stream has been fully purged from memory, any additional frames
+-    /// received for that stream will result in a connection level protocol
+-    /// error, forcing the connection to terminate.
+-    ///
+-    /// The default value is determined by the `h2` crate, and is currently
+-    /// 1 second.
+-    ///
+-    /// See the documentation of [`h2::client::Builder::reset_stream_duration`] for more
+-    /// details.
+-    ///
+-    /// [`h2::client::Builder::reset_stream_duration`]: https://docs.rs/h2/client/struct.Builder.html#method.reset_stream_duration
+-    pub fn reset_stream_duration(&mut self, dur: Duration) -> &mut Self {
+-        self.h2_builder.reset_stream_duration = Some(dur);
+-        self
+-    }
+-
+     /// Constructs a connection with the configured options and IO.
+     /// See [`client::conn`](crate::client::conn) for more.
+     ///
+     /// Note, if [`Connection`] is not `await`-ed, [`SendRequest`] will
+     /// do nothing.
+     pub fn handshake<T, B>(
+         &self,
+         io: T,
+     ) -> impl Future<Output = crate::Result<(SendRequest<B>, Connection<T, B, Ex>)>>
+     where
+         T: Read + Write + Unpin,
+         B: Body + 'static,
+         B::Data: Send,
+         B::Error: Into<Box<dyn Error + Send + Sync>>,
+         Ex: Http2ClientConnExec<B, T> + Unpin,
+     {
+         let opts = self.clone();
+ 
+         async move {
+             trace!("client handshake HTTP/2");
+ 
+             let (tx, rx) = dispatch::channel();
+             let h2 = proto::h2::client::handshake(io, rx, &opts.h2_builder, opts.exec, opts.timer)
+                 .await?;
+             Ok((
+                 SendRequest {
+                     dispatch: tx.unbound(),
+                 },
+                 Connection {
+                     inner: (PhantomData, h2),
+                 },
+             ))
+         }
+     }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+ 
+     #[tokio::test]
+     #[ignore] // only compilation is checked
+     async fn send_sync_executor_of_non_send_futures() {
+         #[derive(Clone)]
+         struct LocalTokioExecutor;
+ 
+         impl<F> crate::rt::Executor<F> for LocalTokioExecutor
+         where
+             F: std::future::Future + 'static, // not requiring `Send`
+         {
+             fn execute(&self, fut: F) {
+                 // This will spawn into the currently running `LocalSet`.
+                 tokio::task::spawn_local(fut);
+             }
+         }
+ 
+         #[allow(unused)]
+         async fn run(io: impl crate::rt::Read + crate::rt::Write + Unpin + 'static) {
+             let (_sender, conn) = crate::client::conn::http2::handshake::<
+                 _,
+                 _,
+                 http_body_util::Empty<bytes::Bytes>,
+             >(LocalTokioExecutor, io)
+             .await
+             .unwrap();
+ 
+             tokio::task::spawn_local(async move {
+                 conn.await.unwrap();
+             });
+         }
+     }
+ 
+     #[tokio::test]
+     #[ignore] // only compilation is checked
+     async fn not_send_not_sync_executor_of_not_send_futures() {
+         #[derive(Clone)]
+         struct LocalTokioExecutor {
+             _x: std::marker::PhantomData<std::rc::Rc<()>>,
+         }
+ 
+         impl<F> crate::rt::Executor<F> for LocalTokioExecutor
+diff --git a/src/proto/h1/dispatch.rs b/src/proto/h1/dispatch.rs
+index 91defd32..b7e3ec3b 100644
+--- a/src/proto/h1/dispatch.rs
++++ b/src/proto/h1/dispatch.rs
+@@ -1,393 +1,394 @@
+ use std::{
+     error::Error as StdError,
+     future::Future,
+     marker::Unpin,
+     pin::Pin,
+     task::{Context, Poll},
+ };
+ 
+ use crate::rt::{Read, Write};
+ use bytes::{Buf, Bytes};
+ use futures_core::ready;
+ use http::Request;
+ 
+ use super::{Http1Transaction, Wants};
+ use crate::body::{Body, DecodedLength, Incoming as IncomingBody};
+ #[cfg(feature = "client")]
+ use crate::client::dispatch::TrySendError;
+ use crate::common::task;
+ use crate::proto::{BodyLength, Conn, Dispatched, MessageHead, RequestHead};
+ use crate::upgrade::OnUpgrade;
+ 
+ pub(crate) struct Dispatcher<D, Bs: Body, I, T> {
+     conn: Conn<I, Bs::Data, T>,
+     dispatch: D,
+-    body_tx: Option<crate::body::Sender>,
++    body_tx: SenderDropGuard,
+     body_rx: Pin<Box<Option<Bs>>>,
+     is_closing: bool,
+ }
+ 
+ pub(crate) trait Dispatch {
+     type PollItem;
+     type PollBody;
+     type PollError;
+     type RecvItem;
+     fn poll_msg(
+         self: Pin<&mut Self>,
+         cx: &mut Context<'_>,
+     ) -> Poll<Option<Result<(Self::PollItem, Self::PollBody), Self::PollError>>>;
+     fn recv_msg(&mut self, msg: crate::Result<(Self::RecvItem, IncomingBody)>)
+         -> crate::Result<()>;
+     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), ()>>;
+     fn should_poll(&self) -> bool;
+ }
+ 
+ cfg_server! {
+     use crate::service::HttpService;
+ 
+     pub(crate) struct Server<S: HttpService<B>, B> {
+         in_flight: Pin<Box<Option<S::Future>>>,
+         pub(crate) service: S,
+     }
+ }
+ 
+ cfg_client! {
+     pin_project_lite::pin_project! {
+         pub(crate) struct Client<B> {
+             callback: Option<crate::client::dispatch::Callback<Request<B>, http::Response<IncomingBody>>>,
+             #[pin]
+             rx: ClientRx<B>,
+             rx_closed: bool,
+         }
+     }
+ 
+     type ClientRx<B> = crate::client::dispatch::Receiver<Request<B>, http::Response<IncomingBody>>;
+ }
+ 
+ impl<D, Bs, I, T> Dispatcher<D, Bs, I, T>
+ where
+     D: Dispatch<
+             PollItem = MessageHead<T::Outgoing>,
+             PollBody = Bs,
+             RecvItem = MessageHead<T::Incoming>,
+         > + Unpin,
+     D::PollError: Into<Box<dyn StdError + Send + Sync>>,
+     I: Read + Write + Unpin,
+     T: Http1Transaction + Unpin,
+     Bs: Body + 'static,
+     Bs::Error: Into<Box<dyn StdError + Send + Sync>>,
+ {
+     pub(crate) fn new(dispatch: D, conn: Conn<I, Bs::Data, T>) -> Self {
+         Dispatcher {
+             conn,
+             dispatch,
+-            body_tx: None,
++            body_tx: SenderDropGuard::none(),
+             body_rx: Box::pin(None),
+             is_closing: false,
+         }
+     }
+ 
+     #[cfg(feature = "server")]
+     pub(crate) fn disable_keep_alive(&mut self) {
+         self.conn.disable_keep_alive();
+ 
+         // If keep alive has been disabled and no read or write has been seen on
+         // the connection yet, we must be in a state where the server is being asked to
+         // shut down before any data has been seen on the connection
+         if self.conn.is_write_closed() || self.conn.has_initial_read_write_state() {
+             self.close();
+         }
+     }
+ 
+     pub(crate) fn into_inner(self) -> (I, Bytes, D) {
+         let (io, buf) = self.conn.into_inner();
+         (io, buf, self.dispatch)
+     }
+ 
+     /// Run this dispatcher until HTTP says this connection is done,
+     /// but don't call `Write::shutdown` on the underlying IO.
+     ///
+     /// This is useful for old-style HTTP upgrades, but ignores
+     /// newer-style upgrade API.
+     pub(crate) fn poll_without_shutdown(
+         &mut self,
+         cx: &mut Context<'_>,
+     ) -> Poll<crate::Result<()>> {
+         Pin::new(self).poll_catch(cx, false).map_ok(|ds| {
+             if let Dispatched::Upgrade(pending) = ds {
+                 pending.manual();
+             }
+         })
+     }
+ 
+     fn poll_catch(
+         &mut self,
+         cx: &mut Context<'_>,
+         should_shutdown: bool,
+     ) -> Poll<crate::Result<Dispatched>> {
+         Poll::Ready(ready!(self.poll_inner(cx, should_shutdown)).or_else(|e| {
+-            // Be sure to alert a streaming body of the failure.
++            // Be sure to alert a streaming body of the failure with a
++            // more specific error than the drop guard would provide.
+             if let Some(mut body) = self.body_tx.take() {
+                 body.send_error(crate::Error::new_body("connection error"));
+             }
+             // An error means we're shutting down either way.
+             // We just try to give the error to the user,
+             // and close the connection with an Ok. If we
+             // cannot give it to the user, then return the Err.
+             self.dispatch.recv_msg(Err(e))?;
+             Ok(Dispatched::Shutdown)
+         }))
+     }
+ 
+     fn poll_inner(
+         &mut self,
+         cx: &mut Context<'_>,
+         should_shutdown: bool,
+     ) -> Poll<crate::Result<Dispatched>> {
+         T::update_date();
+ 
+         ready!(self.poll_loop(cx))?;
+ 
+         if self.is_done() {
+             if let Some(pending) = self.conn.pending_upgrade() {
+                 self.conn.take_error()?;
+                 return Poll::Ready(Ok(Dispatched::Upgrade(pending)));
+             } else if should_shutdown {
+                 ready!(self.conn.poll_shutdown(cx)).map_err(crate::Error::new_shutdown)?;
+             }
+             self.conn.take_error()?;
+             Poll::Ready(Ok(Dispatched::Shutdown))
+         } else {
+             Poll::Pending
+         }
+     }
+ 
+     fn poll_loop(&mut self, cx: &mut Context<'_>) -> Poll<crate::Result<()>> {
+         // Limit the looping on this connection, in case it is ready far too
+         // often, so that other futures don't starve.
+         //
+         // 16 was chosen arbitrarily, as that is number of pipelined requests
+         // benchmarks often use. Perhaps it should be a config option instead.
+         for _ in 0..16 {
+             let _ = self.poll_read(cx)?;
+             let write_ready = self.poll_write(cx)?.is_ready();
+             let flush_ready = self.poll_flush(cx)?.is_ready();
+ 
+             // If we can write more body and the connection is ready, we should
+             // write again. If we return `Ready(Ok(())` here, we will yield
+             // without a guaranteed wake-up from the write side of the connection.
+             // This would lead to a deadlock if we also don't expect reads.
+             let wants_write_again = self.can_write_again() && (write_ready || flush_ready);
+ 
+             // This could happen if reading paused before blocking on IO,
+             // such as getting to the end of a framed message, but then
+             // writing/flushing set the state back to Init. In that case,
+             // if the read buffer still had bytes, we'd want to try poll_read
+             // again, or else we wouldn't ever be woken up again.
+             //
+             // Using this instead of task::current() and notify() inside
+             // the Conn is noticeably faster in pipelined benchmarks.
+             let wants_read_again = self.conn.wants_read_again();
+ 
+             // If we cannot write or read again, we yield and rely on the
+             // wake-up from the connection futures.
+             if !(wants_write_again || wants_read_again) {
+                 return Poll::Ready(Ok(()));
+             }
+ 
+             // If we are continuing only because "wants_write_again", check if write is ready.
+             if !wants_read_again && wants_write_again {
+                 // If write was ready, just proceed with the loop
+                 if write_ready {
+                     continue;
+                 }
+                 // Write was previously pending, but may have become ready since polling flush, so
+                 // we need to check it again. If we simply proceeded, the case of an unbuffered
+                 // writer where flush is always ready would cause us to hot loop.
+                 if self.poll_write(cx)?.is_pending() {
+                     // write is pending, so it is safe to yield and rely on wake-up from connection
+                     // futures.
+                     return Poll::Ready(Ok(()));
+                 }
+             }
+         }
+         trace!("poll_loop yielding (self = {:p})", self);
+         task::yield_now(cx).map(|never| match never {})
+     }
+ 
+     fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<crate::Result<()>> {
+         loop {
+             if self.is_closing {
+                 return Poll::Ready(Ok(()));
+             } else if self.conn.can_read_head() {
+                 ready!(self.poll_read_head(cx))?;
+             } else if let Some(mut body) = self.body_tx.take() {
+                 if self.conn.can_read_body() {
+                     match body.poll_ready(cx) {
+                         Poll::Ready(Ok(())) => (),
+                         Poll::Pending => {
+-                            self.body_tx = Some(body);
++                            self.body_tx.set(body);
+                             return Poll::Pending;
+                         }
+                         Poll::Ready(Err(_canceled)) => {
+                             // user doesn't care about the body
+                             // so we should stop reading
+                             trace!("body receiver dropped before eof, draining or closing");
+                             self.conn.poll_drain_or_close_read(cx);
+                             continue;
+                         }
+                     }
+                     match self.conn.poll_read_body(cx) {
+                         Poll::Ready(Some(Ok(frame))) => {
+                             if frame.is_data() {
+                                 let chunk = frame.into_data().unwrap_or_else(|_| unreachable!());
+                                 match body.try_send_data(chunk) {
+                                     Ok(()) => {
+-                                        self.body_tx = Some(body);
++                                        self.body_tx.set(body);
+                                     }
+                                     Err(_canceled) => {
+                                         if self.conn.can_read_body() {
+                                             trace!("body receiver dropped before eof, closing");
+                                             self.conn.close_read();
+                                         }
+                                     }
+                                 }
+                             } else if frame.is_trailers() {
+                                 let trailers =
+                                     frame.into_trailers().unwrap_or_else(|_| unreachable!());
+                                 match body.try_send_trailers(trailers) {
+                                     Ok(()) => {
+-                                        self.body_tx = Some(body);
++                                        self.body_tx.set(body);
+                                     }
+                                     Err(_canceled) => {
+                                         if self.conn.can_read_body() {
+                                             trace!("body receiver dropped before eof, closing");
+                                             self.conn.close_read();
+                                         }
+                                     }
+                                 }
+                             } else {
+                                 // we should have dropped all unknown frames in poll_read_body
+                                 error!("unexpected frame");
+                             }
+                         }
+                         Poll::Ready(None) => {
+                             // just drop, the body will close automatically
+                         }
+                         Poll::Pending => {
+-                            self.body_tx = Some(body);
++                            self.body_tx.set(body);
+                             return Poll::Pending;
+                         }
+                         Poll::Ready(Some(Err(e))) => {
+                             body.send_error(crate::Error::new_body(e));
+                         }
+                     }
+                 } else {
+                     // just drop, the body will close automatically
+                 }
+             } else {
+                 return self.conn.poll_read_keep_alive(cx);
+             }
+         }
+     }
+ 
+     fn poll_read_head(&mut self, cx: &mut Context<'_>) -> Poll<crate::Result<()>> {
+         // can dispatch receive, or does it still care about other incoming message?
+         match ready!(self.dispatch.poll_ready(cx)) {
+             Ok(()) => (),
+             Err(()) => {
+                 trace!("dispatch no longer receiving messages");
+                 self.close();
+                 return Poll::Ready(Ok(()));
+             }
+         }
+ 
+         // dispatch is ready for a message, try to read one
+         match ready!(self.conn.poll_read_head(cx)) {
+             Some(Ok((mut head, body_len, wants))) => {
+                 let body = match body_len {
+                     DecodedLength::ZERO => IncomingBody::empty(),
+                     other => {
+                         let (tx, rx) =
+                             IncomingBody::new_channel(other, wants.contains(Wants::EXPECT));
+-                        self.body_tx = Some(tx);
++                        self.body_tx.set(tx);
+                         rx
+                     }
+                 };
+                 if wants.contains(Wants::UPGRADE) {
+                     let upgrade = self.conn.on_upgrade();
+                     debug_assert!(!upgrade.is_none(), "empty upgrade");
+                     debug_assert!(
+                         head.extensions.get::<OnUpgrade>().is_none(),
+                         "OnUpgrade already set"
+                     );
+                     head.extensions.insert(upgrade);
+                 }
+                 self.dispatch.recv_msg(Ok((head, body)))?;
+                 Poll::Ready(Ok(()))
+             }
+             Some(Err(err)) => {
+                 debug!("read_head error: {}", err);
+                 self.dispatch.recv_msg(Err(err))?;
+                 // if here, the dispatcher gave the user the error
+                 // somewhere else. we still need to shutdown, but
+                 // not as a second error.
+                 self.close();
+                 Poll::Ready(Ok(()))
+             }
+             None => {
+                 // read eof, the write side will have been closed too unless
+                 // allow_read_close was set to true, in which case just do
+                 // nothing...
+                 debug_assert!(self.conn.is_read_closed());
+                 if self.conn.is_write_closed() {
+                     self.close();
+                 }
+                 Poll::Ready(Ok(()))
+             }
+         }
+     }
+ 
+     fn poll_write(&mut self, cx: &mut Context<'_>) -> Poll<crate::Result<()>> {
+         loop {
+             if self.is_closing {
+                 return Poll::Ready(Ok(()));
+             } else if self.body_rx.is_none()
+                 && self.conn.can_write_head()
+                 && self.dispatch.should_poll()
+             {
+                 if let Some(msg) = ready!(Pin::new(&mut self.dispatch).poll_msg(cx)) {
+                     let (head, body) = msg.map_err(crate::Error::new_user_service)?;
+ 
+                     let body_type = if body.is_end_stream() {
+                         self.body_rx.set(None);
+                         None
+                     } else {
+                         let btype = body
+                             .size_hint()
+                             .exact()
+                             .map(BodyLength::Known)
+                             .or(Some(BodyLength::Unknown));
+                         self.body_rx.set(Some(body));
+                         btype
+                     };
+                     self.conn.write_head(head, body_type);
+                 } else {
+                     self.close();
+                     return Poll::Ready(Ok(()));
+                 }
+             } else if !self.conn.can_buffer_body() {
+                 ready!(self.poll_flush(cx))?;
+             } else {
+                 // A new scope is needed :(
+                 if let (Some(mut body), clear_body) =
+                     OptGuard::new(self.body_rx.as_mut()).guard_mut()
+                 {
+                     debug_assert!(!*clear_body, "opt guard defaults to keeping body");
+                     if !self.conn.can_write_body() {
+                         trace!(
+                             "no more write body allowed, user body is_end_stream = {}",
+                             body.is_end_stream(),
+                         );
+                         *clear_body = true;
+                         continue;
+@@ -447,160 +448,192 @@ where
+         self.conn.poll_flush(cx).map_err(|err| {
+             debug!("error writing: {}", err);
+             crate::Error::new_body_write(err)
+         })
+     }
+ 
+     fn close(&mut self) {
+         self.is_closing = true;
+         self.conn.close_read();
+         self.conn.close_write();
+     }
+ 
+     /// If there is pending data in body_rx, we can make progress writing if the connection is ready.
+     fn can_write_again(&mut self) -> bool {
+         self.body_rx.is_some()
+     }
+ 
+     fn is_done(&self) -> bool {
+         if self.is_closing {
+             return true;
+         }
+ 
+         let read_done = self.conn.is_read_closed();
+ 
+         if !T::should_read_first() && read_done {
+             // a client that cannot read may was well be done.
+             true
+         } else {
+             let write_done = self.conn.is_write_closed()
+                 || (!self.dispatch.should_poll() && self.body_rx.is_none());
+             read_done && write_done
+         }
+     }
+ }
+ 
+ impl<D, Bs, I, T> Future for Dispatcher<D, Bs, I, T>
+ where
+     D: Dispatch<
+             PollItem = MessageHead<T::Outgoing>,
+             PollBody = Bs,
+             RecvItem = MessageHead<T::Incoming>,
+         > + Unpin,
+     D::PollError: Into<Box<dyn StdError + Send + Sync>>,
+     I: Read + Write + Unpin,
+     T: Http1Transaction + Unpin,
+     Bs: Body + 'static,
+     Bs::Error: Into<Box<dyn StdError + Send + Sync>>,
+ {
+     type Output = crate::Result<Dispatched>;
+ 
+     #[inline]
+     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+         self.poll_catch(cx, true)
+     }
+ }
+ 
+ // ===== impl OptGuard =====
+ 
+ /// A drop guard to allow a mutable borrow of an Option while being able to
+ /// set whether the `Option` should be cleared on drop.
+ struct OptGuard<'a, T>(Pin<&'a mut Option<T>>, bool);
+ 
+ impl<'a, T> OptGuard<'a, T> {
+     fn new(pin: Pin<&'a mut Option<T>>) -> Self {
+         OptGuard(pin, false)
+     }
+ 
+     fn guard_mut(&mut self) -> (Option<Pin<&mut T>>, &mut bool) {
+         (self.0.as_mut().as_pin_mut(), &mut self.1)
+     }
+ }
+ 
+ impl<T> Drop for OptGuard<'_, T> {
+     fn drop(&mut self) {
+         if self.1 {
+             self.0.set(None);
+         }
+     }
+ }
+ 
++// ===== impl SenderDropGuard =====
++
++/// A drop guard for the body `Sender`.
++///
++/// If the `Dispatcher` future is dropped (e.g. the runtime driving the
++/// connection is shut down) while it still owns a body `Sender`, the guard
++/// sends an incomplete-message error so the receiver sees an error instead
++/// of a silent, clean end-of-stream.
++struct SenderDropGuard(Option<crate::body::Sender>);
++
++impl SenderDropGuard {
++    fn none() -> Self {
++        SenderDropGuard(None)
++    }
++
++    fn set(&mut self, sender: crate::body::Sender) {
++        self.0 = Some(sender);
++    }
++
++    fn take(&mut self) -> Option<crate::body::Sender> {
++        self.0.take()
++    }
++}
++
++impl Drop for SenderDropGuard {
++    fn drop(&mut self) {
++        if let Some(mut sender) = self.0.take() {
++            sender.send_error(crate::Error::new_incomplete());
++        }
++    }
++}
++
+ // ===== impl Server =====
+ 
+ cfg_server! {
+     impl<S, B> Server<S, B>
+     where
+         S: HttpService<B>,
+     {
+         pub(crate) fn new(service: S) -> Server<S, B> {
+             Server {
+                 in_flight: Box::pin(None),
+                 service,
+             }
+         }
+ 
+         pub(crate) fn into_service(self) -> S {
+             self.service
+         }
+     }
+ 
+     // Service is never pinned
+     impl<S: HttpService<B>, B> Unpin for Server<S, B> {}
+ 
+     impl<S, Bs> Dispatch for Server<S, IncomingBody>
+     where
+         S: HttpService<IncomingBody, ResBody = Bs>,
+         S::Error: Into<Box<dyn StdError + Send + Sync>>,
+         Bs: Body,
+     {
+         type PollItem = MessageHead<http::StatusCode>;
+         type PollBody = Bs;
+         type PollError = S::Error;
+         type RecvItem = RequestHead;
+ 
+         fn poll_msg(
+             mut self: Pin<&mut Self>,
+             cx: &mut Context<'_>,
+         ) -> Poll<Option<Result<(Self::PollItem, Self::PollBody), Self::PollError>>> {
+             let mut this = self.as_mut();
+             let ret = if let Some(ref mut fut) = this.in_flight.as_mut().as_pin_mut() {
+                 let resp = ready!(fut.as_mut().poll(cx)?);
+                 let (parts, body) = resp.into_parts();
+                 let head = MessageHead {
+                     version: parts.version,
+                     subject: parts.status,
+                     headers: parts.headers,
+                     extensions: parts.extensions,
+                 };
+                 Poll::Ready(Some(Ok((head, body))))
+             } else {
+                 unreachable!("poll_msg shouldn't be called if no inflight");
+             };
+ 
+             // Since in_flight finished, remove it
+             this.in_flight.set(None);
+             ret
+         }
+ 
+         fn recv_msg(&mut self, msg: crate::Result<(Self::RecvItem, IncomingBody)>) -> crate::Result<()> {
+             let (msg, body) = msg?;
+             let mut req = Request::new(body);
+             *req.method_mut() = msg.subject.0;
+             *req.uri_mut() = msg.subject.1;
+             *req.headers_mut() = msg.headers;
+             *req.version_mut() = msg.version;
+             *req.extensions_mut() = msg.extensions;
+             let fut = self.service.call(req);
+             self.in_flight.set(Some(fut));
+             Ok(())
+         }
+ 
+         fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), ()>> {
+             if self.in_flight.is_some() {
+                 Poll::Pending
+             } else {
+                 Poll::Ready(Ok(()))
+             }
+         }
+ 
+         fn should_poll(&self) -> bool {
+             self.in_flight.is_some()
+diff --git a/src/proto/h2/client.rs b/src/proto/h2/client.rs
+index 51f54844..bf154e45 100644
+--- a/src/proto/h2/client.rs
++++ b/src/proto/h2/client.rs
+@@ -1,213 +1,208 @@
+ use std::{
+     convert::Infallible,
+     future::Future,
+     marker::PhantomData,
+     pin::Pin,
+     task::{Context, Poll},
+     time::Duration,
+ };
+ 
+ use crate::rt::{Read, Write};
+ use bytes::Bytes;
+ use futures_channel::mpsc::{Receiver, Sender};
+ use futures_channel::{mpsc, oneshot};
+ use futures_core::{ready, FusedFuture, FusedStream, Stream};
+ use h2::client::{Builder, Connection, SendRequest};
+ use h2::SendStream;
+ use http::{Method, StatusCode};
+ use pin_project_lite::pin_project;
+ 
+ use super::ping::{Ponger, Recorder};
+ use super::{ping, PipeToSendStream, SendBuf};
+ use crate::body::{Body, Incoming as IncomingBody};
+ use crate::client::dispatch::{Callback, SendWhen, TrySendError};
+ use crate::common::either::Either;
+ use crate::common::io::Compat;
+ use crate::common::time::Time;
+ use crate::ext::Protocol;
+ use crate::headers;
+ use crate::proto::Dispatched;
+ use crate::rt::bounds::{Http2ClientConnExec, Http2UpgradedExec};
+ use crate::upgrade::Upgraded;
+ use crate::{Request, Response};
+ use h2::client::ResponseFuture;
+ 
+ type ClientRx<B> = crate::client::dispatch::Receiver<Request<B>, Response<IncomingBody>>;
+ 
+ ///// An mpsc channel is used to help notify the `Connection` task when *all*
+ ///// other handles to it have been dropped, so that it can shutdown.
+ type ConnDropRef = mpsc::Sender<Infallible>;
+ 
+ ///// A oneshot channel watches the `Connection` task, and when it completes,
+ ///// the "dispatch" task will be notified and can shutdown sooner.
+ type ConnEof = oneshot::Receiver<Infallible>;
+ 
+ // Our defaults are chosen for the "majority" case, which usually are not
+ // resource constrained, and so the spec default of 64kb can be too limiting
+ // for performance.
+ const DEFAULT_CONN_WINDOW: u32 = 1024 * 1024 * 5; // 5mb
+ const DEFAULT_STREAM_WINDOW: u32 = 1024 * 1024 * 2; // 2mb
+ const DEFAULT_MAX_FRAME_SIZE: u32 = 1024 * 16; // 16kb
+ const DEFAULT_MAX_SEND_BUF_SIZE: usize = 1024 * 1024; // 1mb
+ const DEFAULT_MAX_HEADER_LIST_SIZE: u32 = 1024 * 16; // 16kb
+ 
+ // The maximum number of concurrent streams that the client is allowed to open
+ // before it receives the initial SETTINGS frame from the server.
+ // This default value is derived from what the HTTP/2 spec recommends as the
+ // minimum value that endpoints advertise to their peers. It means that using
+ // this value will minimize the chance of the failure where the local endpoint
+ // attempts to open too many streams and gets rejected by the remote peer with
+ // the `REFUSED_STREAM` error.
+ const DEFAULT_INITIAL_MAX_SEND_STREAMS: usize = 100;
+ 
+ #[derive(Clone, Debug)]
+ pub(crate) struct Config {
+     pub(crate) adaptive_window: bool,
+     pub(crate) initial_conn_window_size: u32,
+     pub(crate) initial_stream_window_size: u32,
+     pub(crate) initial_max_send_streams: usize,
+     pub(crate) max_frame_size: Option<u32>,
+     pub(crate) max_header_list_size: u32,
+     pub(crate) keep_alive_interval: Option<Duration>,
+     pub(crate) keep_alive_timeout: Duration,
+     pub(crate) keep_alive_while_idle: bool,
+     pub(crate) max_concurrent_reset_streams: Option<usize>,
+     pub(crate) max_send_buffer_size: usize,
+     pub(crate) max_pending_accept_reset_streams: Option<usize>,
+     pub(crate) max_local_error_reset_streams: Option<usize>,
+     pub(crate) header_table_size: Option<u32>,
+     pub(crate) max_concurrent_streams: Option<u32>,
+-    pub(crate) reset_stream_duration: Option<Duration>,
+ }
+ 
+ impl Default for Config {
+     fn default() -> Config {
+         Config {
+             adaptive_window: false,
+             initial_conn_window_size: DEFAULT_CONN_WINDOW,
+             initial_stream_window_size: DEFAULT_STREAM_WINDOW,
+             initial_max_send_streams: DEFAULT_INITIAL_MAX_SEND_STREAMS,
+             max_frame_size: Some(DEFAULT_MAX_FRAME_SIZE),
+             max_header_list_size: DEFAULT_MAX_HEADER_LIST_SIZE,
+             keep_alive_interval: None,
+             keep_alive_timeout: Duration::from_secs(20),
+             keep_alive_while_idle: false,
+             max_concurrent_reset_streams: None,
+             max_send_buffer_size: DEFAULT_MAX_SEND_BUF_SIZE,
+             max_pending_accept_reset_streams: None,
+             max_local_error_reset_streams: Some(1024),
+             header_table_size: None,
+             max_concurrent_streams: None,
+-            reset_stream_duration: None,
+         }
+     }
+ }
+ 
+ fn new_builder(config: &Config) -> Builder {
+     let mut builder = Builder::default();
+     builder
+         .initial_max_send_streams(config.initial_max_send_streams)
+         .initial_window_size(config.initial_stream_window_size)
+         .initial_connection_window_size(config.initial_conn_window_size)
+         .max_header_list_size(config.max_header_list_size)
+         .max_send_buffer_size(config.max_send_buffer_size)
+         .max_local_error_reset_streams(config.max_local_error_reset_streams)
+         .enable_push(false);
+     if let Some(max) = config.max_frame_size {
+         builder.max_frame_size(max);
+     }
+     if let Some(max) = config.max_concurrent_reset_streams {
+         builder.max_concurrent_reset_streams(max);
+     }
+     if let Some(max) = config.max_pending_accept_reset_streams {
+         builder.max_pending_accept_reset_streams(max);
+     }
+     if let Some(size) = config.header_table_size {
+         builder.header_table_size(size);
+     }
+     if let Some(max) = config.max_concurrent_streams {
+         builder.max_concurrent_streams(max);
+     }
+-    if let Some(dur) = config.reset_stream_duration {
+-        builder.reset_stream_duration(dur);
+-    }
+     builder
+ }
+ 
+ fn new_ping_config(config: &Config) -> ping::Config {
+     ping::Config {
+         bdp_initial_window: if config.adaptive_window {
+             Some(config.initial_stream_window_size)
+         } else {
+             None
+         },
+         keep_alive_interval: config.keep_alive_interval,
+         keep_alive_timeout: config.keep_alive_timeout,
+         keep_alive_while_idle: config.keep_alive_while_idle,
+     }
+ }
+ 
+ pub(crate) async fn handshake<T, B, E>(
+     io: T,
+     req_rx: ClientRx<B>,
+     config: &Config,
+     mut exec: E,
+     timer: Time,
+ ) -> crate::Result<ClientTask<B, E, T>>
+ where
+     T: Read + Write + Unpin,
+     B: Body + 'static,
+     B::Data: Send + 'static,
+     E: Http2ClientConnExec<B, T> + Clone + Unpin,
+     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+ {
+     let (h2_tx, mut conn) = new_builder(config)
+         .handshake::<_, SendBuf<B::Data>>(Compat::new(io))
+         .await
+         .map_err(crate::Error::new_h2)?;
+ 
+     // An mpsc channel is used entirely to detect when the
+     // 'Client' has been dropped. This is to get around a bug
+     // in h2 where dropping all SendRequests won't notify a
+     // parked Connection.
+     let (conn_drop_ref, conn_drop_rx) = mpsc::channel(1);
+     let (cancel_tx, conn_eof) = oneshot::channel();
+ 
+     let ping_config = new_ping_config(config);
+ 
+     let (conn, ping) = if ping_config.is_enabled() {
+         let pp = conn.ping_pong().expect("conn.ping_pong");
+         let (recorder, ponger) = ping::channel(pp, ping_config, timer);
+ 
+         let conn: Conn<_, B> = Conn::new(ponger, conn);
+         (Either::left(conn), recorder)
+     } else {
+         (Either::right(conn), ping::disabled())
+     };
+     let conn: ConnMapErr<T, B> = ConnMapErr {
+         conn,
+         is_terminated: false,
+     };
+ 
+     exec.execute_h2_future(H2ClientFuture::Task {
+         task: ConnTask::new(conn, conn_drop_rx, cancel_tx),
+     });
+ 
+     Ok(ClientTask {
+         ping,
+         conn_drop_ref,
+         conn_eof,
+         executor: exec,
+         h2_tx,
+         req_rx,
+         fut_ctx: None,
+         marker: PhantomData,
+     })
+ }
+ 
+ pin_project! {
+     struct Conn<T, B>
+     where
+         B: Body,
+     {
+         #[pin]
+diff --git a/src/proto/h2/server.rs b/src/proto/h2/server.rs
+index 6180ce8f..483ed96d 100644
+--- a/src/proto/h2/server.rs
++++ b/src/proto/h2/server.rs
+@@ -1,229 +1,224 @@
+ use std::error::Error as StdError;
+ use std::future::Future;
+ use std::pin::Pin;
+ use std::task::{Context, Poll};
+ use std::time::Duration;
+ 
+ use bytes::Bytes;
+ use futures_core::ready;
+ use h2::server::{Connection, Handshake, SendResponse};
+ use h2::{Reason, RecvStream};
+ use http::{Method, Request};
+ use pin_project_lite::pin_project;
+ 
+ use super::{ping, PipeToSendStream, SendBuf};
+ use crate::body::{Body, Incoming as IncomingBody};
+ use crate::common::date;
+ use crate::common::io::Compat;
+ use crate::common::time::Time;
+ use crate::ext::Protocol;
+ use crate::headers;
+ use crate::proto::h2::ping::Recorder;
+ use crate::proto::Dispatched;
+ use crate::rt::bounds::{Http2ServerConnExec, Http2UpgradedExec};
+ use crate::rt::{Read, Write};
+ use crate::service::HttpService;
+ 
+ use crate::upgrade::{OnUpgrade, Pending, Upgraded};
+ use crate::Response;
+ 
+ // Our defaults are chosen for the "majority" case, which usually are not
+ // resource constrained, and so the spec default of 64kb can be too limiting
+ // for performance.
+ //
+ // At the same time, a server more often has multiple clients connected, and
+ // so is more likely to use more resources than a client would.
+ const DEFAULT_CONN_WINDOW: u32 = 1024 * 1024; // 1mb
+ const DEFAULT_STREAM_WINDOW: u32 = 1024 * 1024; // 1mb
+ const DEFAULT_MAX_FRAME_SIZE: u32 = 1024 * 16; // 16kb
+ const DEFAULT_MAX_SEND_BUF_SIZE: usize = 1024 * 400; // 400kb
+ const DEFAULT_SETTINGS_MAX_HEADER_LIST_SIZE: u32 = 1024 * 16; // 16kb
+ const DEFAULT_MAX_LOCAL_ERROR_RESET_STREAMS: usize = 1024;
+ 
+ #[derive(Clone, Debug)]
+ pub(crate) struct Config {
+     pub(crate) adaptive_window: bool,
+     pub(crate) initial_conn_window_size: u32,
+     pub(crate) initial_stream_window_size: u32,
+     pub(crate) max_frame_size: u32,
+     pub(crate) enable_connect_protocol: bool,
+     pub(crate) max_concurrent_streams: Option<u32>,
+     pub(crate) max_pending_accept_reset_streams: Option<usize>,
+     pub(crate) max_local_error_reset_streams: Option<usize>,
+     pub(crate) keep_alive_interval: Option<Duration>,
+     pub(crate) keep_alive_timeout: Duration,
+     pub(crate) max_send_buffer_size: usize,
+-    pub(crate) header_table_size: Option<u32>,
+     pub(crate) max_header_list_size: u32,
+     pub(crate) date_header: bool,
+ }
+ 
+ impl Default for Config {
+     fn default() -> Config {
+         Config {
+             adaptive_window: false,
+             initial_conn_window_size: DEFAULT_CONN_WINDOW,
+             initial_stream_window_size: DEFAULT_STREAM_WINDOW,
+             max_frame_size: DEFAULT_MAX_FRAME_SIZE,
+             enable_connect_protocol: false,
+             max_concurrent_streams: Some(200),
+             max_pending_accept_reset_streams: None,
+             max_local_error_reset_streams: Some(DEFAULT_MAX_LOCAL_ERROR_RESET_STREAMS),
+-            header_table_size: None,
+             keep_alive_interval: None,
+             keep_alive_timeout: Duration::from_secs(20),
+             max_send_buffer_size: DEFAULT_MAX_SEND_BUF_SIZE,
+             max_header_list_size: DEFAULT_SETTINGS_MAX_HEADER_LIST_SIZE,
+             date_header: true,
+         }
+     }
+ }
+ 
+ pin_project! {
+     pub(crate) struct Server<T, S, B, E>
+     where
+         S: HttpService<IncomingBody>,
+         B: Body,
+     {
+         exec: E,
+         timer: Time,
+         service: S,
+         state: State<T, B>,
+         date_header: bool,
+         close_pending: bool
+     }
+ }
+ 
+ enum State<T, B>
+ where
+     B: Body,
+ {
+     Handshaking {
+         ping_config: ping::Config,
+         hs: Handshake<Compat<T>, SendBuf<B::Data>>,
+     },
+     Serving(Serving<T, B>),
+ }
+ 
+ struct Serving<T, B>
+ where
+     B: Body,
+ {
+     ping: Option<(ping::Recorder, ping::Ponger)>,
+     conn: Connection<Compat<T>, SendBuf<B::Data>>,
+     closing: Option<crate::Error>,
+     date_header: bool,
+ }
+ 
+ impl<T, S, B, E> Server<T, S, B, E>
+ where
+     T: Read + Write + Unpin,
+     S: HttpService<IncomingBody, ResBody = B>,
+     S::Error: Into<Box<dyn StdError + Send + Sync>>,
+     B: Body + 'static,
+     E: Http2ServerConnExec<S::Future, B>,
+ {
+     pub(crate) fn new(
+         io: T,
+         service: S,
+         config: &Config,
+         exec: E,
+         timer: Time,
+     ) -> Server<T, S, B, E> {
+         let mut builder = h2::server::Builder::default();
+         builder
+             .initial_window_size(config.initial_stream_window_size)
+             .initial_connection_window_size(config.initial_conn_window_size)
+             .max_frame_size(config.max_frame_size)
+             .max_header_list_size(config.max_header_list_size)
+             .max_local_error_reset_streams(config.max_local_error_reset_streams)
+             .max_send_buffer_size(config.max_send_buffer_size);
+         if let Some(max) = config.max_concurrent_streams {
+             builder.max_concurrent_streams(max);
+         }
+         if let Some(max) = config.max_pending_accept_reset_streams {
+             builder.max_pending_accept_reset_streams(max);
+         }
+-        if let Some(size) = config.header_table_size {
+-            builder.header_table_size(size);
+-        }
+         if config.enable_connect_protocol {
+             builder.enable_connect_protocol();
+         }
+         let handshake = builder.handshake(Compat::new(io));
+ 
+         let bdp = if config.adaptive_window {
+             Some(config.initial_stream_window_size)
+         } else {
+             None
+         };
+ 
+         let ping_config = ping::Config {
+             bdp_initial_window: bdp,
+             keep_alive_interval: config.keep_alive_interval,
+             keep_alive_timeout: config.keep_alive_timeout,
+             // If keep-alive is enabled for servers, always enabled while
+             // idle, so it can more aggressively close dead connections.
+             keep_alive_while_idle: true,
+         };
+ 
+         Server {
+             exec,
+             timer,
+             state: State::Handshaking {
+                 ping_config,
+                 hs: handshake,
+             },
+             service,
+             date_header: config.date_header,
+             close_pending: false,
+         }
+     }
+ 
+     pub(crate) fn graceful_shutdown(&mut self) {
+         trace!("graceful_shutdown");
+         match self.state {
+             State::Handshaking { .. } => {
+                 self.close_pending = true;
+             }
+             State::Serving(ref mut srv) => {
+                 if srv.closing.is_none() {
+                     srv.conn.graceful_shutdown();
+                 }
+             }
+         }
+     }
+ }
+ 
+ impl<T, S, B, E> Future for Server<T, S, B, E>
+ where
+     T: Read + Write + Unpin,
+     S: HttpService<IncomingBody, ResBody = B>,
+     S::Error: Into<Box<dyn StdError + Send + Sync>>,
+     B: Body + 'static,
+     E: Http2ServerConnExec<S::Future, B>,
+ {
+     type Output = crate::Result<Dispatched>;
+ 
+     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+         let me = &mut *self;
+         loop {
+             let next = match me.state {
+                 State::Handshaking {
+                     ref mut hs,
+                     ref ping_config,
+                 } => {
+                     let mut conn = ready!(Pin::new(hs).poll(cx).map_err(crate::Error::new_h2))?;
+                     let ping = if ping_config.is_enabled() {
+                         let pp = conn.ping_pong().expect("conn.ping_pong");
+                         Some(ping::channel(pp, ping_config.clone(), me.timer.clone()))
+                     } else {
+                         None
+                     };
+                     State::Serving(Serving {
+                         ping,
+                         conn,
+                         closing: None,
+                         date_header: me.date_header,
+                     })
+                 }
+diff --git a/src/server/conn/http2.rs b/src/server/conn/http2.rs
+index 77b605a0..0452109c 100644
+--- a/src/server/conn/http2.rs
++++ b/src/server/conn/http2.rs
+@@ -183,142 +183,130 @@ impl<E> Builder<E> {
+     pub fn adaptive_window(&mut self, enabled: bool) -> &mut Self {
+         use proto::h2::SPEC_WINDOW_SIZE;
+ 
+         self.h2_builder.adaptive_window = enabled;
+         if enabled {
+             self.h2_builder.initial_conn_window_size = SPEC_WINDOW_SIZE;
+             self.h2_builder.initial_stream_window_size = SPEC_WINDOW_SIZE;
+         }
+         self
+     }
+ 
+     /// Sets the maximum frame size to use for HTTP2.
+     ///
+     /// Passing `None` will do nothing.
+     ///
+     /// If not set, hyper will use a default.
+     pub fn max_frame_size(&mut self, sz: impl Into<Option<u32>>) -> &mut Self {
+         if let Some(sz) = sz.into() {
+             self.h2_builder.max_frame_size = sz;
+         }
+         self
+     }
+ 
+     /// Sets the [`SETTINGS_MAX_CONCURRENT_STREAMS`][spec] option for HTTP2
+     /// connections.
+     ///
+     /// Default is 200, but not part of the stability of hyper. It could change
+     /// in a future release. You are encouraged to set your own limit.
+     ///
+     /// Passing `None` will remove any limit.
+     ///
+     /// [spec]: https://httpwg.org/specs/rfc9113.html#SETTINGS_MAX_CONCURRENT_STREAMS
+     pub fn max_concurrent_streams(&mut self, max: impl Into<Option<u32>>) -> &mut Self {
+         self.h2_builder.max_concurrent_streams = max.into();
+         self
+     }
+ 
+     /// Sets an interval for HTTP2 Ping frames should be sent to keep a
+     /// connection alive.
+     ///
+     /// Pass `None` to disable HTTP2 keep-alive.
+     ///
+     /// Default is currently disabled.
+     pub fn keep_alive_interval(&mut self, interval: impl Into<Option<Duration>>) -> &mut Self {
+         self.h2_builder.keep_alive_interval = interval.into();
+         self
+     }
+ 
+     /// Sets a timeout for receiving an acknowledgement of the keep-alive ping.
+     ///
+     /// If the ping is not acknowledged within the timeout, the connection will
+     /// be closed. Does nothing if `keep_alive_interval` is disabled.
+     ///
+     /// Default is 20 seconds.
+     pub fn keep_alive_timeout(&mut self, timeout: Duration) -> &mut Self {
+         self.h2_builder.keep_alive_timeout = timeout;
+         self
+     }
+ 
+     /// Set the maximum write buffer size for each HTTP/2 stream.
+     ///
+     /// Default is currently ~400KB, but may change.
+     ///
+     /// # Panics
+     ///
+     /// The value must be no larger than `u32::MAX`.
+     pub fn max_send_buf_size(&mut self, max: usize) -> &mut Self {
+         assert!(max <= u32::MAX as usize);
+         self.h2_builder.max_send_buffer_size = max;
+         self
+     }
+ 
+     /// Enables the [extended CONNECT protocol].
+     ///
+     /// [extended CONNECT protocol]: https://datatracker.ietf.org/doc/html/rfc8441#section-4
+     pub fn enable_connect_protocol(&mut self) -> &mut Self {
+         self.h2_builder.enable_connect_protocol = true;
+         self
+     }
+ 
+-    /// Sets the header table size.
+-    ///
+-    /// This setting informs the peer of the maximum size of the header compression
+-    /// table used to encode header blocks, in octets. The encoder may select any value
+-    /// equal to or less than the header table size specified by the sender.
+-    ///
+-    /// The default value of crate `h2` is 4,096.
+-    pub fn header_table_size(&mut self, size: impl Into<Option<u32>>) -> &mut Self {
+-        self.h2_builder.header_table_size = size.into();
+-        self
+-    }
+-
+     /// Sets the max size of received header frames.
+     ///
+     /// Default is currently 16KB, but can change.
+     pub fn max_header_list_size(&mut self, max: u32) -> &mut Self {
+         self.h2_builder.max_header_list_size = max;
+         self
+     }
+ 
+     /// Set the timer used in background tasks.
+     pub fn timer<M>(&mut self, timer: M) -> &mut Self
+     where
+         M: Timer + Send + Sync + 'static,
+     {
+         self.timer = Time::Timer(Arc::new(timer));
+         self
+     }
+ 
+     /// Set whether the `date` header should be included in HTTP responses.
+     ///
+     /// Note that including the `date` header is recommended by RFC 7231.
+     ///
+     /// Default is true.
+     pub fn auto_date_header(&mut self, enabled: bool) -> &mut Self {
+         self.h2_builder.date_header = enabled;
+         self
+     }
+ 
+     /// Bind a connection together with a [`Service`](crate::service::Service).
+     ///
+     /// This returns a Future that must be polled in order for HTTP to be
+     /// driven on the connection.
+     pub fn serve_connection<S, I, Bd>(&self, io: I, service: S) -> Connection<I, S, E>
+     where
+         S: HttpService<IncomingBody, ResBody = Bd>,
+         S::Error: Into<Box<dyn StdError + Send + Sync>>,
+         Bd: Body + 'static,
+         Bd::Error: Into<Box<dyn StdError + Send + Sync>>,
+         I: Read + Write + Unpin,
+         E: Http2ServerConnExec<S::Future, Bd>,
+     {
+         let proto = proto::h2::Server::new(
+             io,
+             service,
+             &self.h2_builder,
+             self.exec.clone(),
+             self.timer.clone(),
+         );
+         Connection { conn: proto }
+     }
+ }
+diff --git a/tests/client.rs b/tests/client.rs
+index 823cf401..8695f6d3 100644
+--- a/tests/client.rs
++++ b/tests/client.rs
+@@ -1681,160 +1681,215 @@ mod conn {
+         };
+ 
+         let client = async move {
+             let tcp = tcp_connect(&addr).await.expect("connect");
+             let (mut client, conn) = conn::http1::handshake(tcp).await.expect("handshake");
+ 
+             tokio::task::spawn(async move {
+                 conn.await.expect("http conn");
+             });
+ 
+             let req = Request::builder()
+                 .uri("/a")
+                 .body(Empty::<Bytes>::new())
+                 .unwrap();
+             let mut res = client.send_request(req).await.expect("send_request");
+             assert_eq!(res.status(), hyper::StatusCode::OK);
+             assert_eq!(
+                 res.extensions()
+                     .get::<hyper::ext::ReasonPhrase>()
+                     .expect("custom reason phrase is present")
+                     .as_bytes(),
+                 &b"Alright"[..]
+             );
+             assert_eq!(res.headers().len(), 1);
+             assert_eq!(
+                 res.headers().get(http::header::CONTENT_LENGTH).unwrap(),
+                 "0"
+             );
+             assert!(res.body_mut().frame().await.is_none());
+         };
+ 
+         future::join(server, client).await;
+     }
+ 
+     #[test]
+     fn incoming_content_length() {
+         let (server, addr) = setup_std_test_server();
+         let rt = support::runtime();
+ 
+         let (tx1, rx1) = oneshot::channel();
+ 
+         thread::spawn(move || {
+             let mut sock = server.accept().unwrap().0;
+             sock.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+             sock.set_write_timeout(Some(Duration::from_secs(5)))
+                 .unwrap();
+             let mut buf = [0; 4096];
+             let n = sock.read(&mut buf).expect("read 1");
+ 
+             let expected = "GET / HTTP/1.1\r\n\r\n";
+             assert_eq!(s(&buf[..n]), expected);
+ 
+             sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello")
+                 .unwrap();
+             let _ = tx1.send(());
+         });
+ 
+         let tcp = rt.block_on(tcp_connect(&addr)).unwrap();
+ 
+         let (mut client, conn) = rt.block_on(conn::http1::handshake(tcp)).unwrap();
+ 
+         rt.spawn(conn.map_err(|e| panic!("conn error: {}", e)).map(|_| ()));
+ 
+         let req = Request::builder()
+             .uri("/")
+             .body(Empty::<Bytes>::new())
+             .unwrap();
+         let res = client.send_request(req).and_then(move |mut res| {
+             assert_eq!(res.status(), hyper::StatusCode::OK);
+             assert_eq!(res.body().size_hint().exact(), Some(5));
+             assert!(!res.body().is_end_stream());
+             poll_fn(move |ctx| Pin::new(res.body_mut()).poll_frame(ctx)).map(Option::unwrap)
+         });
+ 
+         let rx = rx1.expect("thread panicked");
+         let rx = rx.then(|_| TokioTimer.sleep(Duration::from_millis(200)));
+         let chunk = rt.block_on(future::join(res, rx).map(|r| r.0)).unwrap();
+         assert_eq!(chunk.data_ref().unwrap().len(), 5);
+     }
+ 
++    #[tokio::test]
++    async fn dropped_conn_sends_incomplete_body_error() {
++        let (listener, addr) = setup_tk_test_server().await;
++        let (release_tx, release_rx) = oneshot::channel();
++
++        let server = async move {
++            let mut sock = listener.accept().await.unwrap().0;
++            let mut buf = [0; 4096];
++            let n = sock.read(&mut buf).await.expect("read 1");
++
++            let expected = "GET / HTTP/1.1\r\n\r\n";
++            assert_eq!(s(&buf[..n]), expected);
++
++            sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n")
++                .await
++                .unwrap();
++
++            release_rx.await.expect("release server");
++        };
++
++        let client = async move {
++            let tcp = tcp_connect(&addr).await.expect("connect");
++            let (mut client, conn) = conn::http1::handshake(tcp).await.expect("handshake");
++
++            let conn = tokio::task::spawn(async move {
++                conn.await.expect("http conn");
++            });
++
++            let req = Request::builder()
++                .uri("/")
++                .body(Empty::<Bytes>::new())
++                .unwrap();
++            let mut res = client.send_request(req).await.expect("send_request");
++            assert_eq!(res.status(), hyper::StatusCode::OK);
++            assert_eq!(res.body().size_hint().exact(), Some(5));
++            assert!(!res.body().is_end_stream());
++
++            conn.abort();
++            let err = conn.await.expect_err("conn task should be aborted");
++            assert!(err.is_cancelled(), "{err:?}");
++
++            let err = res
++                .body_mut()
++                .frame()
++                .await
++                .expect("body frame")
++                .unwrap_err();
++            assert!(err.is_incomplete_message(), "{err:?}");
++
++            release_tx.send(()).expect("release server");
++        };
++
++        future::join(server, client).await;
++    }
++
+     #[test]
+     fn aborted_body_isnt_completed() {
+         let _ = ::pretty_env_logger::try_init();
+         let (server, addr) = setup_std_test_server();
+         let rt = support::runtime();
+ 
+         let (tx, rx) = oneshot::channel();
+         let server = thread::spawn(move || {
+             let mut sock = server.accept().unwrap().0;
+             sock.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+             sock.set_write_timeout(Some(Duration::from_secs(5)))
+                 .unwrap();
+             let expected = "POST / HTTP/1.1\r\ntransfer-encoding: chunked\r\n\r\n5\r\nhello\r\n";
+             let mut buf = vec![0; expected.len()];
+             sock.read_exact(&mut buf).expect("read 1");
+             assert_eq!(s(&buf), expected);
+ 
+             let _ = tx.send(());
+ 
+             assert_eq!(sock.read(&mut buf).expect("read 2"), 0);
+         });
+ 
+         let tcp = rt.block_on(tcp_connect(&addr)).unwrap();
+ 
+         let (mut client, conn) = rt.block_on(conn::http1::handshake(tcp)).unwrap();
+ 
+         rt.spawn(conn.map_err(|e| panic!("conn error: {}", e)).map(|_| ()));
+ 
+         let (mut sender, recv) =
+             mpsc::channel::<Result<Frame<Bytes>, Box<dyn Error + Send + Sync>>>(0);
+ 
+         let sender = thread::spawn(move || {
+             sender
+                 .try_send(Ok(Frame::data("hello".into())))
+                 .expect("try_send_data");
+             support::runtime().block_on(rx).unwrap();
+ 
+             // Aborts the body in an abnormal fashion.
+             let _ = sender.try_send(Err(Box::new(std::io::Error::new(
+                 io::ErrorKind::Other,
+                 "body write aborted",
+             ))));
+         });
+ 
+         let req = Request::builder()
+             .method(Method::POST)
+             .uri("/")
+             .body(StreamBody::new(recv))
+             .unwrap();
+         let res = client.send_request(req);
+         rt.block_on(res).unwrap_err();
+ 
+         server.join().expect("server thread panicked");
+         sender.join().expect("sender thread panicked");
+     }
+ 
+     #[test]
+     fn uri_absolute_form() {
+         let (server, addr) = setup_std_test_server();
+         let rt = support::runtime();
+ 
+         let (tx1, rx1) = oneshot::channel();
+ 
+         thread::spawn(move || {
+             let mut sock = server.accept().unwrap().0;
+             sock.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+             sock.set_write_timeout(Some(Duration::from_secs(5)))
+                 .unwrap();
+             let mut buf = [0; 4096];
+             let n = sock.read(&mut buf).expect("read 1");
+ 
+             // Notably:
+             // - Still no Host header, since it wasn't set
+             let expected = "GET http://hyper.local/a HTTP/1.1\r\n\r\n";
+             assert_eq!(s(&buf[..n]), expected);
+ 
+             sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                 .unwrap();
+             let _ = tx1.send(());
+         });

@@ -1,0 +1,5 @@
+M	Cargo.toml
+M	src/number.rs
+A	tests/regression.rs
+A	tests/regression/issue520.rs
+A	tests/regression/mod.rs

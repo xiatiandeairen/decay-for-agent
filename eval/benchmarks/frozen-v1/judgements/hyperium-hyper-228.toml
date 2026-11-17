@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "hyperium-hyper-228"
+repo = "hyperium/hyper"
+pr = 228
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Invalid chunk size parsing."
+
+[fact_only]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 3
+notes = "True risk is invalid chunk-size parsing. Fact top3 are broad-scope/mixed-concerns and parse coverage limitation, not parsing semantics."
+
+[semantic_filtered]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 2
+notes = "Semantic explains partial scan and generic prod/test review, but misses invalid hex/chunk-extension parsing contract."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = true
+semantic_introduced_noise = false
+notes = "Semantic drops some broad top-risk noise, but still misses the concrete product risk."

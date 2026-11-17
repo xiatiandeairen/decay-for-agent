@@ -1,0 +1,5 @@
+{
+  "case_id": "BurntSushi-ripgrep-762",
+  "reason": "ground_truth_draft: unexpected fields ['judgement_drafts']",
+  "status": "judge-failed"
+}

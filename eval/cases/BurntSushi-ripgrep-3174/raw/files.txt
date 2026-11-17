@@ -1,0 +1,3 @@
+M	CHANGELOG.md
+M	crates/ignore/src/dir.rs
+M	tests/regression.rs

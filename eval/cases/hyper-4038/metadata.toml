@@ -1,0 +1,8 @@
+case_id = "hyper-4038"
+repo = "hyperium/hyper"
+pr = 4038
+kind = "risk_signal"
+status = "freeze_ready"
+base_sha = "e13e783927d429fc03038fe512eeb4d379cf1a70"
+head_sha = "e1e6f57461c970e152044b5e27f70132aeccaf6e"
+diff_exit = 0

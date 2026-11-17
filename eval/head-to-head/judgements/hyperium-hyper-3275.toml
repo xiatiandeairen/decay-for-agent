@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyperium-hyper-3275"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "In Incoming::poll_frame, h2 body errors whose reason is NO_ERROR or CANCEL are now mapped to Poll::Ready(None) (end-of-stream) instead of being surfaced as crate::Error::new_body. This handles the case where an HTTP/2 server sends an early response and RST_STREAMs the request body without the client treating it as a body error."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank 1 names error_propagation on poll_frame with the exact match arm cited — direct hit. Rank 2 raises a legitimate non_happy_path concern that the new branch skips data_done/trailers. Rank 3 is supporting test-gap evidence. [mechanical-flag: ai_baseline: ai=2, mechanical=1]"

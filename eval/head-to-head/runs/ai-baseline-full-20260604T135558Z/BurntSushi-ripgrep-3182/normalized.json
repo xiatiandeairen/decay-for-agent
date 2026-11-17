@@ -1,0 +1,5 @@
+{
+  "case_id": "BurntSushi-ripgrep-3182",
+  "reason": "top_risks[1]: rationale length 253 exceeds max 200",
+  "status": "ai-baseline-failed"
+}

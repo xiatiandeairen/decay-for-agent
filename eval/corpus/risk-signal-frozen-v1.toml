@@ -1,0 +1,329 @@
+# Runner-compatible M3 frozen eval v1 corpus.
+#
+# Current status mirrors eval/risk-signals/frozen-v1.toml:
+# - target: 40
+# - current executable seed: 40
+# - status: complete
+#
+# Execute with:
+# DECAY_EVAL_CORPUS=eval/corpus/risk-signal-frozen-v1.toml eval/scripts/run-semantic-case.sh <case-id>
+
+[[cases]]
+id = "tokio-rs-tokio-7991"
+repo = "tokio-rs/tokio"
+pr = 7991
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Closed-channel recv_many panic boundary."
+
+[[cases]]
+id = "tokio-rs-tokio-8001"
+repo = "tokio-rs/tokio"
+pr = 8001
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "UDP error-readiness propagation."
+
+[[cases]]
+id = "hyperium-hyper-647"
+repo = "hyperium/hyper"
+pr = 647
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Invalid content-length stream handling."
+
+[[cases]]
+id = "hyperium-hyper-3365"
+repo = "hyperium/hyper"
+pr = 3365
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Zero pool idle timeout panic boundary."
+
+[[cases]]
+id = "hyperium-hyper-228"
+repo = "hyperium/hyper"
+pr = 228
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Invalid chunk size parsing."
+
+[[cases]]
+id = "hyperium-hyper-3261"
+repo = "hyperium/hyper"
+pr = 3261
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "HTTP/1 graceful shutdown lifecycle semantics."
+
+[[cases]]
+id = "hyperium-hyper-3616"
+repo = "hyperium/hyper"
+pr = 3616
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Graceful shutdown after upgrade panic."
+
+[[cases]]
+id = "tokio-rs-tokio-7922"
+repo = "tokio-rs/tokio"
+pr = 7922
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Blocking pool shutdown race."
+
+[[cases]]
+id = "BurntSushi-ripgrep-3182"
+repo = "BurntSushi/ripgrep"
+pr = 3182
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Replacement panic in look-around corner case."
+
+[[cases]]
+id = "serde-rs-json-757"
+repo = "serde-rs/json"
+pr = 757
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "RawValue invalid UTF-8 panic."
+
+[[cases]]
+id = "hyper-4056"
+repo = "hyperium/hyper"
+pr = 4056
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "HTTP/1 32-bit large-body integer boundary."
+
+[[cases]]
+id = "hyper-4061"
+repo = "hyperium/hyper"
+pr = 4061
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "HTTP/2 flow-control capacity reservation deadlock."
+
+[[cases]]
+id = "hyper-3988"
+repo = "hyperium/hyper"
+pr = 3988
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "HTTP/1 write/flush readiness coordination v2."
+
+[[cases]]
+id = "hyper-4043"
+repo = "hyperium/hyper"
+pr = 4043
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "HTTP/1 keep-alive with chunked trailers."
+
+[[cases]]
+id = "hyper-4042"
+repo = "hyperium/hyper"
+pr = 4042
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Dropped HTTP/2 response future cancellation."
+
+[[cases]]
+id = "hyper-4038"
+repo = "hyperium/hyper"
+pr = 4038
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "FFI null pointer validation."
+
+[[cases]]
+id = "hyper-3998"
+repo = "hyperium/hyper"
+pr = 3998
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Trailer NO_ERROR propagation."
+
+[[cases]]
+id = "hyper-4011"
+repo = "hyperium/hyper"
+pr = 4011
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "HTTP/1 trailer field case-insensitive contract."
+
+[[cases]]
+id = "hyper-3977"
+repo = "hyperium/hyper"
+pr = 3977
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Revert of rare missed write wakeup fix."
+
+[[cases]]
+id = "hyper-3185"
+repo = "hyperium/hyper"
+pr = 3185
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "HTTP/1 header read timeout lifecycle."
+
+[[cases]]
+id = "ripgrep-3195"
+repo = "BurntSushi/ripgrep"
+pr = 3195
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Line-buffered searcher buffering regression."
+
+[[cases]]
+id = "ripgrep-3189"
+repo = "BurntSushi/ripgrep"
+pr = 3189
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Global gitignore absolute-path behavior."
+
+[[cases]]
+id = "ripgrep-3154"
+repo = "BurntSushi/ripgrep"
+pr = 3154
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "PCRE2 multiline files-with-matches output correctness."
+
+[[cases]]
+id = "ripgrep-2885"
+repo = "BurntSushi/ripgrep"
+pr = 2885
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Regex literal extraction false negative."
+
+[[cases]]
+id = "hyperium-hyper-518"
+repo = "hyperium/hyper"
+pr = 518
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "SSL verifier connector lifecycle contract."
+
+[[cases]]
+id = "hyperium-hyper-3812"
+repo = "hyperium/hyper"
+pr = 3812
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Partial HTTP/1 header parsing panic."
+
+[[cases]]
+id = "BurntSushi-ripgrep-454"
+repo = "BurntSushi/ripgrep"
+pr = 454
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Only-matching match iteration repeated first match."
+
+[[cases]]
+id = "BurntSushi-ripgrep-620"
+repo = "BurntSushi/ripgrep"
+pr = 620
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Early return skipped pending after-context output."
+
+[[cases]]
+id = "BurntSushi-ripgrep-762"
+repo = "BurntSushi/ripgrep"
+pr = 762
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Gitignore slash-pattern external contract mismatch."
+
+[[cases]]
+id = "hyperium-hyper-2544"
+repo = "hyperium/hyper"
+pr = 2544
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Malformed header defensive parse boundary."
+
+[[cases]]
+id = "hyperium-hyper-3275"
+repo = "hyperium/hyper"
+pr = 3275
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "HTTP/2 early response error propagation."
+
+[[cases]]
+id = "serde-rs-json-521"
+repo = "serde-rs/json"
+pr = 521
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Adjacently tagged f32 roundtrip regression."
+
+[[cases]]
+id = "tokio-rs-tokio-8021"
+repo = "tokio-rs/tokio"
+pr = 8021
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Closed semaphore reopened after forget_permits."
+
+[[cases]]
+id = "tokio-rs-tokio-7983"
+repo = "tokio-rs/tokio"
+pr = 7983
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "io_uring open cancellation leaked file descriptors."
+
+[[cases]]
+id = "hyperium-hyper-4069"
+repo = "hyperium/hyper"
+pr = 4069
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "HTTP/1 dispatcher drop mid-body silent truncation."
+
+[[cases]]
+id = "BurntSushi-ripgrep-3174"
+repo = "BurntSushi/ripgrep"
+pr = 3174
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Ancestor ignore whitelist path normalization false negative."
+
+[[cases]]
+id = "BurntSushi-ripgrep-801"
+repo = "BurntSushi/ripgrep"
+pr = 801
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "Custom ignore file API disabled by global ignore switches."
+
+[[cases]]
+id = "hyperium-hyper-3952"
+repo = "hyperium/hyper"
+pr = 3952
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "HTTP/1 poll loop readiness stall."
+
+[[cases]]
+id = "hyperium-hyper-3242"
+repo = "hyperium/hyper"
+pr = 3242
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "HTTP/2 Extended CONNECT missing required pseudo-headers."
+
+[[cases]]
+id = "tokio-rs-tokio-8076"
+repo = "tokio-rs/tokio"
+pr = 8076
+kind = "risk_signal"
+status = "freeze_ready"
+reason = "RwLock zero max_readers mutual exclusion violation."

@@ -1,0 +1,4 @@
+ CHANGELOG.md             |  2 ++
+ crates/ignore/src/dir.rs | 24 ++++++++++++++----------
+ tests/regression.rs      | 21 +++++++++++++++++++++
+ 3 files changed, 37 insertions(+), 10 deletions(-)

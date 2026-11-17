@@ -1,0 +1,24 @@
+{
+  "case_id": "serde-rs-json-1205",
+  "refs": [
+    {
+      "detail": {
+        "body": "Splits duplicated and somewhat complex logic depending on two generics (`Read` and `seed`) into only depending on one generic (`Read`) cutting debug mode llvm-lines output on my program by:\r\n- `SeqAccess::next_element_seed`: 34232 -> 21752\r\n- `MapAccess::next_key_seed`: 11225 -> 6722",
+        "closedAt": "2024-10-19T16:20:50Z",
+        "comments": [],
+        "createdAt": "2024-01-06T18:15:35Z",
+        "labels": [],
+        "number": 1102,
+        "state": "CLOSED",
+        "title": "[Deserialize] Split out peek logic from seed generic",
+        "url": "https://github.com/serde-rs/json/pull/1102"
+      },
+      "target": {
+        "number": 1102,
+        "reason": "Deserialization compile-time/performance context.",
+        "repo": "serde-rs/json",
+        "type": "issue"
+      }
+    }
+  ]
+}

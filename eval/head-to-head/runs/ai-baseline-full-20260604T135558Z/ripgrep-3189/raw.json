@@ -1,0 +1,12 @@
+{
+  "case_id": "ripgrep-3189",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"ripgrep-3189\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"external_contract\",\"subject\":\"crates/ignore/src/default_types.rs:DEFAULT_TYPES\",\"evidence_refs\":[\"(&[\\\"r\\\"], &[\\\"*.R\\\", \\\"*.r\\\", \\\"*.Rmd\\\", \\\"*.Rnw\\\"]),\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Default `r` filetype globs dropped lowercase `*.rmd` and `*.rnw`; users invoking `-t r` will silently stop matching files that previously matched.\"},{\"rank\":2,\"risk_signal\":\"error_propagation\",\"subject\":\"crates/ignore/src/walk.rs:WalkBuilder::build\",\"evidence_refs\":[\"let ig_root = self\\n            .get_or_set_current_dir()\\n            .map(|cwd| self.ig_builder.build_with_cwd(Some(cwd.to_path_buf())))\\n            .unwrap_or_else(|| self.ig_builder.build());\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"When CWD discovery fails, build() falls back to ig_builder.build() with no CWD \u2014 global gitignores are silently disabled (logged only), not surfaced to the caller.\"},{\"rank\":3,\"risk_signal\":\"assumption_boundary\",\"subject\":\"crates/ignore/src/gitignore.rs:Gitignore::global\",\"evidence_refs\":[\"match std::env::current_dir() {\\n            Ok(cwd) => GitignoreBuilder::new(cwd).build_global(),\\n            Err(err) => (Gitignore::empty(), Some(err.into())),\\n        }\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Public `Gitignore::global()` now depends on `current_dir()`; on failure it returns an empty matcher plus error, changing behavior for callers that previously got globals built relative to `\\\"\\\"`.\"}]\n",
+      "stderr_tail": ""
+    }
+  ]
+}

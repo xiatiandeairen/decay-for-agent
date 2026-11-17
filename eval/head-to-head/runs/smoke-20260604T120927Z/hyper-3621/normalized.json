@@ -1,0 +1,5 @@
+{
+  "case_id": "hyper-3621",
+  "reason": "raw output is not valid JSON: Expecting ',' delimiter: line 1 column 1690 (char 1689)",
+  "status": "ai-baseline-failed"
+}

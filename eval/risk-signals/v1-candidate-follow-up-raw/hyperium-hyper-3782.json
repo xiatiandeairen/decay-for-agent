@@ -1,0 +1,183 @@
+{
+  "case_id": "hyperium-hyper-3782",
+  "refs": [
+    {
+      "detail": {
+        "baseRefName": "0.14.x",
+        "baseRefOid": "98a7ab039461cd859e835ae4d15413489fe5cf6b",
+        "body": "This change exposes a tunable for the max_local_error_reset_streams parameter in h2.\r\n\r\n",
+        "comments": [
+          {
+            "author": {
+              "login": "Noah-Kennedy"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "The warnings change was needed because the nightly tests are failing right now due to warnings.",
+            "createdAt": "2024-01-18T19:14:44Z",
+            "id": "IC_kwDOAWaYQc5xMWim",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/pull/3528#issuecomment-1899063462",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "> The warnings change was needed because the nightly tests are failing right now due to warnings.\r\n\r\nAs in 0.14.x will have warnings from now on?",
+            "createdAt": "2024-01-19T18:17:23Z",
+            "id": "IC_kwDOAWaYQc5xTS87",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/pull/3528#issuecomment-1900883771",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Noah-Kennedy"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "@seanmonstar only on nightly",
+            "createdAt": "2024-01-19T18:20:03Z",
+            "id": "IC_kwDOAWaYQc5xTTx5",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/pull/3528#issuecomment-1900887161",
+            "viewerDidAuthor": false
+          }
+        ],
+        "files": [
+          {
+            "additions": 1,
+            "changeType": "MODIFIED",
+            "deletions": 1,
+            "path": "Cargo.toml"
+          },
+          {
+            "additions": 1,
+            "changeType": "MODIFIED",
+            "deletions": 1,
+            "path": "src/lib.rs"
+          },
+          {
+            "additions": 4,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "src/proto/h2/server.rs"
+          },
+          {
+            "additions": 17,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "src/server/conn.rs"
+          },
+          {
+            "additions": 15,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "src/server/server.rs"
+          }
+        ],
+        "headRefName": "noah/add-h2-config-0.14",
+        "headRefOid": "fc0e97aefa148d155dedb7234cba256a92268246",
+        "labels": [],
+        "mergedAt": "2024-01-19T18:21:00Z",
+        "number": 3528,
+        "reviewDecision": "APPROVED",
+        "reviews": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "fc0e97aefa148d155dedb7234cba256a92268246"
+            },
+            "id": "PRR_kwDOAWaYQc5tR5W2",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "APPROVED",
+            "submittedAt": "2024-01-19T18:20:46Z"
+          }
+        ],
+        "state": "MERGED",
+        "title": "feat(http2): add config for max_local_error_reset_streams in server",
+        "url": "https://github.com/hyperium/hyper/pull/3528"
+      },
+      "target": {
+        "number": 3528,
+        "reason": "Original config patch for max_local_error_reset_streams.",
+        "repo": "hyperium/hyper",
+        "type": "pr"
+      }
+    },
+    {
+      "detail": {
+        "baseRefName": "master",
+        "baseRefOid": "8241f91f5bf9bc8def35cc214a5219ad1a39f71e",
+        "body": "Pulls #3528 to master.",
+        "comments": [],
+        "files": [
+          {
+            "additions": 1,
+            "changeType": "MODIFIED",
+            "deletions": 1,
+            "path": "Cargo.toml"
+          },
+          {
+            "additions": 4,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "src/proto/h2/server.rs"
+          },
+          {
+            "additions": 15,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "src/server/conn/http2.rs"
+          }
+        ],
+        "headRefName": "noah/add-h2-config",
+        "headRefOid": "ad9186f2f3b92852766fce125732ec7278d6a63c",
+        "labels": [],
+        "mergedAt": "2024-01-19T18:16:43Z",
+        "number": 3530,
+        "reviewDecision": "APPROVED",
+        "reviews": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "ad9186f2f3b92852766fce125732ec7278d6a63c"
+            },
+            "id": "PRR_kwDOAWaYQc5tR3tU",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "APPROVED",
+            "submittedAt": "2024-01-19T18:16:02Z"
+          }
+        ],
+        "state": "MERGED",
+        "title": "chore(http2): pull 3528 up to master",
+        "url": "https://github.com/hyperium/hyper/pull/3530"
+      },
+      "target": {
+        "number": 3530,
+        "reason": "Port that introduced wrong parameter wiring.",
+        "repo": "hyperium/hyper",
+        "type": "pr"
+      }
+    }
+  ]
+}

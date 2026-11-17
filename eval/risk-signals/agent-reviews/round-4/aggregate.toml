@@ -1,0 +1,92 @@
+version = "risk-signal-agent-aggregate.v1"
+reviewed_at = "2026-05-13"
+case_count = 8
+freeze_ready_count = 3
+needs_more_context_count = 4
+reject_count = 1
+
+[[cases]]
+id = "hyperium-hyper-647"
+decision = "freeze_ready"
+confidence = "medium"
+accepted_signals = ["non_happy_path", "state_transition"]
+gate_reason = "All agents support freeze_ready with scoped malformed Content-Length parser/state claim."
+must_have_reason = "Invalid Content-Length caused HTTP/1 message handling to drop the stream before returning an error, later leading to panic with close_connection."
+limitations = ["Do not claim broad HTTP parser security impact", "Issue #646/test diff would strengthen source chain"]
+evidence_refs = ["https://github.com/hyperium/hyper/pull/647", "https://github.com/hyperium/hyper/issues/646"]
+
+[[cases]]
+id = "hyperium-hyper-3365"
+decision = "needs_more_context"
+confidence = "medium"
+accepted_signals = ["assumption_boundary", "non_happy_path"]
+gate_reason = "Ground Truth and Skeptic require issue/test/diff-level invariant despite Risk Signal support."
+must_have_reason = "pool_idle_timeout Duration::ZERO plausibly caused a client pool panic."
+limitations = ["No local regression test", "One-line fix without exact invariant", "Do not claim general idle-timeout risk"]
+required_follow_up = ["Store issue #2997", "Capture exact diff or regression assertion"]
+evidence_refs = ["https://github.com/hyperium/hyper/pull/3365", "https://github.com/hyperium/hyper/issues/2997"]
+
+[[cases]]
+id = "clap-rs-clap-1439"
+decision = "reject"
+confidence = "high"
+accepted_signals = []
+gate_reason = "Skeptic high-confidence reject: release-policy/API compatibility hindsight without downstream executable evidence."
+must_have_reason = "Dependency upgrade changed public API expectations and was reverted, but this is not suitable for current frozen eval scope."
+limitations = ["Do not claim runtime instability", "Do not claim function-level complexity degradation"]
+evidence_refs = ["https://github.com/clap-rs/clap/pull/1439", "https://github.com/clap-rs/clap/pull/1415"]
+
+[[cases]]
+id = "hyperium-hyper-228"
+decision = "freeze_ready"
+confidence = "high"
+accepted_signals = ["non_happy_path", "state_transition"]
+gate_reason = "All agents support freeze_ready; PR includes concrete malformed chunk-size examples and regression-test claims."
+must_have_reason = "Invalid HTTP chunk-size parsing changed malformed-input behavior across client/server parser paths."
+limitations = ["Old parser-specific case", "Do not claim full chunk-extension compliance or exploitability"]
+evidence_refs = ["https://github.com/hyperium/hyper/pull/228"]
+
+[[cases]]
+id = "hyperium-hyper-3261"
+decision = "needs_more_context"
+confidence = "medium"
+accepted_signals = ["lifecycle_ordering", "state_transition", "non_happy_path"]
+gate_reason = "Skeptic blocks freeze because maintainer comments raise compatibility/breaking semantics."
+must_have_reason = "Graceful shutdown before any request could hang."
+limitations = ["Breaking/compatibility semantics unclear", "Do not claim universally correct shutdown behavior"]
+required_follow_up = ["Store issue #2730/#3233 context", "Clarify expected graceful_shutdown semantics"]
+evidence_refs = ["https://github.com/hyperium/hyper/pull/3261", "https://github.com/hyperium/hyper/issues/2730"]
+
+[[cases]]
+id = "hyperium-hyper-3616"
+decision = "freeze_ready"
+confidence = "medium"
+accepted_signals = ["lifecycle_ordering", "state_transition", "assumption_boundary"]
+gate_reason = "All agents support freeze_ready with scoped upgraded-connection graceful_shutdown panic claim."
+must_have_reason = "Calling graceful_shutdown after an HTTP/1 connection upgrade could panic; production HTTP/1 shutdown code and server tests changed."
+limitations = ["Issue #3615 not stored", "Do not generalize to all HTTP/1 upgrade shutdown paths"]
+evidence_refs = ["https://github.com/hyperium/hyper/pull/3616", "https://github.com/hyperium/hyper/issues/3615"]
+
+[[cases]]
+id = "BurntSushi-ripgrep-827"
+decision = "needs_more_context"
+confidence = "high"
+accepted_signals = []
+rejected_signals = ["non_happy_path"]
+gate_reason = "All agents agree current evidence is insufficient; performance/platform regression needs measurement or issue body and a better signal category."
+must_have_reason = "Windows traversal performance regressed due to an added stat call per directory entry."
+limitations = ["No benchmark", "No issue #820 body", "No dedicated performance/platform signal in catalog"]
+required_follow_up = ["Store issue #820", "Find benchmark or reproduction", "Consider future performance/platform signal"]
+evidence_refs = ["https://github.com/BurntSushi/ripgrep/pull/827", "https://github.com/BurntSushi/ripgrep/issues/820"]
+
+[[cases]]
+id = "hyper-4061"
+decision = "needs_more_context"
+confidence = "medium"
+accepted_signals = ["state_transition"]
+rejected_signals = ["non_happy_path"]
+gate_reason = "Sparse PR body points to #4003/#4051; source-chain is not enough to freeze."
+must_have_reason = "HTTP/2 body capacity reservation before body availability may alter streaming readiness/timing behavior."
+limitations = ["Self-referential prior eval evidence is not enough", "Observable impact not locally established"]
+required_follow_up = ["Store issue #4003", "Store PR #4051", "Capture test details proving bad capacity behavior"]
+evidence_refs = ["https://github.com/hyperium/hyper/pull/4061", "https://github.com/hyperium/hyper/issues/4003", "https://github.com/hyperium/hyper/pull/4051"]

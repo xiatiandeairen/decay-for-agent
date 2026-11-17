@@ -1,0 +1,12 @@
+{
+  "case_id": "tokio-rs-tokio-7922",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"tokio-rs-tokio-7922\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"concurrency_ordering\",\"subject\":\"tokio/src/runtime/blocking/pool.rs:Inner::run\",\"evidence_refs\":[\"// since this is a legitimate wakeup,\",\"// the `Spawner::spawn_task` has already decremented `num_idle_threads`.\",\"is_counted_idle = false;\",\"shared.num_notify += 1;\",\"self.inner.condvar.notify_one();\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Correctness of is_counted_idle hinges on invariant: any num_notify++ is paired with a prior dec_num_idle_threads by the notifier. Future notify paths that bump num_notify without that pre-decrement would silently desync the counter.\"},{\"rank\":2,\"risk_signal\":\"state_transition\",\"subject\":\"tokio/src/runtime/blocking/pool.rs:Inner::run\",\"evidence_refs\":[\"// is this thread currently counted in `num_idle_threads`?\",\"let mut is_counted_idle;\",\"// mark this thread as currently counted in `num_idle_threads`.\",\"is_counted_idle = true;\",\"if is_counted_idle {\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Exit-bookkeeping is now branched on is_counted_idle. Timeout and spurious-wakeup paths intentionally leave it true; only the num_notify branch flips it false. Any new exit edge added later must remember to maintain this flag.\"},{\"rank\":3,\"risk_signal\":\"test_gap_for_risk_path\",\"subject\":\"tokio/src/runtime/tests/loom_blocking.rs:spawn_blocking_then_shutdown\",\"evidence_refs\":[\".thread_keep_alive(Duration::from_secs(7200)) // don't let the thread exit on its own\",\".max_blocking_threads(1)\",\"// shutdown the runtime, which also shutdown the blocking pool\",\"drop(rt);\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"New loom test deliberately suppresses keep_alive expiry to isolate the notify/shutdown race. The timeout-exit path interleaved with shutdown (the other branch that leaves is_counted_idle=true) is not exercised.\"}]\n",
+      "stderr_tail": ""
+    }
+  ]
+}

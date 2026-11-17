@@ -92,6 +92,14 @@ fn production_and_test_change_does_not_trigger_general_test_gap() {
 }
 
 #[test]
+fn production_and_test_change_is_reported_as_diff_structure_evidence() {
+    assert_has_kind(
+        &["src/diff.rs", "tests/diff_test.rs"],
+        "prod_change_with_tests",
+    );
+}
+
+#[test]
 fn sensitive_production_change_without_tests_triggers_sensitive_test_gap() {
     assert_has_kind(&["src/auth/token.rs"], "sensitive_test_gap");
 }

@@ -1,0 +1,59 @@
+{
+  "case_id": "hyperium-hyper-3557",
+  "refs": [
+    {
+      "detail": {
+        "body": "Could you provide safety docs that explain why it is ok to extend the lifetime to static here?\r\n\r\nhttps://github.com/hyperium/hyper/blob/90eb95f62a32981cb662b0f750027231d8a2586b/src/rt/timer.rs#L107",
+        "closedAt": "2024-02-05T15:17:13Z",
+        "comments": [
+          {
+            "author": {
+              "login": "sfackler"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "That extension should definitely not be there.",
+            "createdAt": "2024-02-02T15:42:39Z",
+            "id": "IC_kwDOAWaYQc5yr9lS",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3556#issuecomment-1924127058",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2024-02-02T15:20:38Z",
+        "labels": [
+          {
+            "color": "d93f0b",
+            "description": "Category: bug. Something is wrong. This is bad!",
+            "id": "MDU6TGFiZWwxMjU3MTAxOTc=",
+            "name": "C-bug"
+          },
+          {
+            "color": "0e8a16",
+            "description": "Effort: easy. A task that would be a great starting point for a new contributor.",
+            "id": "MDU6TGFiZWwxNTQwMDI2NzU=",
+            "name": "E-easy"
+          },
+          {
+            "color": "FBCA04",
+            "description": "Area: runtime traits/utils",
+            "id": "LA_kwDOAWaYQc8AAAABHLr8TQ",
+            "name": "A-rt"
+          }
+        ],
+        "number": 3556,
+        "state": "CLOSED",
+        "title": "Sleep::downcast_mut_pin() should not extend lifetime",
+        "url": "https://github.com/hyperium/hyper/issues/3556"
+      },
+      "target": {
+        "number": 3556,
+        "reason": "Sleep::downcast_mut_pin lifetime report.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    }
+  ]
+}

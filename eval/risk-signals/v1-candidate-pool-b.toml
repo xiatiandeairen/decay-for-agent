@@ -1,0 +1,105 @@
+# Second working pool for filling the remaining frozen-v1 gap.
+#
+# These are not accepted cases. They are selected from the scored semantic
+# candidate pool after excluding existing frozen candidates and the screen-a
+# pool. Suspected duplicate id variants are intentionally skipped.
+
+[[cases]]
+id = "tokio-rs-tokio-8068"
+repo = "tokio-rs/tokio"
+url = "https://github.com/tokio-rs/tokio/pull/8068"
+
+[[cases]]
+id = "tokio-rs-tokio-8010"
+repo = "tokio-rs/tokio"
+url = "https://github.com/tokio-rs/tokio/pull/8010"
+
+[[cases]]
+id = "tokio-rs-tokio-7983"
+repo = "tokio-rs/tokio"
+url = "https://github.com/tokio-rs/tokio/pull/7983"
+
+[[cases]]
+id = "hyperium-hyper-2792"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/2792"
+
+[[cases]]
+id = "hyperium-hyper-3813"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3813"
+
+[[cases]]
+id = "hyperium-hyper-4019"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/4019"
+
+[[cases]]
+id = "hyperium-hyper-4043"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/4043"
+
+[[cases]]
+id = "hyperium-hyper-4069"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/4069"
+
+[[cases]]
+id = "hyperium-hyper-4002"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/4002"
+
+[[cases]]
+id = "hyperium-hyper-2746"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/2746"
+
+[[cases]]
+id = "BurntSushi-ripgrep-1065"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/1065"
+
+[[cases]]
+id = "BurntSushi-ripgrep-3189"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/3189"
+
+[[cases]]
+id = "BurntSushi-ripgrep-3181"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/3181"
+
+[[cases]]
+id = "clap-rs-clap-4668"
+repo = "clap-rs/clap"
+url = "https://github.com/clap-rs/clap/pull/4668"
+
+[[cases]]
+id = "clap-rs-clap-6068"
+repo = "clap-rs/clap"
+url = "https://github.com/clap-rs/clap/pull/6068"
+
+[[cases]]
+id = "clap-rs-clap-6205"
+repo = "clap-rs/clap"
+url = "https://github.com/clap-rs/clap/pull/6205"
+
+[[cases]]
+id = "clap-rs-clap-6368"
+repo = "clap-rs/clap"
+url = "https://github.com/clap-rs/clap/pull/6368"
+
+[[cases]]
+id = "serde-rs-json-257"
+repo = "serde-rs/json"
+url = "https://github.com/serde-rs/json/pull/257"
+
+[[cases]]
+id = "serde-rs-json-1030"
+repo = "serde-rs/json"
+url = "https://github.com/serde-rs/json/pull/1030"
+
+[[cases]]
+id = "serde-rs-json-1205"
+repo = "serde-rs/json"
+url = "https://github.com/serde-rs/json/pull/1205"

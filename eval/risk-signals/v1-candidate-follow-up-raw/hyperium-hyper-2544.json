@@ -1,0 +1,656 @@
+{
+  "case_id": "hyperium-hyper-2544",
+  "refs": [
+    {
+      "detail": {
+        "body": "Why do we have this defined as a panic?\r\nhttps://github.com/hyperium/hyper/blob/dbea7716f157896bf7d2d417be7b4e382e7dc34f/src/proto/h1/role.rs#L36\r\nhttps://github.com/hyperium/hyper/blob/dbea7716f157896bf7d2d417be7b4e382e7dc34f/src/proto/h1/role.rs#L47\r\nhttps://github.com/hyperium/hyper/blob/dbea7716f157896bf7d2d417be7b4e382e7dc34f/src/proto/h1/role.rs#L60\r\n\r\nEven if under `debug_assertions` this library has no right to panic as it's completely normal for it to be used on invalid input(I use it in a broad web crawler and web is full of surprises - good and bad). It should always simply return an error back to the user if anything bad happened\r\n\r\nas I understand it `panics` are reserved for unrecoverable errors, and because this is a library it has no right to panic and crash client code... Error \"unrecoverability\" is completely at library's user discretion",
+        "closedAt": "2021-05-11T17:27:56Z",
+        "comments": [
+          {
+            "author": {
+              "login": "let4be"
+            },
+            "authorAssociation": "NONE",
+            "body": "I'm also not quite sure how to disable this, I'm still getting \r\n`thread 'tokio-runtime-worker' panicked at 'illegal header name from httparse: [51, 48, 50, 10, 83, 116, 97, 116, 117, 115]', /home/dev/.cargo/registry/src/github.com-1ecc6299db9ec823/hyper-0.14.7/src/proto/h1/role.rs:951:28`\r\n\r\nafter putting \r\n```\r\n[profile.dev]\r\npanic = \"abort\"\r\ndebug-assertions = false\r\n\r\n[profile.release]\r\npanic = \"abort\"\r\ndebug-assertions = false\r\nopt-level = 3\r\n```\r\ninto my `Cargo.toml` and compiling using `cargo build --release`\r\n\r\nany advice?\r\n\r\nedit: it seems the library will panic unconditionally of `debug_assertions` option on bad input...\r\nI just fork and nuke the check for now",
+            "createdAt": "2021-05-03T10:34:24Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzMTE3NDQ0MA==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-831174440",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "let4be"
+            },
+            "authorAssociation": "NONE",
+            "body": "Hm... having a problem with fork + clone approach\r\nMy steps\r\n1. `git clone https://github.com/hyperium/hyper` (or fork)\r\n2. `cd hyper && git checkout tags/v0.14.7`\r\n3. do edits\r\n4. add dependency to a local version of hyper via `path`\r\n\r\nNow I have weird compillation errors because it seems like some other libraries I use depend on hyper too and there is some sort of conflict, but I do not understand why\r\nbefore doing a specific version checkout via git I looked at `Cargo.lock` and I checkout the exact version my project was using...\r\n\r\n`cargo` gives a hint about \r\n```   \r\n    = note: perhaps two different versions of crate `hyper` are being used?\r\n    = note: required because of the requirements on the impl of `hyper::client::connect::Connect` for `HttpsConnector<CountingConnector>\r\n```\r\n\r\nAny advice on how to properly fork and fix locally? (compile fails even if I do no edits, i.e. I try to compile code using the same version cargo uses when dependency is being pulled from crates.io)\r\n",
+            "createdAt": "2021-05-03T12:43:25Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzMTIzNDYxNQ==",
+            "includesCreatedEdit": true,
+            "isMinimized": true,
+            "minimizedReason": "off-topic",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-831234615",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "let4be"
+            },
+            "authorAssociation": "NONE",
+            "body": "Okay, adding \r\n```\r\n[patch.crates-io]\r\nhyper = { path = \"../hyper\" }\r\n```\r\nto the my program's `Cargo.toml` and bumping version in the cloned hyper seems to fixed an issue and I now able to compile using local Hyper, yay\r\n\r\nwhat I'm a bit confused about is why did I have to put this into the program(which is not even directly dependant on Hyper) instead of putting it in another crate I use which in turn uses Hyper(if I do this it still uses hyper from crates.io)...\r\n\r\nedit :reading more on how it's implemented in rust, seems like there is no way around it, need to define `patch` on the top level in consumers of the library as well...\r\nhttps://doc.rust-lang.org/cargo/reference/overriding-dependencies.html",
+            "createdAt": "2021-05-03T12:59:01Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzMTI0MjM5NQ==",
+            "includesCreatedEdit": true,
+            "isMinimized": true,
+            "minimizedReason": "off-topic",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-831242395",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "davidpdrsn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Hard to say specifically which crates causes it, but it's probably becomes some crate reexports something that results in two versions of the same crate being pulled in.",
+            "createdAt": "2021-05-04T19:41:13Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzMjE5NTQ3Mg==",
+            "includesCreatedEdit": false,
+            "isMinimized": true,
+            "minimizedReason": "off-topic",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-832195472",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "let4be"
+            },
+            "authorAssociation": "NONE",
+            "body": "It just seems you cannot simply replace external dependency by cloning it and specifying a local path, because there could be other packages depending on it and they will pull unmodified version => hence the conflict\r\nSo it's necessary to use this `[patch.crates-io]` section in the root...\r\n\r\nLet's get back on track on what would be the best way to fix the panic issue in `Hyper`, right now I did some dirty fix in my fork but it's bad... I simply create \"invalid_header\" from a static string when it cannot parse it - enough for my use case, but we need a better solution for the library(most likely need to propogate error back to the user)\r\n\r\nonce again  - unconditional panic on bad input in a library is very-very-very bad...",
+            "createdAt": "2021-05-04T20:18:52Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzMjIxNjAzNg==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-832216036",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "SergioBenitez"
+            },
+            "authorAssociation": "NONE",
+            "body": "If this report is correct, this needs a CVE and an immediate fix. This is a trivial DoS vector with extreme ease of execution. I am stunned that this issue remains open and ignored.",
+            "createdAt": "2021-05-06T12:27:37Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzMzQ4MjQwNw==",
+            "includesCreatedEdit": false,
+            "isMinimized": true,
+            "minimizedReason": "abuse",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-833482407",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "sfackler"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Some actual code that reproduces the issue would be helpful.\r\n\r\nI believe the logic panics because it expects the logic in the http crate to agree with the logic in the httparse crate with respect to valid syntax.",
+            "createdAt": "2021-05-06T12:36:15Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzMzQ4NzUwOQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-833487509",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "SergioBenitez"
+            },
+            "authorAssociation": "NONE",
+            "body": "> Some actual code that reproduces the issue would be helpful.\n> \n> \n> \n> I believe the logic panics because it expects the logic in the http crate to agree with the logic in the httparse crate with respect to valid syntax.\n\nThe reproduction is in the panic message, which contains the header name sent:\n\n> thread 'tokio-runtime-worker' panicked at 'illegal header name from httparse: [51, 48, 50, 10, 83, 116, 97, 116, 117, 115]'",
+            "createdAt": "2021-05-06T12:45:10Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzMzQ5Mjg5OA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-833492898",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "sfackler"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Then it seems like this is a bug in httparse somehow producing a \"header name\" of `302\\nStatus`.",
+            "createdAt": "2021-05-06T12:51:16Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzMzQ5Njc2Mw==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-833496763",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "let4be"
+            },
+            "authorAssociation": "NONE",
+            "body": "> If this report is correct, this needs a CVE and an immediate fix. This is a trivial DoS vector with extreme ease of execution. I am stunned that this issue remains open and ignored.\r\n\r\nI'm not sure this is applicable to hyper http server, I noticed this issue when using hyper's http client on a broad spectrum of inputs",
+            "createdAt": "2021-05-06T17:27:41Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzMzcwNjQ1NQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-833706455",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "nox"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "> as I understand it `panics` are reserved for unrecoverable errors, and because this is a library it has no right to panic and crash client code... Error \"unrecoverability\" is completely at library's user discretion\r\n\r\nIt was not supposed to happen ever, that's why it's a panic.",
+            "createdAt": "2021-05-06T18:07:04Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzMzc0NDY2Mw==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-833744663",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "nox"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "@let4be Could you give us some code to repro the issue? Maybe the HTTP message that was parsed? That would be helpful.",
+            "createdAt": "2021-05-06T18:08:37Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzMzc0NTczMg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-833745732",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "nox"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "What if,,, this is a case of `noalias` causing miscompilations?",
+            "createdAt": "2021-05-07T08:58:33Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNDE4OTA5OQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": true,
+            "minimizedReason": "outdated",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-834189099",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "To help understand what is triggering the problem, could you help us with a little more information? What version of `rustc` are you using? What version of `hyper`, `http`, and `httparse` do you find in your `Cargo.lock`? Do you know the full HTTP response (not the body) that the server is sending?\r\n\r\nThe reason I ask for the full HTTP response is that if I try to make some mock responses with that string as a header name, I just see a `hyper::Error(Parse(Header))` result. So there must be something more to it than that.\r\n\r\nThe purpose of this panic is to notice if `httparse` and `http` differ in their understand of a valid header name, which could cause different problems if just allowed through. It could be that there's a better way to handle _that_, but I'd prefer to understand a reproducible cause before that.",
+            "createdAt": "2021-05-07T17:13:22Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNDYzMTIwNA==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-834631204",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "let4be"
+            },
+            "authorAssociation": "NONE",
+            "body": "`rustc 1.51.0 (2fd73fabe 2021-03-23)`\r\n```\r\nname = \"httparse\"\r\nversion = \"1.4.0\"\r\nname = \"http\"\r\nversion = \"0.2.4\"\r\n```\r\n`hyper` is the latest version available - 0.14.7\r\n\r\nI cannot provide an exact dump of http response, this was lost unfortunately and I'm running a locally fixed version right now that does not crash... \r\n\r\nIf we absolutely need this in order to fix an issue I may try to go back and run my crawler on unfixed version of hyper that panics(and probably it will \"crash\" eventually in a couple of hours of web browsing stumbling on this defective web site again)",
+            "createdAt": "2021-05-07T20:12:44Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNDc0NTQ0Ng==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-834745446",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "let4be"
+            },
+            "authorAssociation": "NONE",
+            "body": "mmm... I'm using `hyper` in async code, and it does not appear obvious how I can use `catch_unwind` in async\r\nfast googling fails me...\r\n\r\n`use futures::FutureExt`\r\n+\r\n```\r\nif future_with_hyper_that_may_panic.catch_unwind().await.is_err() {\r\n   panic!(\"hyper panic, offending url: {}\", task.link.url)\r\n}\r\n```\r\ndoes not seem to work, complaining about\r\n` the trait UnwindSafe is not implemented for dyn futures::Future<Output = ()> + std::marker::Send`\r\n\r\nI will try to dig more tomorrow",
+            "createdAt": "2021-05-07T20:28:21Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNDc1MzU3Nw==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-834753577",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "MikailBag"
+            },
+            "authorAssociation": "NONE",
+            "body": "I believe you should be able to wrap `future_with_hyper_that_may_panic` into ` std::panic::AssertUnwindSafe`",
+            "createdAt": "2021-05-07T20:35:14Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNDc1NzgzNA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-834757834",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "let4be"
+            },
+            "authorAssociation": "NONE",
+            "body": "Been running for quite a while and finally it paniced again(after like 6h+ of running)... but my `catch_unwind` did not work for some reason\r\n```\r\nlet u = task.link.url.clone();\r\nlet wtf = async {\r\n    tokio::select! {\r\n        _ = self.process_task(task, &client, &stats) => {}\r\n        _ = timeout => {}\r\n    }\r\n};\r\nif std::panic::AssertUnwindSafe(wtf).catch_unwind().await.is_err() {\r\n    panic!(\"hyper panics, offending url: {:?}\", u)\r\n}\r\n```\r\n\r\nhyper is called a couple of levels deep in `self.process_task`\r\n\r\n```\r\nthread 'tokio-runtime-worker' panicked at 'illegal header name from httparse: [50, 48, 48, 10, 67, 111, 110, 116, 101, 110, 116, 45, 116, 121, 112, 101]', /home/dev/.cargo/registry/src/github.com-1ecc6299db9ec823/hyper-0.14.7/src/proto/h1/role.rs:951:28\r\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\r\nAborted (core dumped)\r\n```\r\n\r\nany advice? \r\nI'm not entirely sure how panics/catch_unwind work in rust, I never use them and always handle errors via `Result`...\r\n\r\nedit: nvm, my code was compiled with \r\n```\r\n[profile.release]\r\npanic = \"abort\"\r\ndebug-assertions = false\r\nopt-level = 3\r\n```\r\n\r\nrerunning with \"unwind\"",
+            "createdAt": "2021-05-08T09:34:39Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNTI0NTU4Mg==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-835245582",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "let4be"
+            },
+            "authorAssociation": "NONE",
+            "body": "I think I got it...\r\noffending URL: `http://watson.addy.com/`\r\n\r\nthis code reproduces the issue:\r\n```\r\nuse anyhow::{Context};\r\nuse std::str::FromStr;\r\ntype Result<T> = anyhow::Result<T>;\r\n\r\nasync fn go() -> Result<()> {\r\n    let mut http = hyper::client::HttpConnector::new();\r\n    http.enforce_http(false);\r\n    let https = hyper_tls::HttpsConnector::new_with_connector(http);\r\n    let client = hyper::Client::builder().build::<_, hyper::Body>(https);\r\n\r\n    let uri = hyper::Uri::from_str(\"http://watson.addy.com/\").context(\"cannot create http uri\")?;\r\n\r\n    let mut req = hyper::Request::builder();\r\n    req = req.uri(uri).method(hyper::Method::GET);\r\n\r\n    let resp = client.request(req.body(hyper::Body::default()).unwrap()).await;\r\n    let resp = resp.with_context(|| \"cannot make http get\")?;\r\n    println!(\"status code: {}\", resp.status());\r\n\r\n    Ok(())\r\n}\r\n\r\nfn main() -> Result<()> {\r\n    let rt = tokio::runtime::Runtime::new().unwrap();\r\n    let future = go();\r\n    rt.block_on(future)\r\n}\r\n```\r\n\r\n`thread 'tokio-runtime-worker' panicked at 'illegal header name from httparse: b\"200\\nContent-type\"', /home/dev/.cargo/registry/src/github.com-1ecc6299db9ec823/hyper-0.14.7/src/proto/h1/role.rs:951:28`",
+            "createdAt": "2021-05-08T13:10:39Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNTM1NzMxMw==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-835357313",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "malaire"
+            },
+            "authorAssociation": "NONE",
+            "body": "Checking `http://watson.addy.com/` with curl, it uses `0x0a` to separate header lines and `0x0a 0x0a` to end headers which is of course incorrect.\r\n\r\nHere's start of the response:\r\n```\r\n00000000  48 54 54 50 2f 31 2e 30  20 32 30 30 0a 43 6f 6e  |HTTP/1.0 200.Con|\r\n00000010  74 65 6e 74 2d 74 79 70  65 3a 20 74 65 78 74 2f  |tent-type: text/|\r\n00000020  68 74 6d 6c 0a 0a 3c 68  74 6d 6c 3e 0a 3c 68 65  |html..<html>.<he|\r\n00000030  61 64 3e 0a 3c 73 74 79  6c 65 3e 0a 68 31 7b 0a  |ad>.<style>.h1{.|\r\n```",
+            "createdAt": "2021-05-08T13:25:22Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNTM2MzE5Ng==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-835363196",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "let4be"
+            },
+            "authorAssociation": "NONE",
+            "body": "Thing is we may as well feed complete binary garbage to hyper at any point and it still should handle this gracefully without panicing by returning `Result` back to the user\r\n\r\nSo I'm cautious there are panics throughout hyper's code...",
+            "createdAt": "2021-05-08T13:36:04Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNTM2NzIwMQ==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-835367201",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "sfackler"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "https://github.com/seanmonstar/httparse/pull/96",
+            "createdAt": "2021-05-08T13:49:41Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNTM3MTYxNg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-835371616",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "malaire"
+            },
+            "authorAssociation": "NONE",
+            "body": "> [seanmonstar/httparse#96](https://github.com/seanmonstar/httparse/pull/96)\r\n\r\nShould that be parsed into headers as it's not correct HTTP? I think that should return an error.",
+            "createdAt": "2021-05-08T13:53:49Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNTM3MzExOA==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-835373118",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "let4be"
+            },
+            "authorAssociation": "NONE",
+            "body": "Probably there should be an option somewhere about how strict we want to follow http standard, and if we still can parse something malformed and this option is on(`non_strict_http: true`) we should make our best to parse",
+            "createdAt": "2021-05-08T14:00:16Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNTM3NTI2Nw==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-835375267",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "> Thing is we may as well feed complete binary garbage to hyper at any point and it still should handle this gracefully without panicing by returning Result back to the user. So I'm cautious there are panics throughout hyper's code...\r\n\r\nYes, hyper doesn't generally try to panic on garbage data from the network. As explained in an earlier comment, the panic is not that the bytes are bad, the panic is that two parts of hyper disagreed on the validity. You can see this panic as an assertion test of the internals.",
+            "createdAt": "2021-05-08T15:20:06Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNTQwMDIxMA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-835400210",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "SergioBenitez"
+            },
+            "authorAssociation": "NONE",
+            "body": "> > Thing is we may as well feed complete binary garbage to hyper at any point and it still should handle this gracefully without panicing by returning Result back to the user. So I'm cautious there are panics throughout hyper's code...\n> \n> \n> \n> Yes, hyper doesn't generally try to panic on garbage data from the network. As explained in an earlier comment, the panic is not that the bytes are bad, the panic is that two parts of hyper disagreed on the validity. You can see this panic as an assertion test of the internals.\n\nHyper shouldn't panic regardless. Any non-local assertion should be handled gracefully. That is, if you can determine from the immediate surrounding code that an assertion will never fail, then you might be okay, otherwise, handle it gracefully. There is no excuse for doing otherwise, especially in networked software.",
+            "createdAt": "2021-05-08T15:23:11Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNTQwMTEyNQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-835401125",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "> You can see this panic as an assertion test of the internals.\r\n\r\nThat said, I think we can change this to something better here. We still want to notice when the two parts disagree, and when under unit tests it probably should still panic, so we notice and fix it. And when not under test, since it's still a bug, it should log an `error!` message, and return a regular parse error.",
+            "createdAt": "2021-05-08T15:33:55Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNTQwNDI5Mg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-835404292",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "nox"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "> That said, I think we can change this to something better here.\r\n\r\nI think it's best to keep the panic, personally. There are other cases where we found panics in h2 or hyper or whatever and we just fixed those.\r\n\r\nSaying that it shouldn't panic ever is in my opinion a little bit grandstanding, as tokio will catch that at task boundary anyway.",
+            "createdAt": "2021-05-08T17:10:28Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNTQzMjY5Ng==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 2
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-835432696",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "nox"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "> Checking `http://watson.addy.com/` with curl, it uses `0x0a` to separate header lines and `0x0a 0x0a` to end headers which is of course incorrect.\r\n\r\n> Should that be parsed into headers as it's not correct HTTP? I think that should return an error.\r\n\r\n> Probably there should be an option somewhere about how strict we want to follow http standard, and if we still can parse something malformed and this option is on(`non_strict_http: true`) we should make our best to parse\r\n\r\nAll browsers and many HTTP libs support that, AFAIK most of them do so by default and don't provide a setting.\r\n\r\nNote that httparse is already more lax than the RFCs, too.\r\n\r\n",
+            "createdAt": "2021-05-08T17:14:25Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNTQzMzgyMA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 2
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-835433820",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "nox"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "If we ever replace the panic by a returned error, please at least make that its own error kind and not a normal parse error, make it an error that literally states that this is a bug inside Hyper and/or its dependencies, that an invariant is broken and that this should be investigated ASAP.",
+            "createdAt": "2021-05-08T17:23:41Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzNTQzNjc1OQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-835436759",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "nox"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "FWIW the bug is fixed in httparse 1.4.1.",
+            "createdAt": "2021-05-11T09:51:20Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzODE4MjQxMg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-838182412",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "nox"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "> All browsers and many HTTP libs support that, AFAIK most of them do so by default and don't provide a setting.\r\n\r\nI completely forgot about this but chatting with @Geal this weekend I was reminded that [RFC 7230](https://datatracker.ietf.org/doc/html/rfc7230#section-3.5) actually says that LF may also be accepted in addition to CRLF:\r\n\r\n> Although the line terminator for the start-line and header fields is the sequence CRLF, a recipient MAY recognize a single LF as a line terminator and ignore any preceding CR.\r\n\r\nSo that's why httparse supports LF too (just writing this in case someone is curious about this stuff).",
+            "createdAt": "2021-05-11T09:54:19Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzODE4NjM1OA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 2
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-838186358",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "SergioBenitez"
+            },
+            "authorAssociation": "NONE",
+            "body": "> Saying that it shouldn't panic ever is in my opinion a little bit grandstanding, as tokio will catch that at task boundary anyway.\r\n\r\nMy saying that hyper should never panic isn't an attempt to gain favor, it's an assertion about what reliable networking software _should_ do. A panic in hyper has disastrous effects, even in the client.\r\n\r\nConsider the following request handler in _some_ framework.\r\n\r\n```rust\r\n#[get(\"/\")]\r\nfn handler(db: Db, client: &Client) -> Result<()> {\r\n    db.start_expensive_computation().await?;\r\n    let value = client.get(Uri::from_static(\"http://some-url.org\")).await.unwrap_or_default();\r\n    db.end_expensive_computation(value).await?;\r\n\r\n    Ok(())\r\n}\r\n```\r\n\r\nWhat happens if `some-url.org` returns a (valid, if odd) response resembling the one highlighted in this issue? As we now know, the `client.get()` line will panic. This has the following implications:\r\n  1) The server will respond with an invalid, empty HTTP response, and abruptly terminate the connection.\r\n  2) The \"expensive\" computation is now logically invalid because it is never \"ended\", assuming the framework would have otherwise guaranteed execution beyond the third `await`.\r\n  3) The user now has to guard against an undocumented panic. \r\n  4) Depending on destructors, this could introduce a DoS attack vector.\r\n\r\nAnd this isn't just the application author misplacing trust in `some-url.org`: in many settings (setting profile images, OAuth, etc.), the client can also choose the URL, and thus the response, triggering the panic. If the server stores the URL and subsequently makes requests to it later, this becomes yet _another_ DoS attack vector.\r\n\r\nThis is _bad_, and treating it as anything but is unequivocally harmful.\r\n\r\n> I think it's best to keep the panic, personally. There are other cases where we found panics in h2 or hyper or whatever and we just fixed those.\r\n\r\nIf you continue to disagree and consider panics in hyper _okay_, then this fact should be documented so that users can make their own decisions about which libraries to use.\r\n\r\nI am saddened by the handling of this issue. This demonstrates to me an unwillingness to take responsibility for security-sensitive bug reports. My comment indicating the sensitive nature of this bug report is now hidden and marked as \"disruptive content,\" when I would consider it anything but. I restate it now, in hopes that it is not again silenced: \"If this report is correct, this needs a CVE and an immediate fix. This is a trivial DoS vector with extreme ease of execution. I am stunned that this issue remains open and ignored.\"",
+            "createdAt": "2021-05-11T12:52:39Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzODQyMDUzNw==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-838420537",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "sfackler"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Just to make sure I understand, is your position that any bug that could result in a panic in any library that could conceivably be used in a webserver mandates the assignment of a CVE with a high severity score because it \"introduces a trivial DoS vulnerability\"?",
+            "createdAt": "2021-05-11T13:12:14Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzODQ0OTEyMA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-838449120",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "SergioBenitez"
+            },
+            "authorAssociation": "NONE",
+            "body": "> Just to make sure I understand, is your position that any bug that could result in a panic in any library that could conceivably be used in a webserver mandates the assignment of a CVE with a high severity score because it \"introduces a trivial DoS vulnerability\"?\r\n\r\nNo, of course not. You've taken my words out of context. I've never stated that all panics \"introduce a trivial DoS vulnerability\" nor that they merit a higher severity score. There's nothing wrong, security-wise, with hyper panicking before it starts accepting requests, for instance, or in some recoverable book-keeping thread with no importance to serving or handling requests. Debatably, there _might_ be nothing wrong with it panicking ever as long as it is clearly documented. However, if an undocumented panic can occur in the main serving loop and directly impact request serving, then yes, a CVE is merited for the reasons I've outlined above. The severity depends on if, and if so, how easily, the panic can be triggered accidentally or purposefully by the user of the library, external actors, or both. In this case, the panic is likely to occur in a main serving loop, _was_ triggered accidentally, and _can be_ triggered trivially by an external actor, making it particularly bad.\r\n\r\nTo clarify further, when I said \"a panic in hyper\" in my previous comments, I was implicitly qualifying it as \"a panic in hyper [in a component likely to appear in a serving loop].\"",
+            "createdAt": "2021-05-11T13:20:59Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzODQ2MjEyNQ==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-838462125",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "\r\n\r\nTo wrap up, this specific issue (the parse error) is fixed in a new httparse release. You can get by running `cargo update -p httparse`.\r\n\r\nThe problem was that httparse introduced the ability to parse HTTP responses without a reason-phrase, but had a bug in how it handled those when only followed by `LF`. The status code, the newline, and the next header name would parsed as the first header. However, `http::HeaderName` would return an error that a newline is not valid. The `LF`-only case of a reason-phrase-less response is now handled the same way it would a response that did have a reason-phrase.\r\n\r\nBecause the original issue is fixed, I'm going to close this issue.\r\n\r\nThe other part that has been discussed in this issue is around the internal assertion panicking. I've opened #2546 to track changing that with something more appropriate.\r\n",
+            "createdAt": "2021-05-11T17:27:56Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzODg3MTk2NQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 2
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-838871965",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "SergioBenitez"
+            },
+            "authorAssociation": "NONE",
+            "body": "@seanmonstar What is your stance on issuing a CVE? Do you understand the security implications of this bug?",
+            "createdAt": "2021-05-12T13:04:49Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDgzOTc1NTg3NA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/2534#issuecomment-839755874",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2021-05-03T10:04:54Z",
+        "labels": [
+          {
+            "color": "d93f0b",
+            "description": "Category: bug. Something is wrong. This is bad!",
+            "id": "MDU6TGFiZWwxMjU3MTAxOTc=",
+            "name": "C-bug"
+          },
+          {
+            "color": "fbca04",
+            "description": "Area: headers.",
+            "id": "MDU6TGFiZWwxMzgyMTYwMDU=",
+            "name": "A-headers"
+          }
+        ],
+        "number": 2534,
+        "state": "CLOSED",
+        "title": "illegal header name from httparse",
+        "url": "https://github.com/hyperium/hyper/issues/2534"
+      },
+      "target": {
+        "number": 2534,
+        "reason": "Illegal header name/value panic report.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    }
+  ]
+}

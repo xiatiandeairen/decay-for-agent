@@ -1,0 +1,12 @@
+{
+  "case_id": "hyperium-hyper-228",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"hyperium-hyper-228\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"assumption_boundary\",\"subject\":\"src/http.rs:read_chunk_size\",\"evidence_refs\":[\"size += (b - b'0') as uint;\",\"size *= radix;\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Chunk size accumulates into uint via `size *= radix; size += ...` with no overflow check. A remote peer can supply an arbitrarily long hex chunk-size string and silently overflow the size used downstream.\"},{\"rank\":2,\"risk_signal\":\"external_contract\",\"subject\":\"src/http.rs:read_chunk_size\",\"evidence_refs\":[\"// We allow any arbitrary octet once we are in the extension, since\",\"ext if in_ext => {\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"After `;`, parser accepts ANY octet (NUL, CR-less bytes, non-ASCII) as extension content, intentionally deviating from RFC 7230 token/quoted-string grammar. Permissive acceptance can mask malformed framing and aid smuggling.\"},{\"rank\":3,\"risk_signal\":\"test_gap_for_risk_path\",\"subject\":\"src/http.rs:test_read_chunk_size\",\"evidence_refs\":[\"read(\\\"Ff\\\\r\\\\n\\\", Ok(255));\",\"read(\\\"1;extension\\\\r\\\\n\\\", Ok(1));\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"New tests cover hex parsing and extension shapes but never exercise large-size overflow (e.g. 17+ hex digits), non-ASCII/NUL bytes inside extensions, or CR not followed by LF after an extension \u2014 all paths the rewrite now governs.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

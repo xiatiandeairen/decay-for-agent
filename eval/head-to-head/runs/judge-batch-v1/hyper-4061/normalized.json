@@ -1,0 +1,5 @@
+{
+  "case_id": "hyper-4061",
+  "reason": "ground_truth_draft: 'expected_behavior' length 463 exceeds max 400",
+  "status": "judge-failed"
+}

@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "risk-eval-ground-truth.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "risk-signal-holdout.v1"
+    },
+    "status": {
+      "enum": ["active", "deprecated"]
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_cases": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "actual_cases": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "use_rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min_detection_precision": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "min_value_precision": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "min_evidence_valid_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "max_overclaim_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "min_unsupported_scope_silence_rate": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "min_detection_precision",
+        "min_value_precision",
+        "min_evidence_valid_rate",
+        "max_overclaim_rate",
+        "min_unsupported_scope_silence_rate"
+      ]
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    }
+  },
+  "required": [
+    "version",
+    "status",
+    "source",
+    "purpose",
+    "target_cases",
+    "actual_cases",
+    "use_rules",
+    "gate",
+    "cases"
+  ],
+  "$defs": {
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "candidate_status": {
+          "enum": [
+            "candidate",
+            "freeze_ready",
+            "needs_more_context",
+            "frozen",
+            "rejected"
+          ]
+        },
+        "gate_role": {
+          "enum": [
+            "high_value_positive",
+            "negative_control",
+            "boundary_needs_context"
+          ]
+        },
+        "high_value": {
+          "type": "boolean"
+        },
+        "primary_signal_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "expected_behavior": {
+          "enum": [
+            "detect",
+            "suppress_or_context_only",
+            "low_confidence"
+          ]
+        },
+        "why_in_holdout": {
+          "type": "string",
+          "minLength": 1
+        },
+        "forbidden_claims": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required_context": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "id",
+        "candidate_status",
+        "gate_role",
+        "high_value",
+        "primary_signal_ids",
+        "expected_behavior",
+        "why_in_holdout",
+        "forbidden_claims",
+        "required_context"
+      ]
+    }
+  }
+}

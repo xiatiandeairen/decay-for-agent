@@ -1,0 +1,1141 @@
+{
+  "case_id": "tokio-rs-tokio-8057",
+  "refs": [
+    {
+      "detail": {
+        "baseRefName": "master",
+        "baseRefOid": "1fc450aefba4b05cdff9b7825ca5e39cccb3780e",
+        "body": "The blocking pool's task queue was protected by a single mutex, causing severe contention when many threads spawn blocking tasks concurrently. This resulted in nearly linear degradation: 16 concurrent threads took ~18x longer than a single thread.\r\n\r\nReplace the single-mutex queue with a sharded queue that distributes tasks across 16 lock-protected shards. The implementation adapts to concurrency levels by using fewer shards when thread count is low, maintaining cache locality while avoiding contention at scale.\r\n\r\nBenchmark results (spawning 100 batches of 16 tasks per thread):\r\n\r\n| Concurrency | Before   | After   | Improvement |\r\n|-------------|----------|---------|-------------|\r\n| 1 thread    | 13.3ms   | 17.8ms  | +34%        |\r\n| 2 threads   | 26.0ms   | 20.1ms  | -23%        |\r\n| 4 threads   | 45.4ms   | 27.5ms  | -39%        |\r\n| 8 threads   | 111.5ms  | 20.3ms  | -82%        |\r\n| 16 threads  | 247.8ms  | 22.4ms  | -91%        |\r\n\r\nThe slight overhead at 1 thread is due to the sharded infrastructure, but this is acceptable given the dramatic improvement at higher concurrency where the original design suffered from lock contention.\r\n\r\n\r\n(Notwithstanding that this shows as a commit from claude, every line is human reviewed. If there's a mistake, it's Alex's fault.)\r\n\r\nCloses https://github.com/tokio-rs/tokio/issues/2528.",
+        "comments": [
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "(FreeBSD failures look unrelated.)",
+            "createdAt": "2025-12-04T00:37:45Z",
+            "id": "IC_kwDOBAsbdc7XIz90",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/pull/7757#issuecomment-3609411444",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "martin-g"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Please rebase to latest `master` to get the fix for the FreeBSD failures.",
+            "createdAt": "2025-12-04T17:38:13Z",
+            "id": "IC_kwDOBAsbdc7XYVKD",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/pull/7757#issuecomment-3613479555",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "(I don't think the netlify failures are related)",
+            "createdAt": "2025-12-15T04:10:59Z",
+            "id": "IC_kwDOBAsbdc7ZuTwd",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/pull/7757#issuecomment-3652795421",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "No problem -- rebase was to pick up a fix for the netlify failures.\r\n\r\nLet me know if there's other experiments it'd be useful for me to try.",
+            "createdAt": "2025-12-30T13:18:16Z",
+            "id": "IC_kwDOBAsbdc7cf1wQ",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/pull/7757#issuecomment-3699334160",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "rebased and resolved merge conflicts. performance continues to look good! let me know if there's anything I can do to move this forward!",
+            "createdAt": "2026-02-28T15:52:24Z",
+            "id": "IC_kwDOBAsbdc7tEWG6",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/pull/7757#issuecomment-3977339322",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "I just rebased to resolve a conflict and it looks like one of the loom tests is now failing -- will investigate later this week.",
+            "createdAt": "2026-03-31T03:31:50Z",
+            "id": "IC_kwDOBAsbdc737s0m",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/pull/7757#issuecomment-4159622438",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Thank you for the reviews!",
+            "createdAt": "2026-04-10T14:10:14Z",
+            "id": "IC_kwDOBAsbdc77ylQz",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/pull/7757#issuecomment-4224341043",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Thank you for pushing through with this even though reviews sometimes took a while. I think it's a great improvement to the runtime, and the PR has turned out really nice.",
+            "createdAt": "2026-04-10T14:13:07Z",
+            "id": "IC_kwDOBAsbdc77ypvH",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "HEART",
+                "users": {
+                  "totalCount": 3
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/pull/7757#issuecomment-4224359367",
+            "viewerDidAuthor": false
+          }
+        ],
+        "files": [
+          {
+            "additions": 3,
+            "changeType": "MODIFIED",
+            "deletions": 1,
+            "path": "spellcheck.dic"
+          },
+          {
+            "additions": 2,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "tokio/src/runtime/blocking/mod.rs"
+          },
+          {
+            "additions": 95,
+            "changeType": "MODIFIED",
+            "deletions": 119,
+            "path": "tokio/src/runtime/blocking/pool.rs"
+          },
+          {
+            "additions": 238,
+            "changeType": "ADDED",
+            "deletions": 0,
+            "path": "tokio/src/runtime/blocking/sharded_queue.rs"
+          },
+          {
+            "additions": 1,
+            "changeType": "MODIFIED",
+            "deletions": 1,
+            "path": "tokio/src/runtime/context.rs"
+          },
+          {
+            "additions": 1,
+            "changeType": "MODIFIED",
+            "deletions": 5,
+            "path": "tokio/src/util/rand.rs"
+          }
+        ],
+        "headRefName": "claude/improve-spawn-blocking-perf-01A5VqgjoFsxUcvmP6eAjdTf",
+        "headRefOid": "9de7950e59f8acea412600c2102ab592c419483a",
+        "labels": [
+          {
+            "color": "f7e101",
+            "description": "Area: The main tokio crate",
+            "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+            "name": "A-tokio"
+          },
+          {
+            "color": "f7b101",
+            "description": "Module: tokio/task/blocking",
+            "id": "MDU6TGFiZWwxOTkzNTQxNTU5",
+            "name": "M-blocking"
+          },
+          {
+            "color": "bfd4f2",
+            "description": "Topic: performance and benchmarks",
+            "id": "MDU6TGFiZWwxOTk1NjExMTI1",
+            "name": "T-performance"
+          },
+          {
+            "color": "D9C0F1",
+            "description": "Run loom `runtime::spawn_blocking` tests on this PR",
+            "id": "LA_kwDOBAsbdc8AAAACZB7wvw",
+            "name": "R-loom-blocking"
+          }
+        ],
+        "mergedAt": "2026-04-10T14:06:19Z",
+        "number": 7757,
+        "reviewDecision": "APPROVED",
+        "reviews": [
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "016f6cafdf1c50a02e9ffc2bcc56fba460601678"
+            },
+            "id": "PRR_kwDOBAsbdc7S3Rr1",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-04T02:46:30Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "016f6cafdf1c50a02e9ffc2bcc56fba460601678"
+            },
+            "id": "PRR_kwDOBAsbdc7S3Yau",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-04T02:57:53Z"
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "016f6cafdf1c50a02e9ffc2bcc56fba460601678"
+            },
+            "id": "PRR_kwDOBAsbdc7S3ffk",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-04T03:06:31Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "016f6cafdf1c50a02e9ffc2bcc56fba460601678"
+            },
+            "id": "PRR_kwDOBAsbdc7S3gS5",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-04T03:08:28Z"
+          },
+          {
+            "author": {
+              "login": "martin-g"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "016f6cafdf1c50a02e9ffc2bcc56fba460601678"
+            },
+            "id": "PRR_kwDOBAsbdc7S7XHI",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-04T09:06:20Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "016f6cafdf1c50a02e9ffc2bcc56fba460601678"
+            },
+            "id": "PRR_kwDOBAsbdc7TEkgG",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-04T17:27:26Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "016f6cafdf1c50a02e9ffc2bcc56fba460601678"
+            },
+            "id": "PRR_kwDOBAsbdc7TEm9a",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-04T17:29:05Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "016f6cafdf1c50a02e9ffc2bcc56fba460601678"
+            },
+            "id": "PRR_kwDOBAsbdc7TEoBw",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-04T17:29:50Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "016f6cafdf1c50a02e9ffc2bcc56fba460601678"
+            },
+            "id": "PRR_kwDOBAsbdc7TEwD5",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-04T17:35:58Z"
+          },
+          {
+            "author": {
+              "login": "martin-g"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "21ff5ce08a05fcbab1cf4415884622318b6ebf5b"
+            },
+            "id": "PRR_kwDOBAsbdc7TEwsi",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-04T17:36:27Z"
+          },
+          {
+            "author": {
+              "login": "martin-g"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "694fa6b1d38e7dc97e5ad08d30f899138a64dcbb"
+            },
+            "id": "PRR_kwDOBAsbdc7TPBMU",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-05T09:52:00Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "edd5e10a9347ddcfe0a1ade448450bccae8e77fc"
+            },
+            "id": "PRR_kwDOBAsbdc7TRjZ_",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-05T12:37:14Z"
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "edd5e10a9347ddcfe0a1ade448450bccae8e77fc"
+            },
+            "id": "PRR_kwDOBAsbdc7TaSkL",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-06T02:01:08Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "edd5e10a9347ddcfe0a1ade448450bccae8e77fc"
+            },
+            "id": "PRR_kwDOBAsbdc7TalwW",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-06T02:05:23Z"
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "126cb78e98b0cf1dca9b4d70ccc6e2e1fb3fb667"
+            },
+            "id": "PRR_kwDOBAsbdc7Taobc",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-06T02:08:24Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "126cb78e98b0cf1dca9b4d70ccc6e2e1fb3fb667"
+            },
+            "id": "PRR_kwDOBAsbdc7Tasz9",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-06T02:13:01Z"
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "855e26963fb8478bc807e59d888b208a25b190d7"
+            },
+            "id": "PRR_kwDOBAsbdc7TcJCD",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-06T10:27:57Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "855e26963fb8478bc807e59d888b208a25b190d7"
+            },
+            "id": "PRR_kwDOBAsbdc7Tc4gJ",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-06T13:02:29Z"
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "855e26963fb8478bc807e59d888b208a25b190d7"
+            },
+            "id": "PRR_kwDOBAsbdc7Thiof",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-07T03:45:13Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "855e26963fb8478bc807e59d888b208a25b190d7"
+            },
+            "id": "PRR_kwDOBAsbdc7ThjZS",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-07T03:50:49Z"
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "855e26963fb8478bc807e59d888b208a25b190d7"
+            },
+            "id": "PRR_kwDOBAsbdc7Thj7Y",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-07T03:53:17Z"
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "855e26963fb8478bc807e59d888b208a25b190d7"
+            },
+            "id": "PRR_kwDOBAsbdc7TuIr8",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-08T13:25:40Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "855e26963fb8478bc807e59d888b208a25b190d7"
+            },
+            "id": "PRR_kwDOBAsbdc7Tu3hb",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-08T14:10:25Z"
+          },
+          {
+            "author": {
+              "login": "mox692"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "4255d3d86bb4bfa64f35cc7e6761c23aec91f6ac"
+            },
+            "id": "PRR_kwDOBAsbdc7UYlas",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-10T15:51:23Z"
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "4255d3d86bb4bfa64f35cc7e6761c23aec91f6ac"
+            },
+            "id": "PRR_kwDOBAsbdc7UpHEo",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-11T13:51:30Z"
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "4255d3d86bb4bfa64f35cc7e6761c23aec91f6ac"
+            },
+            "id": "PRR_kwDOBAsbdc7Upvyl",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-11T14:35:30Z"
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "4255d3d86bb4bfa64f35cc7e6761c23aec91f6ac"
+            },
+            "id": "PRR_kwDOBAsbdc7UqJS4",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-11T14:48:25Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "4255d3d86bb4bfa64f35cc7e6761c23aec91f6ac"
+            },
+            "id": "PRR_kwDOBAsbdc7VD_t1",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-13T22:28:33Z"
+          },
+          {
+            "author": {
+              "login": "mox692"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "4255d3d86bb4bfa64f35cc7e6761c23aec91f6ac"
+            },
+            "id": "PRR_kwDOBAsbdc7VEtYz",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-14T05:33:56Z"
+          },
+          {
+            "author": {
+              "login": "ADD-SP"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Sorry for the late review. I'd like to take some time to think about the nested locking issue. We may have a better choice, or not.",
+            "commit": {
+              "oid": "54330c317de7e28315d39c524eddcb7f64c3ecc4"
+            },
+            "id": "PRR_kwDOBAsbdc7XqZ85",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2025-12-30T13:17:01Z"
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "54330c317de7e28315d39c524eddcb7f64c3ecc4"
+            },
+            "id": "PRR_kwDOBAsbdc7YBz89",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-03T14:23:30Z"
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "54330c317de7e28315d39c524eddcb7f64c3ecc4"
+            },
+            "id": "PRR_kwDOBAsbdc7YB07N",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-03T14:47:25Z"
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "54330c317de7e28315d39c524eddcb7f64c3ecc4"
+            },
+            "id": "PRR_kwDOBAsbdc7YB16S",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-03T14:53:53Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "855e26963fb8478bc807e59d888b208a25b190d7"
+            },
+            "id": "PRR_kwDOBAsbdc7YCkeH",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-03T20:29:03Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "54330c317de7e28315d39c524eddcb7f64c3ecc4"
+            },
+            "id": "PRR_kwDOBAsbdc7YCkfz",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-03T20:29:25Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "54330c317de7e28315d39c524eddcb7f64c3ecc4"
+            },
+            "id": "PRR_kwDOBAsbdc7YCkih",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-03T20:30:04Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "54330c317de7e28315d39c524eddcb7f64c3ecc4"
+            },
+            "id": "PRR_kwDOBAsbdc7YCkjX",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-03T20:30:18Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "54330c317de7e28315d39c524eddcb7f64c3ecc4"
+            },
+            "id": "PRR_kwDOBAsbdc7YClE3",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-03T20:38:21Z"
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "54330c317de7e28315d39c524eddcb7f64c3ecc4"
+            },
+            "id": "PRR_kwDOBAsbdc7YEBRv",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-04T10:29:41Z"
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "855e26963fb8478bc807e59d888b208a25b190d7"
+            },
+            "id": "PRR_kwDOBAsbdc7YECfG",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-04T10:43:51Z"
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "fa4e0a6de7fb8a802e451de38b6a19f5bc822b24"
+            },
+            "id": "PRR_kwDOBAsbdc7YEDOy",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-04T10:50:45Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "54330c317de7e28315d39c524eddcb7f64c3ecc4"
+            },
+            "id": "PRR_kwDOBAsbdc7YEhTt",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-04T15:43:35Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "54330c317de7e28315d39c524eddcb7f64c3ecc4"
+            },
+            "id": "PRR_kwDOBAsbdc7YEhkI",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-04T15:46:04Z"
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "54330c317de7e28315d39c524eddcb7f64c3ecc4"
+            },
+            "id": "PRR_kwDOBAsbdc7YEhwC",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-04T15:47:59Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "fa4e0a6de7fb8a802e451de38b6a19f5bc822b24"
+            },
+            "id": "PRR_kwDOBAsbdc7YEjF8",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-04T16:02:36Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "54330c317de7e28315d39c524eddcb7f64c3ecc4"
+            },
+            "id": "PRR_kwDOBAsbdc7YEjqb",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-04T16:08:34Z"
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "",
+            "commit": {
+              "oid": "54330c317de7e28315d39c524eddcb7f64c3ecc4"
+            },
+            "id": "PRR_kwDOBAsbdc7Z5Lha",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-01-13T12:55:13Z"
+          },
+          {
+            "author": {
+              "login": "Darksonn"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Looks good to me. ",
+            "commit": {
+              "oid": "9de7950e59f8acea412600c2102ab592c419483a"
+            },
+            "id": "PRR_kwDOBAsbdc7zy3dA",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "APPROVED",
+            "submittedAt": "2026-04-10T14:05:56Z"
+          }
+        ],
+        "state": "MERGED",
+        "title": "rt: improve spawn_blocking scalability with sharded queue",
+        "url": "https://github.com/tokio-rs/tokio/pull/7757"
+      },
+      "target": {
+        "number": 7757,
+        "reason": "Original spawn_blocking regression-introducing change.",
+        "repo": "tokio-rs/tokio",
+        "type": "pr"
+      }
+    },
+    {
+      "detail": {
+        "body": "**Version**\n`tokio` v1.52.0 (and specifically, commit 1604bc335157be9a131e24cfde55cab3c90ebc92)\n\n<details>\n\n<summary>`cargo tree | grep tokio` output (long)</summary>\n\n```console\neliza@hekate ~/Code/oxide/omicron $ cargo tree -p omicron-sled-agent | grep tokio\n│   │   │   │   └── tokio v1.52.0\n│   │   │   │       └── tokio-macros v2.7.0 (proc-macro)\n│   │   │   │   └── tokio v1.52.0 (*)\n│   │   │   │   ├── tokio v1.52.0 (*)\n│   │   │   │   │   ├── tokio v1.52.0 (*)\n│   │   │   │   │   ├── tokio-util v0.7.18\n│   │   │   │   │   │   └── tokio v1.52.0 (*)\n│   │   │   │   ├── tokio v1.52.0 (*)\n│   │   │   │   │   ├── tokio v1.52.0 (*)\n│   │   │   │   ├── tokio v1.52.0 (*)\n│   │   │   │   ├── tokio-rustls v0.26.4\n│   │   │   │   │   └── tokio v1.52.0 (*)\n│   │   │   │   │   ├── tokio v1.52.0 (*)\n│   │   │   │   │   ├── tokio-native-tls v0.3.1\n│   │   │   │   │   │   └── tokio v1.52.0 (*)\n│   │   │   │   ├── tokio v1.52.0 (*)\n│   │   │   │   ├── tokio-native-tls v0.3.1 (*)\n│   │   │   │   ├── tokio-rustls v0.26.4 (*)\n│   │   │   │   ├── tokio-util v0.7.18 (*)\n│   │   │   │   │   ├── tokio v1.52.0 (*)\n│   │   │   │   ├── tokio v1.52.0 (*)\n│   │   │   │   ├── tokio-rustls v0.26.4 (*)\n│   │   │   │   ├── tokio-util v0.7.18 (*)\n│   │   │   ├── tokio v1.52.0 (*)\n│   │   │   ├── tokio-postgres v0.7.16\n│   │   │   │   ├── tokio v1.52.0 (*)\n│   │   │   │   ├── tokio-util v0.7.18 (*)\n│   │   │   ├── tokio-rustls v0.26.4 (*)\n│   │   │   ├── tokio-stream v0.1.18\n│   │   │   │   ├── tokio v1.52.0 (*)\n│   │   │   │   └── tokio-util v0.7.18 (*)\n│   │   │   ├── tokio-util v0.7.18 (*)\n│   │   │   ├── tokio v1.52.0 (*)\n│   │   │   ├── tokio-postgres v0.7.16 (*)\n│   │   │   ├── tokio-rustls v0.26.4 (*)\n│   │   │   ├── tokio-stream v0.1.18 (*)\n│   │   │   ├── tokio-util v0.7.18 (*)\n│   │   └── tokio v1.52.0 (*)\n│   ├── tokio v1.52.0 (*)\n│   │   ├── tokio v1.52.0 (*)\n│   │   ├── tokio-rustls v0.25.0\n│   │   │   └── tokio v1.52.0 (*)\n│   │   │   └── tokio v1.52.0 (*)\n│   │   │   └── tokio v1.52.0 (*)\n│   │   ├── tokio v1.52.0 (*)\n│   └── tokio v1.52.0 (*)\n│   │   └── tokio v1.52.0 (*)\n│   ├── tokio v1.52.0 (*)\n│   │   ├── tokio v1.52.0 (*)\n│   ├── tokio v1.52.0 (*)\n│   ├── tokio v1.52.0 (*)\n│   ├── tokio v1.52.0 (*)\n│       ├── tokio v1.52.0 (*)\n│   ├── tokio v1.52.0 (*)\n│       │   │   └── tokio v1.52.0 (*)\n│       │   └── tokio v1.52.0 (*)\n│       ├── tokio v1.52.0 (*)\n│   │   ├── tokio v1.52.0 (*)\n│   │   │   │   ├── tokio v1.52.0 (*)\n│   │   │   ├── tokio v1.52.0 (*)\n│   │   ├── tokio v1.52.0 (*)\n│   │   ├── tokio-stream v0.1.18 (*)\n│   ├── tokio v1.52.0 (*)\n│   │   │   │   ├── tokio v1.52.0 (*)\n│   │   │   │   ├── tokio-util v0.7.18 (*)\n│   │   │   │   └── tokio v1.52.0 (*)\n│   │   │   ├── oxide-tokio-rt v0.1.3\n│   │   │   │   └── tokio v1.52.0 (*)\n│   │   │   ├── tokio v1.52.0 (*)\n│   │   │   ├── tokio-util v0.7.18 (*)\n│   │   │   ├── tokio v1.52.0 (*)\n│   │   ├── tokio v1.52.0 (*)\n│   ├── tokio-postgres v0.7.16 (*)\n│   ├── tokio v1.52.0 (*)\n├── oxide-tokio-rt v0.1.3 (*)\n│   ├── tokio v1.52.0 (*)\n│   ├── tokio v1.52.0 (*)\n│   ├── tokio v1.52.0 (*)\n│   ├── tokio-tungstenite v0.21.0\n│   │   ├── tokio v1.52.0 (*)\n│   │   │   └── tokio v1.52.0 (*)\n│   │   ├── tokio v1.52.0 (*)\n│   │   ├── tokio-rustls v0.25.0 (*)\n│   │   ├── tokio-util v0.7.18 (*)\n│   ├── tokio v1.52.0 (*)\n│   ├── tokio-tungstenite v0.21.0 (*)\n│   │   │   └── tokio v1.52.0 (*)\n│   │   ├── tokio v1.52.0 (*)\n│   │   │   │   │   ├── tokio v1.52.0 (*)\n│   │   │   │   ├── tokio v1.52.0 (*)\n│   │   │   │   ├── tokio-stream v0.1.18 (*)\n│   │   │   └── tokio v1.52.0 (*)\n│   ├── tokio v1.52.0 (*)\n│   └── tokio v1.52.0 (*)\n│   └── tokio v1.52.0 (*)\n│   ├── oxide-tokio-rt v0.1.3 (*)\n│   ├── tokio v1.52.0 (*)\n│   ├── tokio v1.52.0 (*)\n│   ├── tokio-rustls v0.26.4 (*)\n├── tokio v1.52.0 (*)\n├── tokio-stream v0.1.18 (*)\n├── tokio-util v0.7.18 (*)\n│   │   │   ├── tokio v1.52.0 (*)\n│   │   │   ├── tokio-util v0.7.18 (*)\n│   │   ├── oxide-tokio-rt v0.1.3 (*)\n│   │   ├── tokio v1.52.0 (*)\n│   ├── tokio v1.52.0 (*)\n│   ├── oxide-tokio-rt v0.1.3 (*)\n│   ├── tokio v1.52.0 (*)\n│   ├── tokio-postgres v0.7.16 (*)\n├── tokio-stream v0.1.18 (*)\n├── tokio-util v0.7.18 (*)\n```\n</details>\n\n**Platform**\n\n```console\neliza@hekate ~/Code/oxide/omicron $ uname -a\nLinux hekate 6.12.55 #1-NixOS SMP PREEMPT_DYNAMIC Thu Oct 23 14:20:48 UTC 2025 x86_64 GNU/Linux\n```\n\n**Description**\n\nAfter updating our application ([oxidecomputer/omicron](https://github.com/oxidecomputer/omicron/)) to depend on Tokio v1.52.0, we noticed that some of our tests, which exercises code that makes use of `tokio::spawn_blocking` to perform file I/O, will now sometimes hang indefinitely. This is described in oxidecomputer/omicron#10272.\n\nSince we were updating from Tokio v1.50.0 to v1.52.0, I bisected which Tokio versions introduced the hang, and determined that the regression was introduced in https://github.com/oxidecomputer/omicron/issues/10277#issuecomment-4261943233. Knowing that our code was using `spawn_blocking`, and #7757 changed the internal implementation of `spawn_blocking` somewhat substantially, I tried patching our Tokio dependency to specific Tokio commits. I found that on the commit immediately prior to the one that merged #7757, commit 4c7d8b2a14de81ace4d8e61cfaeb8eca26f6f68c, the hang does not reproduce, but that on 1604bc335157be9a131e24cfde55cab3c90ebc92 (the commit that merged #7757) does reproduce the hang. See https://github.com/oxidecomputer/omicron/issues/10277#issuecomment-4262067619 for details. So, **I can say conclusively that 1604bc335157be9a131e24cfde55cab3c90ebc92 has caused at least some previously-fine programs to hang indefinitely.**\n\nI don't have a minimum reproducer yet, but will try to put one together. In the meantime, this is the test in which we noticed the hang: https://github.com/oxidecomputer/omicron/blob/0ef430324bbcc83b8fe3c733ce7629f2fd4faf93/sled-agent/src/artifact_store.rs#L1228-L1313",
+        "closedAt": "2026-04-16T20:57:24Z",
+        "comments": [
+          {
+            "author": {
+              "login": "hawkw"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Personally, I would really like to get a v1.52.1 out that either moves #7757's sharded blocking inject to an unstable opt-in `runtime::Builder` setting for now, or reverts the change entirely, as I'd really like to be able to pick up #8010 without having the regression...",
+            "createdAt": "2026-04-16T18:46:42Z",
+            "id": "IC_kwDOBAsbdc7-EhXt",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/8056#issuecomment-4262598125",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "hawkw"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "I had hoped that it would be possible to move the sharded blocking queue from #7757 into an opt-in unstable `tokio::runtime::Builder` feature. However, unfortunately, this isn't super easy to put behind an opt-in toggle, as the sharded queue also requires changes to the code in `spawn_blocking` itself, making it harder to switch between the sharded queue and the previous `Mutex<VecDeque>` implementation. I had hoped we could just make the value of `NUM_SHARDS` , here:\nhttps://github.com/alex/tokio/blob/9de7950e59f8acea412600c2102ab592c419483a/tokio/src/runtime/blocking/sharded_queue.rs#L29-L32\ninto a variable, which gets set to either 1 or 16 based on the builder parameter. Sadly, testing this locally by patching Tokio to just always set `NUM_SHARDS = 1`, I can still reproduce the hang. Therefore, in the interest of just getting a fix back as soon as possible, I've opened #8057 to just revert #7757 for now, so that we can publish a patch release to fix the regression.",
+            "createdAt": "2026-04-16T20:08:42Z",
+            "id": "IC_kwDOBAsbdc7-GUtj",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/8056#issuecomment-4263070563",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Oooof :-( Very sorry about this. If you're able to put together a reproducer, that'd be incredibly helpful.",
+            "createdAt": "2026-04-16T21:46:23Z",
+            "id": "IC_kwDOBAsbdc7-IcFe",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/8056#issuecomment-4263625054",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "hawkw"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "@alex:\n\n> Oooof :-( Very sorry about this. If you're able to put together a reproducer, that'd be incredibly helpful.\n\nI'll see what I can do. Unfortunately, it's not as simple as just running any of the existing tests in `tests/task_blocking.rs` with `cargo nextest`'s `--stress-count` option. DataDog/saluki#1405 indicates that Oxide isn't the only user of Tokio to encounter this, though, so that's a useful bit of data --- a good starting point might be to figure out which of their tests were hanging, and compare them with [our test](https://github.com/oxidecomputer/omicron/blob/0ef430324bbcc83b8fe3c733ce7629f2fd4faf93/sled-agent/src/artifact_store.rs#L1228-L1313) to see if there are any common behavior patterns. Looking at the DataDog repo, it seems like @tobz or @thieman might be the people to ask. ",
+            "createdAt": "2026-04-16T22:12:22Z",
+            "id": "IC_kwDOBAsbdc7-I6ye",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/8056#issuecomment-4263750814",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Ah, is this reproducibel entirely on the OSS test suite? If so, that's probably sufficient to run with.",
+            "createdAt": "2026-04-16T22:14:42Z",
+            "id": "IC_kwDOBAsbdc7-I9_J",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/8056#issuecomment-4263763913",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "thieman"
+            },
+            "authorAssociation": "NONE",
+            "body": "Our test is a huge pain to reproduce, we had to leave it running for ~15 minutes on average to get a hit. I had narrowed it down to FS reads when I saw you posted this issue, but I still didn't have a standalone reproduction.",
+            "createdAt": "2026-04-16T22:41:59Z",
+            "id": "IC_kwDOBAsbdc7-JhEe",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/8056#issuecomment-4263907614",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "hawkw"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "> Ah, is this reproducibel entirely on the OSS test suite? If so, that's probably sufficient to run with.\n\nOur test, https://github.com/oxidecomputer/omicron/issues/10277, reproduces this issue pretty consistently within two or three iterations. If you check out the linked issue, there should be a `cargo nextest run` command that will hang pretty consistently within the first couple of iterations. The linked issue should also have a commit you can check out with the regression already in the lockfile. ",
+            "createdAt": "2026-04-17T04:57:04Z",
+            "id": "IC_kwDOBAsbdc7-Pf7u",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/8056#issuecomment-4265475822",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "alex"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Perfect, thank you!",
+            "createdAt": "2026-04-17T11:03:42Z",
+            "id": "IC_kwDOBAsbdc7-XEQF",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/8056#issuecomment-4267459589",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "philjb"
+            },
+            "authorAssociation": "NONE",
+            "body": "Thanks for fixing (reverting) this. I just stumbled into this ticket from the same similar sounding symptoms. We have a test that triggers a code path with spawn_blocking; the test had been stable but recently began to fail as tasks were delayed (looked like additional spawn_blocking calls were not starting new threads and tasks would run serially instead of concurrently). Traced through to tokio's code and got to this ticket. thanks again!",
+            "createdAt": "2026-04-20T22:46:39Z",
+            "id": "IC_kwDOBAsbdc7_ZAEm",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/tokio-rs/tokio/issues/8056#issuecomment-4284743974",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2026-04-16T17:48:36Z",
+        "labels": [
+          {
+            "color": "f5f1fd",
+            "description": "Category: This is a bug.",
+            "id": "MDU6TGFiZWw0Mzk4OTcxODg=",
+            "name": "C-bug"
+          },
+          {
+            "color": "f7e101",
+            "description": "Area: The main tokio crate",
+            "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+            "name": "A-tokio"
+          },
+          {
+            "color": "f7b101",
+            "description": "Module: tokio/runtime",
+            "id": "MDU6TGFiZWwxOTkzNTEwODc4",
+            "name": "M-runtime"
+          },
+          {
+            "color": "e10c02",
+            "description": "Program never terminates, resulting from infinite loops, deadlock, livelock, etc.",
+            "id": "MDU6TGFiZWwxOTkzNTIzNTU3",
+            "name": "I-hang"
+          },
+          {
+            "color": "f7b101",
+            "description": "Module: tokio/task/blocking",
+            "id": "MDU6TGFiZWwxOTkzNTQxNTU5",
+            "name": "M-blocking"
+          }
+        ],
+        "number": 8056,
+        "state": "CLOSED",
+        "title": "regression in `spawn_blocking` caused by #7757 causes tests to hang",
+        "url": "https://github.com/tokio-rs/tokio/issues/8056"
+      },
+      "target": {
+        "number": 8056,
+        "reason": "spawn_blocking hang report fixed by revert.",
+        "repo": "tokio-rs/tokio",
+        "type": "issue"
+      }
+    }
+  ]
+}

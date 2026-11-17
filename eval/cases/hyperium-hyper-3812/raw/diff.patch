@@ -1,0 +1,392 @@
+diff --git a/src/proto/h1/io.rs b/src/proto/h1/io.rs
+index 4f8b58ec..950bfee0 100644
+--- a/src/proto/h1/io.rs
++++ b/src/proto/h1/io.rs
+@@ -128,161 +128,165 @@ where
+         self.read_buf.capacity() - self.read_buf.len()
+     }
+ 
+     /// Return whether we can append to the headers buffer.
+     ///
+     /// Reasons we can't:
+     /// - The write buf is in queue mode, and some of the past body is still
+     ///   needing to be flushed.
+     pub(crate) fn can_headers_buf(&self) -> bool {
+         !self.write_buf.queue.has_remaining()
+     }
+ 
+     pub(crate) fn headers_buf(&mut self) -> &mut Vec<u8> {
+         let buf = self.write_buf.headers_mut();
+         &mut buf.bytes
+     }
+ 
+     pub(super) fn write_buf(&mut self) -> &mut WriteBuf<B> {
+         &mut self.write_buf
+     }
+ 
+     pub(crate) fn buffer<BB: Buf + Into<B>>(&mut self, buf: BB) {
+         self.write_buf.buffer(buf)
+     }
+ 
+     pub(crate) fn can_buffer(&self) -> bool {
+         self.flush_pipeline || self.write_buf.can_buffer()
+     }
+ 
+     pub(crate) fn consume_leading_lines(&mut self) {
+         if !self.read_buf.is_empty() {
+             let mut i = 0;
+             while i < self.read_buf.len() {
+                 match self.read_buf[i] {
+                     b'\r' | b'\n' => i += 1,
+                     _ => break,
+                 }
+             }
+             self.read_buf.advance(i);
+         }
+     }
+ 
+     pub(super) fn parse<S>(
+         &mut self,
+         cx: &mut Context<'_>,
+         parse_ctx: ParseContext<'_>,
+     ) -> Poll<crate::Result<ParsedMessage<S::Incoming>>>
+     where
+         S: Http1Transaction,
+     {
+         loop {
+             match super::role::parse_headers::<S>(
+                 &mut self.read_buf,
+                 self.partial_len,
+                 ParseContext {
+                     cached_headers: parse_ctx.cached_headers,
+                     req_method: parse_ctx.req_method,
+                     h1_parser_config: parse_ctx.h1_parser_config.clone(),
+                     h1_max_headers: parse_ctx.h1_max_headers,
+                     preserve_header_case: parse_ctx.preserve_header_case,
+                     #[cfg(feature = "ffi")]
+                     preserve_header_order: parse_ctx.preserve_header_order,
+                     h09_responses: parse_ctx.h09_responses,
+                     #[cfg(feature = "ffi")]
+                     on_informational: parse_ctx.on_informational,
+                 },
+             )? {
+                 Some(msg) => {
+                     debug!("parsed {} headers", msg.head.headers.len());
+                     self.partial_len = None;
+                     return Poll::Ready(Ok(msg));
+                 }
+                 None => {
+                     let max = self.read_buf_strategy.max();
+                     let curr_len = self.read_buf.len();
+                     if curr_len >= max {
+                         debug!("max_buf_size ({}) reached, closing", max);
+                         return Poll::Ready(Err(crate::Error::new_too_large()));
+                     }
+                     if curr_len > 0 {
++                        trace!("partial headers; {} bytes so far", curr_len);
+                         self.partial_len = Some(curr_len);
++                    } else {
++                        // 1xx gobled some bytes
++                        self.partial_len = None;
+                     }
+                 }
+             }
+             if ready!(self.poll_read_from_io(cx)).map_err(crate::Error::new_io)? == 0 {
+                 trace!("parse eof");
+                 return Poll::Ready(Err(crate::Error::new_incomplete()));
+             }
+         }
+     }
+ 
+     pub(crate) fn poll_read_from_io(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
+         self.read_blocked = false;
+         let next = self.read_buf_strategy.next();
+         if self.read_buf_remaining_mut() < next {
+             self.read_buf.reserve(next);
+         }
+ 
+         // SAFETY: ReadBuf and poll_read promise not to set any uninitialized
+         // bytes onto `dst`.
+         let dst = unsafe { self.read_buf.chunk_mut().as_uninit_slice_mut() };
+         let mut buf = ReadBuf::uninit(dst);
+         match Pin::new(&mut self.io).poll_read(cx, buf.unfilled()) {
+             Poll::Ready(Ok(_)) => {
+                 let n = buf.filled().len();
+                 trace!("received {} bytes", n);
+                 unsafe {
+                     // Safety: we just read that many bytes into the
+                     // uninitialized part of the buffer, so this is okay.
+                     // @tokio pls give me back `poll_read_buf` thanks
+                     self.read_buf.advance_mut(n);
+                 }
+                 self.read_buf_strategy.record(n);
+                 Poll::Ready(Ok(n))
+             }
+             Poll::Pending => {
+                 self.read_blocked = true;
+                 Poll::Pending
+             }
+             Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
+         }
+     }
+ 
+     pub(crate) fn into_inner(self) -> (T, Bytes) {
+         (self.io, self.read_buf.freeze())
+     }
+ 
+     pub(crate) fn io_mut(&mut self) -> &mut T {
+         &mut self.io
+     }
+ 
+     pub(crate) fn is_read_blocked(&self) -> bool {
+         self.read_blocked
+     }
+ 
+     pub(crate) fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+         if self.flush_pipeline && !self.read_buf.is_empty() {
+             Poll::Ready(Ok(()))
+         } else if self.write_buf.remaining() == 0 {
+             Pin::new(&mut self.io).poll_flush(cx)
+         } else {
+             if let WriteStrategy::Flatten = self.write_buf.strategy {
+                 return self.poll_flush_flattened(cx);
+             }
+ 
+             const MAX_WRITEV_BUFS: usize = 64;
+             loop {
+                 let n = {
+                     let mut iovs = [IoSlice::new(&[]); MAX_WRITEV_BUFS];
+                     let len = self.write_buf.chunks_vectored(&mut iovs);
+                     ready!(Pin::new(&mut self.io).poll_write_vectored(cx, &iovs[..len]))?
+                 };
+                 // TODO(eliza): we have to do this manually because
+                 // `poll_write_buf` doesn't exist in Tokio 0.3 yet...when
+                 // `poll_write_buf` comes back, the manual advance will need to leave!
+                 self.write_buf.advance(n);
+                 debug!("flushed {} bytes", n);
+                 if self.write_buf.remaining() == 0 {
+                     break;
+                 } else if n == 0 {
+                     trace!(
+diff --git a/tests/client.rs b/tests/client.rs
+index 60633221..6808a685 100644
+--- a/tests/client.rs
++++ b/tests/client.rs
+@@ -1964,160 +1964,217 @@ mod conn {
+             sock.set_write_timeout(Some(Duration::from_secs(5)))
+                 .unwrap();
+             let mut buf = [0; 4096];
+             sock.read(&mut buf).expect("read 1");
+             sock.write_all(
+                 b"\
+                 HTTP/1.1 200 OK\r\n\
+                 \r\n\
+                 foobar=ready\
+             ",
+             )
+             .unwrap();
+             let _ = tx1.send(Ok::<_, ()>(()));
+ 
+             let n = sock.read(&mut buf).expect("read 2");
+             assert_eq!(&buf[..n], b"foo=bar", "sock read 2 bytes");
+             sock.write_all(b"bar=foo").expect("write 2");
+         });
+ 
+         let tcp = rt.block_on(tcp_connect(&addr)).unwrap();
+ 
+         let io = DebugStream {
+             tcp,
+             shutdown_called: false,
+         };
+ 
+         let (mut client, mut conn) = rt.block_on(conn::http1::handshake(io)).unwrap();
+ 
+         {
+             let until_tunneled = poll_fn(|ctx| conn.poll_without_shutdown(ctx));
+ 
+             let req = Request::builder()
+                 .method("CONNECT")
+                 .uri(addr.to_string())
+                 .body(Empty::<Bytes>::new())
+                 .unwrap();
+             let res = client
+                 .send_request(req)
+                 .and_then(move |res| {
+                     assert_eq!(res.status(), hyper::StatusCode::OK);
+                     concat(res)
+                 })
+                 .map_ok(|body| {
+                     assert_eq!(body.as_ref(), b"");
+                 });
+ 
+             let rx = rx1.expect("thread panicked");
+             let rx = rx.then(|_| TokioTimer.sleep(Duration::from_millis(200)));
+             rt.block_on(future::join3(until_tunneled, res, rx).map(|r| r.0))
+                 .unwrap();
+ 
+             // should not be ready now
+             rt.block_on(poll_fn(|ctx| {
+                 assert!(client.poll_ready(ctx).is_pending());
+                 Poll::Ready(Ok::<_, ()>(()))
+             }))
+             .unwrap();
+         }
+ 
+         let parts = conn.into_parts();
+         let io = parts.io;
+         let buf = parts.read_buf;
+ 
+         assert_eq!(buf, b"foobar=ready"[..]);
+         assert!(!io.shutdown_called, "tunnel shouldn't shutdown AsyncWrite");
+ 
+         rt.block_on(poll_fn(|ctx| {
+             let ready = client.poll_ready(ctx);
+             assert!(matches!(ready, Poll::Ready(Err(_))));
+             ready
+         }))
+         .unwrap_err();
+ 
+         let mut io = io.tcp.inner();
+         let mut vec = vec![];
+         rt.block_on(io.write_all(b"foo=bar")).unwrap();
+         rt.block_on(io.read_to_end(&mut vec)).unwrap();
+         assert_eq!(vec, b"bar=foo");
+     }
+ 
++    #[tokio::test]
++    async fn client_100_then_http09() {
++        let (server, addr) = setup_std_test_server();
++
++        thread::spawn(move || {
++            let mut sock = server.accept().unwrap().0;
++            sock.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
++            sock.set_write_timeout(Some(Duration::from_secs(5)))
++                .unwrap();
++            let mut buf = [0; 4096];
++            sock.read(&mut buf).expect("read 1");
++            sock.write_all(
++                b"\
++                HTTP/1.1 100 Continue\r\n\
++                Content-Type: text/plain\r\n\
++                Server: BaseHTTP/0.6 Python/3.12.5\r\n\
++                Date: Mon, 16 Dec 2024 03:08:27 GMT\r\n\
++            ",
++            )
++            .unwrap();
++            // That it's separate writes is important to this test
++            thread::sleep(Duration::from_millis(50));
++            sock.write_all(
++                b"\
++                \r\n\
++            ",
++            )
++            .expect("write 2");
++            thread::sleep(Duration::from_millis(50));
++            sock.write_all(
++                b"\
++                This is a sample text/plain document, without final headers.\
++                \n\n\
++            ",
++            )
++            .expect("write 3");
++        });
++
++        let tcp = tcp_connect(&addr).await.unwrap();
++
++        let (mut client, conn) = conn::http1::Builder::new()
++            .http09_responses(true)
++            .handshake(tcp)
++            .await
++            .unwrap();
++
++        tokio::spawn(async move {
++            let _ = conn.await;
++        });
++
++        let req = Request::builder()
++            .uri("/a")
++            .body(Empty::<Bytes>::new())
++            .unwrap();
++        let _res = client.send_request(req).await.expect("send_request");
++    }
++
+     #[tokio::test]
+     async fn test_try_send_request() {
+         use std::future::Future;
+         let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+         let (io_srv, io_cli) = tokio_test::io::Builder::new()
+             .write(b"GET / HTTP/1.1\r\n\r\n")
+             .read(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n")
+             .build_with_handle();
+ 
+         tokio::spawn(async move {
+             let _io = io_cli;
+             let _ = done_rx.await;
+         });
+ 
+         // make polling fair by putting both in spawns
+         tokio::spawn(async move {
+             let io = TokioIo::new(io_srv);
+             let (mut client, mut conn) = conn::http1::Builder::new()
+                 .handshake::<_, Empty<Bytes>>(io)
+                 .await
+                 .expect("http handshake");
+ 
+             // get the conn ready
+             assert!(
+                 future::poll_fn(|cx| Poll::Ready(Pin::new(&mut conn).poll(cx)))
+                     .await
+                     .is_pending()
+             );
+             assert!(client.is_ready());
+ 
+             // use the connection once
+             let mut fut1 = std::pin::pin!(client.send_request(http::Request::new(Empty::new())));
+             let _res1 = future::poll_fn(|cx| loop {
+                 if let Poll::Ready(res) = fut1.as_mut().poll(cx) {
+                     return Poll::Ready(res);
+                 }
+                 return match Pin::new(&mut conn).poll(cx) {
+                     Poll::Ready(_) => panic!("ruh roh"),
+                     Poll::Pending => Poll::Pending,
+                 };
+             })
+             .await
+             .expect("resp 1");
+ 
+             assert!(client.is_ready());
+ 
+             // simulate the server dropping the conn
+             let _ = done_tx.send(());
+             // let the server task die
+             tokio::task::yield_now().await;
+ 
+             let mut fut2 =
+                 std::pin::pin!(client.try_send_request(http::Request::new(Empty::new())));
+             let poll1 = future::poll_fn(|cx| Poll::Ready(fut2.as_mut().poll(cx))).await;
+             assert!(poll1.is_pending(), "not already known to error");
+ 
+             let mut conn_opt = Some(conn);
+             // wasn't a known error, req is in queue, and now the next poll, the
+             // conn will be noticed as errored
+             let mut err = future::poll_fn(|cx| {
+                 loop {
+                     if let Poll::Ready(res) = fut2.as_mut().poll(cx) {
+                         return Poll::Ready(res);
+                     }
+                     if let Some(ref mut conn) = conn_opt {
+                         match Pin::new(conn).poll(cx) {
+                             Poll::Ready(_) => {
+                                 conn_opt = None;
+                             } // ok
+                             Poll::Pending => return Poll::Pending,
+                         };
+                     }
+                 }
+             })
+             .await
+             .expect_err("resp 2");
+ 
+             assert!(err.take_message().is_some(), "request was returned");
+         })
+         .await

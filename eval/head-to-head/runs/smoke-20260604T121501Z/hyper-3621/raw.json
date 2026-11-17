@@ -1,0 +1,12 @@
+{
+  "case_id": "hyper-3621",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"hyper-3621\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"external_contract\",\"subject\":\"src/client/conn/http2.rs:Builder::max_header_list_size\",\"evidence_refs\":[\"-    pub fn max_header_list_size(&mut self, max: u32) -> &mut Self {\",\"-const DEFAULT_MAX_HEADER_LIST_SIZE: u32 = 1024 * 16; // 16kb\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Public builder method max_header_list_size removed from client http2 Builder along with the Config field and default; downstream callers configuring this setting will fail to compile.\"},{\"rank\":2,\"risk_signal\":\"assumption_boundary\",\"subject\":\"src/proto/h2/server.rs:DEFAULT_SETTINGS_MAX_HEADER_LIST_SIZE\",\"evidence_refs\":[\"-const DEFAULT_SETTINGS_MAX_HEADER_LIST_SIZE: u32 = 1024 * 16; // 16kb\",\"+const DEFAULT_SETTINGS_MAX_HEADER_LIST_SIZE: u32 = 16 << 20;\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Server default max header list size jumps from 16KB to 16MB (1024x). Existing deployments relying on the prior bound now accept far larger headers, expanding memory/DoS surface for unconfigured servers.\"},{\"rank\":3,\"risk_signal\":\"assumption_boundary\",\"subject\":\"src/server/conn/http1.rs:UpgradeableConnection::poll\",\"evidence_refs\":[\"match ready!(Pin::new(&mut self.inner.as_mut().unwrap().conn).poll(cx)) {\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"poll now unwraps self.inner unconditionally; the prior else-branch handling the post-upgrade None state (where self.inner.take() was invoked) is removed, so any re-poll after upgrade panics instead of returning Ready(Ok).\"}]\n",
+      "stderr_tail": ""
+    }
+  ]
+}

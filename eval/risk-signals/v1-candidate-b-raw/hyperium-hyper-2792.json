@@ -1,0 +1,280 @@
+{
+  "candidate": {
+    "id": "hyperium-hyper-2792",
+    "repo": "hyperium/hyper",
+    "url": "https://github.com/hyperium/hyper/pull/2792"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "f12d4d4aa8b057cb0397f7942bedb402a3e9e755",
+    "body": "Add a new extension type `hyper::ext::ReasonPhrase` gated by a new feature flag `http1_reason_phrase`. When enabled, store any non-canonical reason phrases in this extension when parsing responses, and write this reason phrase instead of the canonical reason phrase when emitting responses.\r\n\r\nReason phrases are a disused corner of the spec that implementations ought to treat as opaque blobs of bytes. Unfortunately, real-world traffic sometimes does depend on being able to inspect and manipulate them.\r\n\r\nMy main outstanding question is: should this new feature flag be included in `full`? Excluding it means this patch also has to modify the CI configuration in order to run the `client` and `server` tests.",
+    "comments": [
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "@acfoltzer was this waiting on anything else, or just another review from me?",
+        "createdAt": "2022-05-26T23:31:14Z",
+        "id": "IC_kwDOAWaYQc5D5fD8",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/2792#issuecomment-1139142908",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "acfoltzer"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "@seanmonstar yep, though it looks like I'll need to fix some merge conflicts first. I'll try to get to that soon",
+        "createdAt": "2022-06-01T22:42:47Z",
+        "id": "IC_kwDOAWaYQc5EM1Yt",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/2792#issuecomment-1144215085",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "acfoltzer"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "@seanmonstar rebased and squashed, incorporating the proposed change to fold this into the `http1` feature rather than introducing an entirely new feature just for the reason phrases. I think it's ready for a final review.",
+        "createdAt": "2022-06-08T15:51:33Z",
+        "id": "IC_kwDOAWaYQc5EjRZA",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/2792#issuecomment-1150096960",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 5,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "src/ext.rs"
+      },
+      {
+        "additions": 221,
+        "changeType": "ADDED",
+        "deletions": 0,
+        "path": "src/ext/h1_reason_phrase.rs"
+      },
+      {
+        "additions": 2,
+        "changeType": "MODIFIED",
+        "deletions": 5,
+        "path": "src/ffi/http_types.rs"
+      },
+      {
+        "additions": 27,
+        "changeType": "MODIFIED",
+        "deletions": 24,
+        "path": "src/proto/h1/role.rs"
+      },
+      {
+        "additions": 56,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/client.rs"
+      },
+      {
+        "additions": 43,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/server.rs"
+      }
+    ],
+    "headRefName": "acfoltzer/http1_reason_phrase",
+    "headRefOid": "6ed3a7f003b85c33cc861f4efd624033658b82f4",
+    "labels": [],
+    "mergedAt": "2022-06-08T22:57:33Z",
+    "number": 2792,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "acfoltzer"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "So the tricky question is: is this worth a feature flag? Here are the performance numbers for the `cargo bench` suite (red is with the new feature disabled, green is with it enabled): https://gist.github.com/acfoltzer/c64e92ac95c390cb1c08624ecf61bfdf\r\n\r\nIt looks to me like roughly a wash, though there's a fair amount of noise in the sample. The problem is that none of the existing benches use the custom reason phrase, so it's hard to see the overall effect that existing users of `\"full\"` might get if they're already receiving responses with non-canonical phrases.\r\n\r\nFrom an API cleanliness perspective I would prefer rolling this extension into the existing `\"http1\"` flag, but I also don't want to be introducing undue surprises for users of `client` who are not currently having to bear the cost of either the comparison against the canonical reason phrase or the allocation to store a custom one when sighted.",
+        "commit": {
+          "oid": "a99c3a7b502fad1d17270c4bba54b8d7bd813f7b"
+        },
+        "id": "PRR_kwDOAWaYQc42uGaF",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2022-03-23T01:19:06Z"
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Very good start, I appreciate the thoroughness of the docs and tests 🤩 ",
+        "commit": {
+          "oid": "e7be2e16ee420ffc878078af3d0216db95a40f3f"
+        },
+        "id": "PRR_kwDOAWaYQc42yrn6",
+        "includesCreatedEdit": false,
+        "reactionGroups": [
+          {
+            "content": "HEART",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "state": "CHANGES_REQUESTED",
+        "submittedAt": "2022-03-23T18:29:59Z"
+      },
+      {
+        "author": {
+          "login": "acfoltzer"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "e7be2e16ee420ffc878078af3d0216db95a40f3f"
+        },
+        "id": "PRR_kwDOAWaYQc42za9Q",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2022-03-23T20:59:51Z"
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "e7be2e16ee420ffc878078af3d0216db95a40f3f"
+        },
+        "id": "PRR_kwDOAWaYQc42zb5c",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2022-03-23T21:03:42Z"
+      },
+      {
+        "author": {
+          "login": "acfoltzer"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "e7be2e16ee420ffc878078af3d0216db95a40f3f"
+        },
+        "id": "PRR_kwDOAWaYQc42zcH6",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2022-03-23T21:04:39Z"
+      },
+      {
+        "author": {
+          "login": "acfoltzer"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "e7be2e16ee420ffc878078af3d0216db95a40f3f"
+        },
+        "id": "PRR_kwDOAWaYQc42zen4",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2022-03-23T21:15:01Z"
+      },
+      {
+        "author": {
+          "login": "acfoltzer"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "e7be2e16ee420ffc878078af3d0216db95a40f3f"
+        },
+        "id": "PRR_kwDOAWaYQc42zw2_",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2022-03-23T22:49:50Z"
+      },
+      {
+        "author": {
+          "login": "acfoltzer"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "e7be2e16ee420ffc878078af3d0216db95a40f3f"
+        },
+        "id": "PRR_kwDOAWaYQc42zw5u",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2022-03-23T22:50:06Z"
+      },
+      {
+        "author": {
+          "login": "acfoltzer"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "e7be2e16ee420ffc878078af3d0216db95a40f3f"
+        },
+        "id": "PRR_kwDOAWaYQc42zw67",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2022-03-23T22:50:13Z"
+      },
+      {
+        "author": {
+          "login": "acfoltzer"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "e7be2e16ee420ffc878078af3d0216db95a40f3f"
+        },
+        "id": "PRR_kwDOAWaYQc42zxCt",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2022-03-23T22:50:55Z"
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "6ed3a7f003b85c33cc861f4efd624033658b82f4"
+        },
+        "id": "PRR_kwDOAWaYQc47owOH",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2022-06-08T22:56:52Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "feat(ext): support non-canonical HTTP/1 reason phrases",
+    "url": "https://github.com/hyperium/hyper/pull/2792"
+  }
+}

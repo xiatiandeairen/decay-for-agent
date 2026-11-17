@@ -1,0 +1,365 @@
+{
+  "candidate": {
+    "id": "tokio-rs-tokio-2804",
+    "repo": "tokio-rs/tokio",
+    "url": "https://github.com/tokio-rs/tokio/pull/2804"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "3114d9e826e5aa1948d394a7d6d488f61ab1da97",
+    "body": "This PR changes how `Runtime::block_on` works when the `basic_scheduler` is selected. Before this change, we used a mutex to guard when entering a block_on with a `basic_scheduler` which meant that we could never call `block_on` concurrently event hos this was totally possible. This PR changes that to allow us to call `block_on` concurrently. This also allows multiple block on's to \"steal\" the driver/parker. Doing this by sharing the `ParkThread` condvar and allowing us to notify that thread to check for the parker to allow moving it forward.\r\n\r\nThe stealing works by the first thread to call `Runtime::block_on` will acquire the driver. Every other call to `block_on` _while_ the first `block_on` is still running, will not acquire the driver but will instead enter the runtime context and attempt to poll the passed in future. The parker is slightly modified for this case to allow us to provide our own `Condvar` that we will use once the initial `block_on` finishes to notify the second/other threads that they can now steal the driver.\r\n\r\nRelated to #2720 ",
+    "comments": [
+      {
+        "author": {
+          "login": "hawkw"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> The stealing works by the first thread to call `Runtime::block_on` will acquire the driver. Every other call to `block_on` _while_ the first `block_on` is still running, will not acquire the driver but will instead enter the runtime context and attempt to poll the passed in future. The parker is slightly modified for this case to allow us to provide our own `Condvar` that we will use once the initial `block_on` finishes to notify the second/other threads that they can now steal the driver.\r\n\r\nAt one point when we talked about this, I thought you said that the solution was to just force the initial `block_on` to continue running the driver until all other `block_on`s finish, and _then_ return that future's output — am i misremembering, or just wrong?",
+        "createdAt": "2020-09-02T17:30:29Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDY4NTg4NzEwNw==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/2804#issuecomment-685887107",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "LucioFranco"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> At one point when we talked about this, I thought you said that the solution was to just force the initial block_on to continue running the driver until all other block_ons finish, and then return that future's output — am i misremembering, or just wrong?\r\n\r\nNo, we wanted to actually move the driver between threads. I think that would be odd to have the block_on run longer than expected? That feels like an implicit dependency that would be pretty surprising.",
+        "createdAt": "2020-09-08T16:42:16Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDY4OTAwMTcyOQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/2804#issuecomment-689001729",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "LucioFranco"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "@carllerche and I had a chat last week, I have some tweeks I am going to change this. I want to see if we can get away with a `LinkedList` style approach for notifying other threads instead of going via the condvar/mutex pair.",
+        "createdAt": "2020-09-08T16:43:00Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDY4OTAwMjEzNA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/tokio-rs/tokio/pull/2804#issuecomment-689002134",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "hawkw"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> > At one point when we talked about this, I thought you said that the solution was to just force the initial block_on to continue running the driver until all other block_ons finish, and then return that future's output — am i misremembering, or just wrong?\r\n> \r\n> No, we wanted to actually move the driver between threads. I think that would be odd to have the block_on run longer than expected? That feels like an implicit dependency that would be pretty surprising.\r\n\r\nYeah, I think this is better, I just wasn't sure if I remembered our chat from earlier. Carry on!",
+        "createdAt": "2020-09-08T16:45:49Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDY4OTAwMzc2OQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/2804#issuecomment-689003769",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "LucioFranco"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Okay, I've refactored this to use a `VecDeque<Waker>` instead of a `Condvar`/`Mutex` pair. I've also addressed issues around double panics.",
+        "createdAt": "2020-09-08T20:18:39Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDY4OTExMzIxNA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/2804#issuecomment-689113214",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 154,
+        "changeType": "MODIFIED",
+        "deletions": 38,
+        "path": "tokio/src/runtime/basic_scheduler.rs"
+      },
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "tokio/src/runtime/builder.rs"
+      },
+      {
+        "additions": 3,
+        "changeType": "MODIFIED",
+        "deletions": 20,
+        "path": "tokio/src/runtime/mod.rs"
+      },
+      {
+        "additions": 7,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tokio/src/sync/mod.rs"
+      },
+      {
+        "additions": 7,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tokio/src/sync/notify.rs"
+      },
+      {
+        "additions": 4,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tokio/src/util/mod.rs"
+      },
+      {
+        "additions": 32,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tokio/tests/rt_common.rs"
+      }
+    ],
+    "headRefName": "lucio/refactor-basic-shell",
+    "headRefOid": "28c4c0855e4f0636dc29a4268261f5288e459341",
+    "labels": [
+      {
+        "color": "f5f1fd",
+        "description": "Category: A PR with an enhancement or bugfix.",
+        "id": "MDU6TGFiZWw0Mzk4OTcxOTA=",
+        "name": "C-enhancement"
+      },
+      {
+        "color": "f7e101",
+        "description": "Area: The main tokio crate",
+        "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+        "name": "A-tokio"
+      },
+      {
+        "color": "f7b101",
+        "description": "Module: tokio/runtime",
+        "id": "MDU6TGFiZWwxOTkzNTEwODc4",
+        "name": "M-runtime"
+      }
+    ],
+    "mergedAt": "2020-09-23T18:35:11Z",
+    "number": 2804,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "LucioFranco"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "61133a353334a07d33f80a7c17c520d1dd1ba286"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3NDc5ODUyNTAy",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2020-09-01T15:17:24Z"
+      },
+      {
+        "author": {
+          "login": "hawkw"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "61133a353334a07d33f80a7c17c520d1dd1ba286"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3NDgxMDUwMzgz",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2020-09-02T18:25:03Z"
+      },
+      {
+        "author": {
+          "login": "LucioFranco"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "61133a353334a07d33f80a7c17c520d1dd1ba286"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3NDg0NDI2MDM5",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2020-09-08T19:19:13Z"
+      },
+      {
+        "author": {
+          "login": "LucioFranco"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "22dd7d5c7e0b61ea476d1a59b6baa474dd442a1d"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3NDg0NDYzMjM2",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2020-09-08T20:17:45Z"
+      },
+      {
+        "author": {
+          "login": "hawkw"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "22dd7d5c7e0b61ea476d1a59b6baa474dd442a1d"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3NDg0NDYzODkx",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2020-09-08T20:18:49Z"
+      },
+      {
+        "author": {
+          "login": "hawkw"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "i think we need to rework the way we're handling mutex poisoning here. i think we just want to always put everything back regardless of whether the mutex is poisoned. we can use [`PoisonError::into_inner`](https://doc.rust-lang.org/std/sync/struct.PoisonError.html#method.into_inner) to get a useable guard out of a poisoned mutex, ignoring the poison. i think we should do that here.\r\n\r\notherwise, this all seems fine to me.",
+        "commit": {
+          "oid": "22dd7d5c7e0b61ea476d1a59b6baa474dd442a1d"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3NDg0NDc4MTQ1",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2020-09-08T20:50:08Z"
+      },
+      {
+        "author": {
+          "login": "carllerche"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks for the work. I left comments.\r\n\r\nI mentioned in the original issue that I thought this could be done mostly by working with a `Park` layer, but we can punt that to another PR.",
+        "commit": {
+          "oid": "22dd7d5c7e0b61ea476d1a59b6baa474dd442a1d"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3NDg0NjMxNTQ4",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "CHANGES_REQUESTED",
+        "submittedAt": "2020-09-09T03:38:06Z"
+      },
+      {
+        "author": {
+          "login": "carllerche"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Looking good. I think we are almost there. Left some notes.",
+        "commit": {
+          "oid": "8d1edfa2df8f6f2b1467fb263c79932e5c126496"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3NDk0MDE2NjI2",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "CHANGES_REQUESTED",
+        "submittedAt": "2020-09-23T04:38:41Z"
+      },
+      {
+        "author": {
+          "login": "carllerche"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "8d1edfa2df8f6f2b1467fb263c79932e5c126496"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3NDk0MDY3NzYy",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2020-09-23T04:39:36Z"
+      },
+      {
+        "author": {
+          "login": "LucioFranco"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "8d1edfa2df8f6f2b1467fb263c79932e5c126496"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3NDk0NzA0OTU4",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2020-09-23T14:12:02Z"
+      },
+      {
+        "author": {
+          "login": "LucioFranco"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "8d1edfa2df8f6f2b1467fb263c79932e5c126496"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3NDk0NzA3MTYw",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2020-09-23T14:14:11Z"
+      },
+      {
+        "author": {
+          "login": "carllerche"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "93ffbad782741dc3c4cde758597de0d560b57ec9"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3NDk0ODcyMTMy",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2020-09-23T17:07:54Z"
+      },
+      {
+        "author": {
+          "login": "carllerche"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks :+1:",
+        "commit": {
+          "oid": "28c4c0855e4f0636dc29a4268261f5288e459341"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3NDk0OTM3ODAy",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2020-09-23T18:34:11Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "rt: Allow concurrent `block_on`'s with basic_scheduler",
+    "url": "https://github.com/tokio-rs/tokio/pull/2804"
+  }
+}

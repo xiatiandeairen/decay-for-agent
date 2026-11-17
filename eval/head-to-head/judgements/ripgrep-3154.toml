@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "ripgrep-3154"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "When SummarySink::matched runs find_iter_at_in_context for a multiline PCRE2 look-around pattern (e.g. `(?s)Start(?=.*thing2)`), the internal iterator can return 0 matches even though the searcher already confirmed a match exists. The fix floors sink_match_count to `count.max(1)` so that --files-with-matches / --count reflect at least one match instead of silently dropping the file."
+
+[ai_baseline]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank 1 directly identifies count.max(1) as assumption_boundary in summary.rs:matched and notes the --count inflation implication; matches ground truth. Rank 2 is a reasonable supporting test-gap observation about --count not being covered by the new regression test."

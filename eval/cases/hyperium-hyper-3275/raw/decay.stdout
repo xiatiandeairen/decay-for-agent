@@ -1,0 +1,55 @@
+Diff context:
+  repo_root=/private/tmp/decay-pr-eval/hyperium-hyper-3275/repo
+  mode=git_ref
+  base_input=a45d5d5a04369f93334fc893875d8d1a49054e04
+  base=a45d5d5a04369f93334fc893875d8d1a49054e04
+  head=e06502673c8792f080c835e502f03c9745511673
+  changed_files=3
+
+Top risk findings:
+1. [high] src/body/incoming.rs
+   semantic boundary_expression_changed Some(h2::Reason::NO_ERROR) | Some(h2::Reason::CANCEL) => {
+   action: review changed boundary expression and require focused edge-case tests
+2. [high] src/body/incoming.rs
+   semantic error_propagation_changed Some(h2::Reason::NO_ERROR) | Some(h2::Reason::CANCEL) => {
+   action: review caller-visible error propagation and require focused regression coverage
+3. [high] src/body/incoming.rs:poll_frame
+   complexity worsened
+   action: review function complexity and add focused regression tests
+4. [medium] src/body/incoming.rs
+   quality prod_change_with_tests
+   action: review changed behavior invariants and confirm regression tests cover the risky path
+
+Complexity impact:
+  changed_functions=1 evidence=1 partial=false diagnostics=0
+  value_note=direct for worsened/new_high_risk; touched_existing_risky is supporting context, not proof of current-diff risk
+- id=1 category=complexity kind=worsened subject=function source=diff_hunk+ast_snapshot confidence=high value=direct
+  function=src/body/incoming.rs:poll_frame
+  metrics=cognitive:17->20, cyclomatic:11->12, statements:19->20
+
+Coverage impact:
+  evidence=0
+  value_note=scan coverage gaps limit decay confidence; this is tool coverage evidence, not proof of product code risk
+
+Stability impact:
+  evidence=0
+  value_note=direct for newly introduced unsafe/panic/public-api evidence; move/refactor diffs can weaken this signal
+
+Quality impact:
+  evidence=1 prod_files_changed=2 test_files_changed=1 docs_files_changed=0
+  value_note=missing-test signals are supporting evidence; broad scope signals are weak unless paired with direct diff evidence
+- id=2 category=quality kind=prod_change_with_tests subject=production code changed with test changes source=quality confidence=low value=supporting
+  file=src/body/incoming.rs
+
+Semantic impact:
+  evidence=2
+  value_note=high confidence only for explicit scanned patterns; this is not general semantic understanding
+- id=3 category=semantic kind=boundary_expression_changed subject=Some(h2::Reason::NO_ERROR) | Some(h2::Reason::CANCEL) => { source=semantic_diff confidence=high value=direct
+  file=src/body/incoming.rs
+- id=4 category=semantic kind=error_propagation_changed subject=Some(h2::Reason::NO_ERROR) | Some(h2::Reason::CANCEL) => { source=semantic_diff confidence=medium value=direct
+  file=src/body/incoming.rs
+
+History impact:
+  evidence=0
+  value_note=context only; excluded from top risk unless direct diff evidence exists
+recorded=true changeset=1 evidence_saved=4

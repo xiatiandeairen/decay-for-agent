@@ -1,0 +1,101 @@
+{
+  "case_id": "hyper-4061",
+  "refs": [
+    {
+      "detail": {
+        "body": "**Version**\nAll versions of hyper with this line: https://github.com/hyperium/hyper/blob/master/src/proto/h2/mod.rs#L122\n\n**Platform**\nPlatform independent\n\n**Description**\n\nI am observing occasional deadlocks in production. The cause is that occasionally an outbound h2 request will not be sent until a different h2 request to the same destination has had its body closed, and those two requests happen to have a dependency where they have to run concurrently. The issue occurs after the http2 session has sent exactly 65534 bytes of body data, so as you can imagine, this is a HTTP2 window size issue.\n\nHyper's h2 `PipeToSendStream` future [always keeps reserved one byte of flow control capacity](https://github.com/hyperium/hyper/blob/master/src/proto/h2/mod.rs#L122) while its waiting for more data from the body to pipe out. This is not a miscounting issue within a stream, as when more bytes come in from the body, that 1 byte contributes towards the new bytes. However, it creates a problematic dependency between requests when dealing with a server that only sends a window update when it is totally exhausted. As an example:\n\n- Request A sends 65534 bytes (eg, in 4 data frames), and then waits for more body data. The connection window has one byte remaining from the perspective of the server. However, because of line 122 linked above, the stream for request A reserves one more byte, so the client view of the window is 0 bytes remaining\n- Now we try to send request B, with even a single byte of body data. The stream cannot get any connection capacity and does not send the data frame\n- Only once request A closes its request body and that 1 byte is released back to the connection will request B be sent off\n\nAn example of a http2 server that only updates the window when its completely exhausted is Bun (I hope to change this in https://github.com/oven-sh/bun/pull/25847). As such, I have a reproducing example in Bun:\n\n`main.rs`:\n```rust\nuse bytes::Bytes;\nuse http_body_util::StreamBody;\nuse hyper::body::Frame;\nuse hyper::Request;\nuse hyper_util::client::legacy::Client;\nuse hyper_util::rt::TokioExecutor;\nuse std::convert::Infallible;\nuse std::time::Duration;\nuse tokio::sync::mpsc;\nuse tokio_stream::wrappers::ReceiverStream;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> {\n    let client: Client<_, _> = Client::builder(TokioExecutor::new())\n        .http2_only(true)\n        .build_http();\n\n    let (tx_1, rx_1) = mpsc::channel::<Result<Frame<Bytes>, Infallible>>(1);\n    let body_1 = StreamBody::new(ReceiverStream::new(rx_1));\n    let request_1 =\n        Request::post(\"http://127.0.0.1:9080/test\").body(http_body_util::Either::Left(body_1))?;\n\n    println!(\"Sending request A\");\n    tokio::task::spawn(client.request(request_1));\n\n    // Send 65534 bytes (h2 reserves 1 byte from the 65535 window)\n    let mut sent = 0;\n    for chunk in vec![b'A'; 65534].chunks(16384) {\n        tx_1.send(Ok(Frame::data(Bytes::copy_from_slice(chunk))))\n            .await?;\n        sent += chunk.len();\n        println!(\"Sent {} bytes (total: {})\", chunk.len(), sent);\n    }\n\n    tokio::time::sleep(Duration::from_secs(1)).await;\n\n    println!(\"Sent {} bytes, window full\");\n\n    tokio::task::spawn(async {\n        tokio::time::sleep(Duration::from_secs(10)).await;\n        println!(\"Timeout after 10s, closing request A\");\n        drop(tx_1);\n    });\n\n    println!(\"Sending request B\");\n    client\n        .request(Request::post(\"http://127.0.0.1:9080/test\").body(\n            http_body_util::Either::Right(http_body_util::Full::new(Bytes::from_static(b\"a\"))),\n        )?)\n        .await?;\n    println!(\"Sent request B\");\n\n    Ok(())\n}\n```\n\n`server.ts`:\n```ts\nimport { createServer } from \"node:http2\";\n\nconst server = createServer();\n\nlet totalBytes = 0;\n\nserver.on(\"stream\", (stream, headers) => {\n  console.log(\n    `[${new Date().toISOString()}] New stream: ${headers[\":method\"]} ${headers[\":path\"]}`,\n  );\n\n  stream.on(\"data\", (chunk: Buffer) => {\n    totalBytes += chunk.length;\n    console.log(\n      `[${new Date().toISOString()}] Received chunk: ${chunk.length} bytes (total: ${totalBytes})`,\n    );\n  });\n\n  stream.on(\"end\", () => {\n    console.log(\n      `[${new Date().toISOString()}] Stream ended, total received: ${totalBytes} bytes`,\n    );\n    stream.respond({ \":status\": 200 });\n    stream.end(\"OK\");\n  });\n\n  stream.on(\"error\", (err) => {\n    console.error(`[${new Date().toISOString()}] Stream error:`, err);\n  });\n});\n\nserver.on(\"error\", (err) => {\n  console.error(\"Server error:\", err);\n});\n\nserver.listen(9080, () => {\n  console.log(\"HTTP/2 server listening on http://localhost:9080\");\n  console.log(\"Initial connection window size: 65535 bytes\");\n});\n```\n\n```\n$ bun run server.ts\n$ cargo run\nSending request A\nSent 16384 bytes (total: 16384)\nSent 16384 bytes (total: 32768)\nSent 16384 bytes (total: 49152)\nSent 16382 bytes (total: 65534)\nSent 65534 bytes, window full\nSending request B\nTimeout after 10s, closing request A\nSent request B\n```",
+        "closedAt": "2026-05-04T20:49:25Z",
+        "comments": [
+          {
+            "author": {
+              "login": "barry3406"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Took a look — `PipeToSendStream::poll` reserves an extra byte (`reserve_capacity(self.buf.remaining() + 1)`) ahead of polling the body, which keeps the connection-level window pinned 1 byte below empty. Servers that only emit `WINDOW_UPDATE` when their window hits zero (Bun is the one in your repro, but anything with that semantics qualifies) never see the trigger and the stream stalls. The reserve should match `buf.remaining()` exactly. Sending a fix shortly with a regression test.",
+            "createdAt": "2026-04-10T16:39:13Z",
+            "id": "IC_kwDOAWaYQc772Ost",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/4003#issuecomment-4225297197",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2026-01-06T10:20:59Z",
+        "labels": [
+          {
+            "color": "d93f0b",
+            "description": "Category: bug. Something is wrong. This is bad!",
+            "id": "MDU6TGFiZWwxMjU3MTAxOTc=",
+            "name": "C-bug"
+          }
+        ],
+        "number": 4003,
+        "state": "CLOSED",
+        "title": "H2 streams reserve 1 more byte than needed from the connection, leading to deadlock",
+        "url": "https://github.com/hyperium/hyper/issues/4003"
+      },
+      "target": {
+        "number": 4003,
+        "reason": "HTTP/2 body capacity reservation memory behavior report.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    },
+    {
+      "detail": {
+        "baseRefName": "master",
+        "baseRefOid": "0d6c7d5469baa09e2fb127ee3758a79b3271a4f0",
+        "body": "`PipeToSendStream` used to call `reserve_capacity(1)` at the top of every poll iteration as a probe, before asking the body for the next chunk. The reservation is immediately assigned from the connection-level flow-control window, and while the stream is parked waiting for more body data the reservation keeps the last byte of the connection window pinned to the stream.\n\nAgainst peers that only emit a `WINDOW_UPDATE` once their receive window is fully exhausted (for example Bun's built-in HTTP/2 server, as noted in #4003, as well as other implementations with a similar strategy), this one-byte reservation is enough to deadlock a second concurrent stream: the connection window never drops to zero on the peer, so no `WINDOW_UPDATE` is ever sent, and the second stream can never get any capacity.\n\nThe loop is restructured so it polls the body for the next frame first and only reserves capacity equal to the chunk's exact size. The polled chunk is stashed in a new `buffered_data` field on `PipeToSendStream` so it survives the `poll_capacity` wait across `Poll::Pending` returns without being dropped. Zero-length data frames are forwarded immediately without touching the reservation. `poll_reset` is now registered at the top of every iteration, so `RST_STREAM` still wakes the task while it waits for either more body data or more capacity.\n\nA regression test pairs a streaming request filling the connection window with a second one-byte request, talking to a raw `h2::server` that never releases recv capacity, and asserts that the second request reaches the server. The test deadlocks on `master` and passes with this change.\n\nCloses #4003",
+        "comments": [],
+        "files": [
+          {
+            "additions": 62,
+            "changeType": "MODIFIED",
+            "deletions": 24,
+            "path": "src/proto/h2/mod.rs"
+          },
+          {
+            "additions": 167,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "tests/client.rs"
+          }
+        ],
+        "headRefName": "fix/h2-pipe-to-send-stream-reserve-extra-byte",
+        "headRefOid": "29f719faf2f35910c1622db7f787b16f227d5245",
+        "labels": [],
+        "mergedAt": null,
+        "number": 4051,
+        "reviewDecision": "REVIEW_REQUIRED",
+        "reviews": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "",
+            "commit": {
+              "oid": "29f719faf2f35910c1622db7f787b16f227d5245"
+            },
+            "id": "PRR_kwDOAWaYQc73uA_k",
+            "includesCreatedEdit": false,
+            "reactionGroups": [],
+            "state": "COMMENTED",
+            "submittedAt": "2026-04-22T15:48:52Z"
+          }
+        ],
+        "state": "CLOSED",
+        "title": "fix(http2): do not reserve capacity before body data is available",
+        "url": "https://github.com/hyperium/hyper/pull/4051"
+      },
+      "target": {
+        "number": 4051,
+        "reason": "Previous related PR continued by this fix.",
+        "repo": "hyperium/hyper",
+        "type": "pr"
+      }
+    }
+  ]
+}

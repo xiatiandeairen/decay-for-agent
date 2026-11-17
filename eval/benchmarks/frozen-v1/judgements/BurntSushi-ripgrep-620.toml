@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "BurntSushi-ripgrep-620"
+repo = "BurntSushi/ripgrep"
+pr = 620
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Early return skipped pending after-context output."
+
+[fact_only]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 2
+notes = "True risk is early return skipping pending after-context output. Fact output reports parse coverage gap and generic prod/test on search_stream.rs, but not early-return/context flushing semantics."
+
+[semantic_filtered]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 2
+notes = "Semantic explains partial scan and generic prod/test review, still missing the after-context early-return behavior."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = false
+notes = "No material improvement beyond clearer limitation."

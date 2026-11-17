@@ -1,0 +1,66 @@
+{
+  "case_id": "hyperium-hyper-4043",
+  "refs": [
+    {
+      "detail": {
+        "baseRefName": "master",
+        "baseRefOid": "d51cb71569bbca7927b3828ef11e3bec4fa97eb4",
+        "body": "## Summary\n\n- When a chunked request body included trailers, `poll_read_body` in `conn.rs` incorrectly transitioned to `Reading::Closed` instead of `Reading::KeepAlive`, preventing connection reuse.\n- Trailers signal body completion (same as a final data frame at EOF), so the connection should remain eligible for keep-alive.\n- Added a regression test that sends a chunked POST with trailers, then verifies the connection is reused by sending a second request on the same TCP stream.\n\n## Test plan\n\n- [x] New test `http1_trailer_recv_keep_alive` passes with fix\n- [x] New test fails without fix (`ConnectionReset` on second request)\n- [x] Full test suite passes (`cargo test --features full` — 271 tests, 0 failures)\n- [x] `rustfmt` clean\n- [x] No `dead_code` or `unused_imports` warnings",
+        "comments": [],
+        "files": [
+          {
+            "additions": 2,
+            "changeType": "MODIFIED",
+            "deletions": 1,
+            "path": "src/proto/h1/conn.rs"
+          },
+          {
+            "additions": 52,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "tests/server.rs"
+          }
+        ],
+        "headRefName": "fix/chunked-trailer-keep-alive",
+        "headRefOid": "4962fa2d4c307c5568453556fe193eaab88d3b86",
+        "labels": [],
+        "mergedAt": "2026-03-27T16:10:45Z",
+        "number": 4043,
+        "reviewDecision": "APPROVED",
+        "reviews": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "I'm so glad the fix was so simple. Thanks for fixing this, and for adding a test, much appreciated!",
+            "commit": {
+              "oid": "4962fa2d4c307c5568453556fe193eaab88d3b86"
+            },
+            "id": "PRR_kwDOAWaYQc7vvbHj",
+            "includesCreatedEdit": false,
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "state": "APPROVED",
+            "submittedAt": "2026-03-27T16:09:23Z"
+          }
+        ],
+        "state": "MERGED",
+        "title": "fix(http1): allow keep-alive for chunked requests with trailers",
+        "url": "https://github.com/hyperium/hyper/pull/4043"
+      },
+      "target": {
+        "number": 4043,
+        "reason": "Keep-alive trailer regression PR review context.",
+        "repo": "hyperium/hyper",
+        "type": "pr"
+      }
+    }
+  ]
+}

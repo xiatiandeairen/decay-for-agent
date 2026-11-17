@@ -1,0 +1,660 @@
+diff --git a/src/error.rs b/src/error.rs
+index dd577b99..c0d9622d 100644
+--- a/src/error.rs
++++ b/src/error.rs
+@@ -1,155 +1,157 @@
+ //! Error and Result module.
+ use std::error::Error as StdError;
+ use std::fmt;
+ 
+ /// Result type often returned from methods that can have hyper `Error`s.
+ pub type Result<T> = std::result::Result<T, Error>;
+ 
+ type Cause = Box<dyn StdError + Send + Sync>;
+ 
+ /// Represents errors that can occur handling HTTP streams.
+ pub struct Error {
+     inner: Box<ErrorImpl>,
+ }
+ 
+ struct ErrorImpl {
+     kind: Kind,
+     cause: Option<Cause>,
+ }
+ 
+ #[derive(Debug, PartialEq)]
+ pub(super) enum Kind {
+     Parse(Parse),
+     User(User),
+     /// A message reached EOF, but is not complete.
+     IncompleteMessage,
+     /// A connection received a message (or bytes) when not waiting for one.
+     #[cfg(feature = "http1")]
+     UnexpectedMessage,
+     /// A pending item was dropped before ever being processed.
+     Canceled,
+     /// Indicates a channel (client or body sender) is closed.
+     ChannelClosed,
+     /// An `io::Error` that occurred while trying to read or write to a network stream.
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     Io,
+     /// Error occurred while connecting.
+     Connect,
+     /// Error creating a TcpListener.
+     #[cfg(all(
+         any(feature = "http1", feature = "http2"),
+         feature = "tcp",
+         feature = "server"
+     ))]
+     Listen,
+     /// Error accepting on an Incoming stream.
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     #[cfg(feature = "server")]
+     Accept,
+     /// Error while reading a body from connection.
+     #[cfg(any(feature = "http1", feature = "http2", feature = "stream"))]
+     Body,
+     /// Error while writing a body to connection.
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     BodyWrite,
+     /// The body write was aborted.
+     BodyWriteAborted,
+     /// Error calling AsyncWrite::shutdown()
+     #[cfg(feature = "http1")]
+     Shutdown,
+ 
+     /// A general error from h2.
+     #[cfg(feature = "http2")]
+     Http2,
+ }
+ 
+ #[derive(Debug, PartialEq)]
+ pub(super) enum Parse {
+     Method,
+     Version,
+     #[cfg(feature = "http1")]
+     VersionH2,
+     Uri,
+     Header,
+     TooLarge,
+     Status,
++    #[cfg_attr(debug_assertions, allow(unused))]
++    Internal,
+ }
+ 
+ #[derive(Debug, PartialEq)]
+ pub(super) enum User {
+     /// Error calling user's HttpBody::poll_data().
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     Body,
+     /// Error calling user's MakeService.
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     #[cfg(feature = "server")]
+     MakeService,
+     /// Error from future of user's Service.
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     Service,
+     /// User tried to send a certain header in an unexpected context.
+     ///
+     /// For example, sending both `content-length` and `transfer-encoding`.
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     #[cfg(feature = "server")]
+     UnexpectedHeader,
+     /// User tried to create a Request with bad version.
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     #[cfg(feature = "client")]
+     UnsupportedVersion,
+     /// User tried to create a CONNECT Request with the Client.
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     #[cfg(feature = "client")]
+     UnsupportedRequestMethod,
+     /// User tried to respond with a 1xx (not 101) response code.
+     #[cfg(feature = "http1")]
+     #[cfg(feature = "server")]
+     UnsupportedStatusCode,
+     /// User tried to send a Request with Client with non-absolute URI.
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     #[cfg(feature = "client")]
+     AbsoluteUriRequired,
+ 
+     /// User tried polling for an upgrade that doesn't exist.
+     NoUpgrade,
+ 
+     /// User polled for an upgrade, but low-level API is not using upgrades.
+     #[cfg(feature = "http1")]
+     ManualUpgrade,
+ 
+     /// User aborted in an FFI callback.
+     #[cfg(feature = "ffi")]
+     AbortedByCallback,
+ }
+ 
+ // Sentinel type to indicate the error was caused by a timeout.
+ #[derive(Debug)]
+ pub(super) struct TimedOut;
+ 
+ impl Error {
+     /// Returns true if this was an HTTP parse error.
+     pub fn is_parse(&self) -> bool {
+         matches!(self.inner.kind, Kind::Parse(_))
+     }
+ 
+     /// Returns true if this was an HTTP parse error caused by a message that was too large.
+     pub fn is_parse_too_large(&self) -> bool {
+         matches!(self.inner.kind, Kind::Parse(Parse::TooLarge))
+     }
+ 
+     /// Returns true if this was an HTTP parse error caused by an invalid response status code or
+     /// reason phrase.
+     pub fn is_parse_status(&self) -> bool {
+         matches!(self.inner.kind, Kind::Parse(Parse::Status))
+     }
+ 
+     /// Returns true if this error was caused by user code.
+     pub fn is_user(&self) -> bool {
+         matches!(self.inner.kind, Kind::User(_))
+     }
+ 
+     /// Returns true if this was about a `Request` that was canceled.
+     pub fn is_canceled(&self) -> bool {
+         self.inner.kind == Kind::Canceled
+     }
+ 
+@@ -297,160 +299,163 @@ impl Error {
+     }
+ 
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     #[cfg(feature = "client")]
+     pub(super) fn new_user_unsupported_version() -> Error {
+         Error::new_user(User::UnsupportedVersion)
+     }
+ 
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     #[cfg(feature = "client")]
+     pub(super) fn new_user_unsupported_request_method() -> Error {
+         Error::new_user(User::UnsupportedRequestMethod)
+     }
+ 
+     #[cfg(feature = "http1")]
+     #[cfg(feature = "server")]
+     pub(super) fn new_user_unsupported_status_code() -> Error {
+         Error::new_user(User::UnsupportedStatusCode)
+     }
+ 
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     #[cfg(feature = "client")]
+     pub(super) fn new_user_absolute_uri_required() -> Error {
+         Error::new_user(User::AbsoluteUriRequired)
+     }
+ 
+     pub(super) fn new_user_no_upgrade() -> Error {
+         Error::new_user(User::NoUpgrade)
+     }
+ 
+     #[cfg(feature = "http1")]
+     pub(super) fn new_user_manual_upgrade() -> Error {
+         Error::new_user(User::ManualUpgrade)
+     }
+ 
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     #[cfg(feature = "server")]
+     pub(super) fn new_user_make_service<E: Into<Cause>>(cause: E) -> Error {
+         Error::new_user(User::MakeService).with(cause)
+     }
+ 
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     pub(super) fn new_user_service<E: Into<Cause>>(cause: E) -> Error {
+         Error::new_user(User::Service).with(cause)
+     }
+ 
+     #[cfg(any(feature = "http1", feature = "http2"))]
+     pub(super) fn new_user_body<E: Into<Cause>>(cause: E) -> Error {
+         Error::new_user(User::Body).with(cause)
+     }
+ 
+     #[cfg(feature = "http1")]
+     pub(super) fn new_shutdown(cause: std::io::Error) -> Error {
+         Error::new(Kind::Shutdown).with(cause)
+     }
+ 
+     #[cfg(feature = "ffi")]
+     pub(super) fn new_user_aborted_by_callback() -> Error {
+         Error::new_user(User::AbortedByCallback)
+     }
+ 
+     #[cfg(feature = "http2")]
+     pub(super) fn new_h2(cause: ::h2::Error) -> Error {
+         if cause.is_io() {
+             Error::new_io(cause.into_io().expect("h2::Error::is_io"))
+         } else {
+             Error::new(Kind::Http2).with(cause)
+         }
+     }
+ 
+     fn description(&self) -> &str {
+         match self.inner.kind {
+             Kind::Parse(Parse::Method) => "invalid HTTP method parsed",
+             Kind::Parse(Parse::Version) => "invalid HTTP version parsed",
+             #[cfg(feature = "http1")]
+             Kind::Parse(Parse::VersionH2) => "invalid HTTP version parsed (found HTTP2 preface)",
+             Kind::Parse(Parse::Uri) => "invalid URI",
+             Kind::Parse(Parse::Header) => "invalid HTTP header parsed",
+             Kind::Parse(Parse::TooLarge) => "message head is too large",
+             Kind::Parse(Parse::Status) => "invalid HTTP status-code parsed",
++            Kind::Parse(Parse::Internal) => {
++                "internal error inside Hyper and/or its dependencies, please report"
++            }
+             Kind::IncompleteMessage => "connection closed before message completed",
+             #[cfg(feature = "http1")]
+             Kind::UnexpectedMessage => "received unexpected message from connection",
+             Kind::ChannelClosed => "channel closed",
+             Kind::Connect => "error trying to connect",
+             Kind::Canceled => "operation was canceled",
+             #[cfg(all(any(feature = "http1", feature = "http2"), feature = "tcp"))]
+             #[cfg(feature = "server")]
+             Kind::Listen => "error creating server listener",
+             #[cfg(any(feature = "http1", feature = "http2"))]
+             #[cfg(feature = "server")]
+             Kind::Accept => "error accepting connection",
+             #[cfg(any(feature = "http1", feature = "http2", feature = "stream"))]
+             Kind::Body => "error reading a body from connection",
+             #[cfg(any(feature = "http1", feature = "http2"))]
+             Kind::BodyWrite => "error writing a body to connection",
+             Kind::BodyWriteAborted => "body write aborted",
+             #[cfg(feature = "http1")]
+             Kind::Shutdown => "error shutting down connection",
+             #[cfg(feature = "http2")]
+             Kind::Http2 => "http2 error",
+             #[cfg(any(feature = "http1", feature = "http2"))]
+             Kind::Io => "connection error",
+ 
+             #[cfg(any(feature = "http1", feature = "http2"))]
+             Kind::User(User::Body) => "error from user's HttpBody stream",
+             #[cfg(any(feature = "http1", feature = "http2"))]
+             #[cfg(feature = "server")]
+             Kind::User(User::MakeService) => "error from user's MakeService",
+             #[cfg(any(feature = "http1", feature = "http2"))]
+             Kind::User(User::Service) => "error from user's Service",
+             #[cfg(any(feature = "http1", feature = "http2"))]
+             #[cfg(feature = "server")]
+             Kind::User(User::UnexpectedHeader) => "user sent unexpected header",
+             #[cfg(any(feature = "http1", feature = "http2"))]
+             #[cfg(feature = "client")]
+             Kind::User(User::UnsupportedVersion) => "request has unsupported HTTP version",
+             #[cfg(any(feature = "http1", feature = "http2"))]
+             #[cfg(feature = "client")]
+             Kind::User(User::UnsupportedRequestMethod) => "request has unsupported HTTP method",
+             #[cfg(feature = "http1")]
+             #[cfg(feature = "server")]
+             Kind::User(User::UnsupportedStatusCode) => {
+                 "response has 1xx status code, not supported by server"
+             }
+             #[cfg(any(feature = "http1", feature = "http2"))]
+             #[cfg(feature = "client")]
+             Kind::User(User::AbsoluteUriRequired) => "client requires absolute-form URIs",
+             Kind::User(User::NoUpgrade) => "no upgrade available",
+             #[cfg(feature = "http1")]
+             Kind::User(User::ManualUpgrade) => "upgrade expected but low level API in use",
+             #[cfg(feature = "ffi")]
+             Kind::User(User::AbortedByCallback) => "operation aborted by an application callback",
+         }
+     }
+ }
+ 
+ impl fmt::Debug for Error {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         let mut f = f.debug_tuple("hyper::Error");
+         f.field(&self.inner.kind);
+         if let Some(ref cause) = self.inner.cause {
+             f.field(cause);
+         }
+         f.finish()
+     }
+ }
+ 
+ impl fmt::Display for Error {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         if let Some(ref cause) = self.inner.cause {
+             write!(f, "{}: {}", self.description(), cause)
+         } else {
+             f.write_str(self.description())
+         }
+     }
+ }
+ 
+ impl StdError for Error {
+     fn source(&self) -> Option<&(dyn StdError + 'static)> {
+diff --git a/src/proto/h1/role.rs b/src/proto/h1/role.rs
+index 84dc0911..0d59edf2 100644
+--- a/src/proto/h1/role.rs
++++ b/src/proto/h1/role.rs
+@@ -1,151 +1,140 @@
+ // `mem::uninitialized` replaced with `mem::MaybeUninit`,
+ // can't upgrade yet
+ #![allow(deprecated)]
+ 
+ use std::fmt::{self, Write};
+ use std::mem;
+ 
+ #[cfg(any(test, feature = "server", feature = "ffi"))]
+ use bytes::Bytes;
+ use bytes::BytesMut;
+-use http::header::{self, Entry, HeaderName, HeaderValue};
+ #[cfg(feature = "server")]
+ use http::header::ValueIter;
++use http::header::{self, Entry, HeaderName, HeaderValue};
+ use http::{HeaderMap, Method, StatusCode, Version};
+ 
+ use crate::body::DecodedLength;
+ #[cfg(feature = "server")]
+ use crate::common::date;
+ use crate::error::Parse;
+ use crate::ext::HeaderCaseMap;
+ use crate::headers;
+ use crate::proto::h1::{
+     Encode, Encoder, Http1Transaction, ParseContext, ParseResult, ParsedMessage,
+ };
+ use crate::proto::{BodyLength, MessageHead, RequestHead, RequestLine};
+ 
+ const MAX_HEADERS: usize = 100;
+ const AVERAGE_HEADER_SIZE: usize = 30; // totally scientific
+ 
+ macro_rules! header_name {
+     ($bytes:expr) => {{
+-        #[cfg(debug_assertions)]
+         {
+             match HeaderName::from_bytes($bytes) {
+                 Ok(name) => name,
+-                Err(_) => panic!(
+-                    "illegal header name from httparse: {:?}",
+-                    ::bytes::Bytes::copy_from_slice($bytes)
+-                ),
+-            }
+-        }
+-
+-        #[cfg(not(debug_assertions))]
+-        {
+-            match HeaderName::from_bytes($bytes) {
+-                Ok(name) => name,
+-                Err(_) => panic!("illegal header name from httparse: {:?}", $bytes),
++                Err(e) => maybe_panic!(e),
+             }
+         }
+     }};
+ }
+ 
+ macro_rules! header_value {
+     ($bytes:expr) => {{
+-        #[cfg(debug_assertions)]
+         {
+-            let __hvb: ::bytes::Bytes = $bytes;
+-            match HeaderValue::from_maybe_shared(__hvb.clone()) {
+-                Ok(name) => name,
+-                Err(_) => panic!("illegal header value from httparse: {:?}", __hvb),
+-            }
+-        }
+-
+-        #[cfg(not(debug_assertions))]
+-        {
+-            // Unsafe: httparse already validated header value
+             unsafe { HeaderValue::from_maybe_shared_unchecked($bytes) }
+         }
+     }};
+ }
+ 
++macro_rules! maybe_panic {
++    ($($arg:tt)*) => ({
++        let _err = ($($arg)*);
++        if cfg!(debug_assertions) {
++            panic!("{:?}", _err);
++        } else {
++            error!("Internal Hyper error, please report {:?}", _err);
++            return Err(Parse::Internal)
++        }
++    })
++}
++
+ pub(super) fn parse_headers<T>(
+     bytes: &mut BytesMut,
+     ctx: ParseContext<'_>,
+ ) -> ParseResult<T::Incoming>
+ where
+     T: Http1Transaction,
+ {
+     // If the buffer is empty, don't bother entering the span, it's just noise.
+     if bytes.is_empty() {
+         return Ok(None);
+     }
+ 
+     let span = trace_span!("parse_headers");
+     let _s = span.enter();
+     T::parse(bytes, ctx)
+ }
+ 
+ pub(super) fn encode_headers<T>(
+     enc: Encode<'_, T::Outgoing>,
+     dst: &mut Vec<u8>,
+ ) -> crate::Result<Encoder>
+ where
+     T: Http1Transaction,
+ {
+     let span = trace_span!("encode_headers");
+     let _s = span.enter();
+     T::encode(enc, dst)
+ }
+ 
+ // There are 2 main roles, Client and Server.
+ 
+ #[cfg(feature = "client")]
+ pub(crate) enum Client {}
+ 
+ #[cfg(feature = "server")]
+ pub(crate) enum Server {}
+ 
+ #[cfg(feature = "server")]
+ impl Http1Transaction for Server {
+     type Incoming = RequestLine;
+     type Outgoing = StatusCode;
+     const LOG: &'static str = "{role=server}";
+ 
+     fn parse(buf: &mut BytesMut, ctx: ParseContext<'_>) -> ParseResult<RequestLine> {
+         debug_assert!(!buf.is_empty(), "parse called with empty buf");
+ 
+         let mut keep_alive;
+         let is_http_11;
+         let subject;
+         let version;
+         let len;
+         let headers_len;
+ 
+         // Unsafe: both headers_indices and headers are using uninitialized memory,
+         // but we *never* read any of it until after httparse has assigned
+         // values into it. By not zeroing out the stack memory, this saves
+         // a good ~5% on pipeline benchmarks.
+         let mut headers_indices: [HeaderIndices; MAX_HEADERS] = unsafe { mem::uninitialized() };
+         {
+             let mut headers: [httparse::Header<'_>; MAX_HEADERS] = unsafe { mem::uninitialized() };
+             trace!(
+                 "Request.parse([Header; {}], [u8; {}])",
+                 headers.len(),
+                 buf.len()
+             );
+             let mut req = httparse::Request::new(&mut headers);
+             let bytes = buf.as_ref();
+             match req.parse(bytes) {
+                 Ok(httparse::Status::Complete(parsed_len)) => {
+                     trace!("Request.parse Complete({})", parsed_len);
+                     len = parsed_len;
+                     subject = RequestLine(
+                         Method::from_bytes(req.method.unwrap().as_bytes())?,
+                         req.path.unwrap().parse()?,
+                     );
+                     version = if req.version.unwrap() == 1 {
+                         keep_alive = true;
+                         is_http_11 = true;
+                         Version::HTTP_11
+                     } else {
+@@ -814,162 +803,161 @@ impl Server {
+                 Some(BodyLength::Known(len)) => {
+                     if !Server::can_have_content_length(msg.req_method, msg.head.subject) {
+                         Encoder::length(0)
+                     } else {
+                         header_name_writer.write_header_name_with_colon(
+                             dst,
+                             "content-length: ",
+                             header::CONTENT_LENGTH,
+                         );
+                         let _ = ::itoa::write(&mut dst, len);
+                         extend(dst, b"\r\n");
+                         Encoder::length(len)
+                     }
+                 }
+             };
+         }
+ 
+         if !Server::can_have_body(msg.req_method, msg.head.subject) {
+             trace!(
+                 "server body forced to 0; method={:?}, status={:?}",
+                 msg.req_method,
+                 msg.head.subject
+             );
+             encoder = Encoder::length(0);
+         }
+ 
+         // cached date is much faster than formatting every request
+         if !wrote_date {
+             dst.reserve(date::DATE_VALUE_LENGTH + 8);
+             header_name_writer.write_header_name_with_colon(dst, "date: ", header::DATE);
+             date::extend(dst);
+             extend(dst, b"\r\n\r\n");
+         } else {
+             extend(dst, b"\r\n");
+         }
+ 
+         Ok(encoder.set_last(is_last))
+     }
+ }
+ 
+ #[cfg(feature = "server")]
+ trait HeaderNameWriter {
+     fn write_full_header_line(
+         &mut self,
+         dst: &mut Vec<u8>,
+         line: &str,
+         name_value_pair: (HeaderName, &str),
+     );
+     fn write_header_name_with_colon(
+         &mut self,
+         dst: &mut Vec<u8>,
+         name_with_colon: &str,
+         name: HeaderName,
+     );
+     fn write_header_name(&mut self, dst: &mut Vec<u8>, name: &HeaderName);
+ }
+ 
+ #[cfg(feature = "client")]
+ impl Http1Transaction for Client {
+     type Incoming = StatusCode;
+     type Outgoing = RequestLine;
+     const LOG: &'static str = "{role=client}";
+ 
+     fn parse(buf: &mut BytesMut, ctx: ParseContext<'_>) -> ParseResult<StatusCode> {
+         debug_assert!(!buf.is_empty(), "parse called with empty buf");
+ 
+         // Loop to skip information status code headers (100 Continue, etc).
+         loop {
+             // Unsafe: see comment in Server Http1Transaction, above.
+             let mut headers_indices: [HeaderIndices; MAX_HEADERS] = unsafe { mem::uninitialized() };
+             let (len, status, reason, version, headers_len) = {
+                 let mut headers: [httparse::Header<'_>; MAX_HEADERS] =
+                     unsafe { mem::uninitialized() };
+                 trace!(
+                     "Response.parse([Header; {}], [u8; {}])",
+                     headers.len(),
+                     buf.len()
+                 );
+                 let mut res = httparse::Response::new(&mut headers);
+                 let bytes = buf.as_ref();
+-                match ctx.h1_parser_config.parse_response(&mut res, bytes)
+-                {
++                match ctx.h1_parser_config.parse_response(&mut res, bytes) {
+                     Ok(httparse::Status::Complete(len)) => {
+                         trace!("Response.parse Complete({})", len);
+                         let status = StatusCode::from_u16(res.code.unwrap())?;
+ 
+                         #[cfg(not(feature = "ffi"))]
+                         let reason = ();
+                         #[cfg(feature = "ffi")]
+                         let reason = {
+                             let reason = res.reason.unwrap();
+                             // Only save the reason phrase if it isnt the canonical reason
+                             if Some(reason) != status.canonical_reason() {
+                                 Some(Bytes::copy_from_slice(reason.as_bytes()))
+                             } else {
+                                 None
+                             }
+                         };
+ 
+                         let version = if res.version.unwrap() == 1 {
+                             Version::HTTP_11
+                         } else {
+                             Version::HTTP_10
+                         };
+                         record_header_indices(bytes, &res.headers, &mut headers_indices)?;
+                         let headers_len = res.headers.len();
+                         (len, status, reason, version, headers_len)
+                     }
+                     Ok(httparse::Status::Partial) => return Ok(None),
+                     Err(httparse::Error::Version) if ctx.h09_responses => {
+                         trace!("Response.parse accepted HTTP/0.9 response");
+ 
+                         #[cfg(not(feature = "ffi"))]
+                         let reason = ();
+                         #[cfg(feature = "ffi")]
+                         let reason = None;
+ 
+                         (0, StatusCode::OK, reason, Version::HTTP_09, 0)
+                     }
+                     Err(e) => return Err(e.into()),
+                 }
+             };
+ 
+             let slice = buf.split_to(len).freeze();
+ 
+             let mut headers = ctx.cached_headers.take().unwrap_or_else(HeaderMap::new);
+ 
+             let mut keep_alive = version == Version::HTTP_11;
+ 
+             let mut header_case_map = if ctx.preserve_header_case {
+                 Some(HeaderCaseMap::default())
+             } else {
+                 None
+             };
+ 
+             headers.reserve(headers_len);
+             for header in &headers_indices[..headers_len] {
+                 let name = header_name!(&slice[header.name.0..header.name.1]);
+                 let value = header_value!(slice.slice(header.value.0..header.value.1));
+ 
+                 if let header::CONNECTION = name {
+                     // keep_alive was previously set to default for Version
+                     if keep_alive {
+                         // HTTP/1.1
+                         keep_alive = !headers::connection_close(&value);
+                     } else {
+                         // HTTP/1.0
+                         keep_alive = headers::connection_keep_alive(&value);
+                     }
+                 }
+ 
+                 if let Some(ref mut header_case_map) = header_case_map {
+                     header_case_map.append(&name, slice.slice(header.name.0..header.name.1));
+                 }
+ 
+                 headers.append(name, value);
+             }
+ 
+             let mut extensions = http::Extensions::default();
+ 
+             if let Some(header_case_map) = header_case_map {
+                 extensions.insert(header_case_map);

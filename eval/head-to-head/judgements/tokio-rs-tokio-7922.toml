@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "tokio-rs-tokio-7922"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "Fix race in blocking pool shutdown: Spawner::spawn_task decrements num_idle_threads before notify; if shutdown flips shared.shutdown before the notified thread wakes, the thread exits via the shutdown branch and previously double-decremented num_idle_threads at thread-exit, causing an underflow panic. Fix tracks is_counted_idle so the exit-path decrement only runs when the thread still owns its i…"
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Ranks 1-2 (state_transition, concurrency_ordering on Inner::run) directly identify the invariant — exit-path decrement gated on is_counted_idle requires every num_notify++ to be paired with a prior dec_num_idle_threads. Rank 3 is a supporting test_gap observation. [recovered-from-raw: judge response exceeded schema free-text caps; metrics unaffected]"

@@ -1,0 +1,5 @@
+ CHANGELOG.md                            | 11 +++++++----
+ crates/printer/src/hyperlink/aliases.rs |  5 -----
+ crates/searcher/src/line_buffer.rs      | 21 ++++++++-------------
+ crates/searcher/src/searcher/glue.rs    |  4 ++--
+ 4 files changed, 17 insertions(+), 24 deletions(-)

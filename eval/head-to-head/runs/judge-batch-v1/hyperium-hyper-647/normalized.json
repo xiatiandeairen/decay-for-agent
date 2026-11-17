@@ -1,0 +1,43 @@
+{
+  "case_id": "hyperium-hyper-647",
+  "ground_truth_draft": {
+    "expected_behavior": "On invalid Content-Length in get_incoming, restore the BufReader's inner stream back into self.stream before returning Err(Error::Header), so a subsequent close_connection / into_inner does not panic because the underlying NetworkStream was dropped on the error path.",
+    "high_value": true,
+    "primary_signal_ids": [
+      "lifecycle_ordering",
+      "non_happy_path"
+    ],
+    "rationale_from_pr_metadata": "PR title 'fix(http): Make sure not to lose the stream when CL is invalid' and body: 'When the Content-Length header is invalid, the Http11Message ends up dropping the stream before returning the error. This causes a panic when the close_connection method of the message is used later. This commit fixes this by saving the stream onto the message instance before returning the error. A regression test is also included. Closes #646.'",
+    "subject_files": [
+      "src/http/h1.rs"
+    ]
+  },
+  "judgement_drafts": {
+    "ai_baseline": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "Rank 1 directly identifies the stream restore before Err(Error::Header) and the close_connection / into_inner panic avoidance \u2014 matches PR intent. Rank 2 correctly tags the regression test as supporting.",
+      "top3_total": 2,
+      "top3_useful": 1,
+      "weak_only_top_risk_count": 0
+    },
+    "fact_only": {
+      "actionable": false,
+      "missed_high_risk_count": 2,
+      "notes": "Only surfaces parse_coverage_gap (tool coverage) and prod_change_with_tests (supporting). Neither names the stream lifecycle bug; reviewer is told to inspect manually.",
+      "top3_total": 2,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 1
+    },
+    "semantic_filtered": {
+      "actionable": false,
+      "missed_high_risk_count": 2,
+      "notes": "Single finding is a self-acknowledged tool-coverage limitation; explicitly states it does not prove product risk. Misses the stream-loss / close_connection panic mechanism.",
+      "top3_total": 1,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 1
+    }
+  },
+  "manifest_hash": "06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208",
+  "model": "claude-opus-4-7"
+}

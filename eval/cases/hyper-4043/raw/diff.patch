@@ -1,0 +1,385 @@
+diff --git a/src/proto/h1/conn.rs b/src/proto/h1/conn.rs
+index 3d71ed5b..3373021b 100644
+--- a/src/proto/h1/conn.rs
++++ b/src/proto/h1/conn.rs
+@@ -316,161 +316,162 @@ where
+                 h1_max_header_size,
+             ));
+             wants = wants.add(Wants::EXPECT);
+         } else {
+             let h1_max_header_size = None; // TODO: remove this when we land h1_max_header_size support
+             self.state.reading = Reading::Body(Decoder::new(
+                 msg.decode,
+                 self.state.h1_max_headers,
+                 h1_max_header_size,
+             ));
+         }
+ 
+         self.state.allow_trailer_fields = msg
+             .head
+             .headers
+             .get(TE)
+             .map_or(false, |te_header| te_header == "trailers");
+ 
+         Poll::Ready(Some(Ok((msg.head, msg.decode, wants))))
+     }
+ 
+     fn on_read_head_error<Z>(&mut self, e: crate::Error) -> Poll<Option<crate::Result<Z>>> {
+         // If we are currently waiting on a message, then an empty
+         // message should be reported as an error. If not, it is just
+         // the connection closing gracefully.
+         let must_error = self.should_error_on_eof();
+         self.close_read();
+         self.io.consume_leading_lines();
+         let was_mid_parse = e.is_parse() || !self.io.read_buf().is_empty();
+         if was_mid_parse || must_error {
+             // We check if the buf contains the h2 Preface
+             debug!(
+                 "parse error ({}) with {} bytes",
+                 e,
+                 self.io.read_buf().len()
+             );
+             match self.on_parse_error(e) {
+                 Ok(()) => Poll::Pending, // XXX: wat?
+                 Err(e) => Poll::Ready(Some(Err(e))),
+             }
+         } else {
+             debug!("read eof");
+             self.close_write();
+             Poll::Ready(None)
+         }
+     }
+ 
+     pub(crate) fn poll_read_body(
+         &mut self,
+         cx: &mut Context<'_>,
+     ) -> Poll<Option<io::Result<Frame<Bytes>>>> {
+         debug_assert!(self.can_read_body());
+ 
+         let (reading, ret) = match self.state.reading {
+             Reading::Body(ref mut decoder) => {
+                 match ready!(decoder.decode(cx, &mut self.io)) {
+                     Ok(frame) => {
+                         if frame.is_data() {
+                             let slice = frame.data_ref().unwrap_or_else(|| unreachable!());
+                             let (reading, maybe_frame) = if decoder.is_eof() {
+                                 debug!("incoming body completed");
+                                 (
+                                     Reading::KeepAlive,
+                                     if !slice.is_empty() {
+                                         Some(Ok(frame))
+                                     } else {
+                                         None
+                                     },
+                                 )
+                             } else if slice.is_empty() {
+                                 error!("incoming body unexpectedly ended");
+                                 // This should be unreachable, since all 3 decoders
+                                 // either set eof=true or return an Err when reading
+                                 // an empty slice...
+                                 (Reading::Closed, None)
+                             } else {
+                                 return Poll::Ready(Some(Ok(frame)));
+                             };
+                             (reading, Poll::Ready(maybe_frame))
+                         } else if frame.is_trailers() {
+-                            (Reading::Closed, Poll::Ready(Some(Ok(frame))))
++                            debug!("incoming body completed with trailers");
++                            (Reading::KeepAlive, Poll::Ready(Some(Ok(frame))))
+                         } else {
+                             trace!("discarding unknown frame");
+                             (Reading::Closed, Poll::Ready(None))
+                         }
+                     }
+                     Err(e) => {
+                         debug!("incoming body decode error: {}", e);
+                         (Reading::Closed, Poll::Ready(Some(Err(e))))
+                     }
+                 }
+             }
+             Reading::Continue(ref decoder) => {
+                 // Write the 100 Continue if not already responded...
+                 if let Writing::Init = self.state.writing {
+                     trace!("automatically sending 100 Continue");
+                     let cont = b"HTTP/1.1 100 Continue\r\n\r\n";
+                     self.io.headers_buf().extend_from_slice(cont);
+                 }
+ 
+                 // And now recurse once in the Reading::Body state...
+                 self.state.reading = Reading::Body(decoder.clone());
+                 return self.poll_read_body(cx);
+             }
+             _ => unreachable!("poll_read_body invalid state: {:?}", self.state.reading),
+         };
+ 
+         self.state.reading = reading;
+         self.try_keep_alive(cx);
+         ret
+     }
+ 
+     pub(crate) fn wants_read_again(&mut self) -> bool {
+         let ret = self.state.notify_read;
+         self.state.notify_read = false;
+         ret
+     }
+ 
+     pub(crate) fn poll_read_keep_alive(&mut self, cx: &mut Context<'_>) -> Poll<crate::Result<()>> {
+         debug_assert!(!self.can_read_head() && !self.can_read_body());
+ 
+         if self.is_read_closed() {
+             Poll::Pending
+         } else if self.is_mid_message() {
+             self.mid_message_detect_eof(cx)
+         } else {
+             self.require_empty_read(cx)
+         }
+     }
+ 
+     fn is_mid_message(&self) -> bool {
+         !matches!(
+             (&self.state.reading, &self.state.writing),
+             (&Reading::Init, &Writing::Init)
+         )
+     }
+ 
+     // This will check to make sure the io object read is empty.
+     //
+     // This should only be called for Clients wanting to enter the idle
+     // state.
+     fn require_empty_read(&mut self, cx: &mut Context<'_>) -> Poll<crate::Result<()>> {
+         debug_assert!(!self.can_read_head() && !self.can_read_body() && !self.is_read_closed());
+         debug_assert!(!self.is_mid_message());
+         debug_assert!(T::is_client());
+ 
+         if !self.io.read_buf().is_empty() {
+             debug!("received an unexpected {} bytes", self.io.read_buf().len());
+             return Poll::Ready(Err(crate::Error::new_unexpected_message()));
+         }
+ 
+         let num_read = ready!(self.force_io_read(cx)).map_err(crate::Error::new_io)?;
+ 
+         if num_read == 0 {
+             let ret = if self.should_error_on_eof() {
+                 trace!("found unexpected EOF on busy connection: {:?}", self.state);
+                 Poll::Ready(Err(crate::Error::new_incomplete()))
+             } else {
+                 trace!("found EOF on idle connection, closing");
+                 Poll::Ready(Ok(()))
+             };
+diff --git a/tests/server.rs b/tests/server.rs
+index 1cd0eba5..651fbdf4 100644
+--- a/tests/server.rs
++++ b/tests/server.rs
+@@ -2890,160 +2890,212 @@ fn http1_trailer_send_fields_titlecase() {
+     let date_fragment = "GMT\r\n\r\n";
+     let pos = sres.find(date_fragment).expect("find GMT");
+     let body = &sres[pos + date_fragment.len()..];
+ 
+     let expected_body = "5\r\nhello\r\n0\r\nchunky-trailer: header data\r\n\r\n";
+     assert_eq!(body, expected_body);
+ }
+ 
+ #[test]
+ fn http1_trailer_fields_not_allowed() {
+     let body = futures_util::stream::once(async move { Ok("hello".into()) });
+     let mut headers = HeaderMap::new();
+     headers.insert("chunky-trailer", "header data".parse().unwrap());
+ 
+     let server = serve();
+     server
+         .reply()
+         .header("transfer-encoding", "chunked")
+         .header("trailer", "chunky-trailer")
+         .body_stream_with_trailers(body, headers);
+     let mut req = connect(server.addr());
+ 
+     // TE: trailers is not specified in request headers
+     req.write_all(
+         b"\
+         GET / HTTP/1.1\r\n\
+         Host: example.domain\r\n\
+         Connection: keep-alive\r\n\
+         \r\n\
+     ",
+     )
+     .expect("writing");
+ 
+     let last_chunk = b"\r\n0\r\n\r\n";
+     let res = read_until(&mut req, |buf| buf.ends_with(last_chunk)).expect("reading");
+     let sres = s(&res);
+ 
+     let expected_head =
+         "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\ntrailer: chunky-trailer\r\n";
+     assert_eq!(&sres[..expected_head.len()], expected_head);
+ 
+     // skip the date header
+     let date_fragment = "GMT\r\n\r\n";
+     let pos = sres.find(date_fragment).expect("find GMT");
+     let body = &sres[pos + date_fragment.len()..];
+ 
+     // no trailer fields should be sent because TE: trailers was not in request headers
+     let expected_body = "5\r\nhello\r\n0\r\n\r\n";
+     assert_eq!(body, expected_body);
+ }
+ 
+ #[test]
+ fn http1_trailer_recv_fields() {
+     let server = serve();
+     let mut req = connect(server.addr());
+     req.write_all(
+         b"\
+         POST / HTTP/1.1\r\n\
+         trailer: chunky-trailer\r\n\
+         host: example.domain\r\n\
+         transfer-encoding: chunked\r\n\
+         \r\n\
+         5\r\n\
+         hello\r\n\
+         0\r\n\
+         chunky-trailer: header data\r\n\
+         \r\n\
+     ",
+     )
+     .expect("writing");
+ 
+     assert_eq!(server.body(), b"hello");
+ 
+     let trailers = server.trailers();
+     assert_eq!(
+         trailers.get("chunky-trailer"),
+         Some(&"header data".parse().unwrap())
+     );
+ }
+ 
++#[test]
++fn http1_trailer_recv_keep_alive() {
++    let server = serve();
++    server.reply().header("content-length", "2").body(b"ok");
++    let mut req = connect(server.addr());
++
++    // First request: chunked POST with trailers
++    req.write_all(
++        b"\
++        POST / HTTP/1.1\r\n\
++        trailer: chunky-trailer\r\n\
++        host: example.domain\r\n\
++        transfer-encoding: chunked\r\n\
++        \r\n\
++        5\r\n\
++        hello\r\n\
++        0\r\n\
++        chunky-trailer: header data\r\n\
++        \r\n\
++    ",
++    )
++    .expect("writing 1");
++
++    assert_eq!(server.body(), b"hello");
++
++    let trailers = server.trailers();
++    assert_eq!(
++        trailers.get("chunky-trailer"),
++        Some(&"header data".parse().unwrap())
++    );
++
++    read_until(&mut req, |buf| buf.ends_with(b"ok")).expect("reading 1");
++
++    // Second request: reuse the same connection to verify keep-alive
++    let quux = b"zar quux";
++    server
++        .reply()
++        .header("content-length", quux.len().to_string())
++        .body(quux);
++    req.write_all(
++        b"\
++        GET /quux HTTP/1.1\r\n\
++        Host: example.domain\r\n\
++        Connection: close\r\n\
++        \r\n\
++    ",
++    )
++    .expect("writing 2");
++
++    read_until(&mut req, |buf| buf.ends_with(quux)).expect("reading 2");
++}
++
+ // -------------------------------------------------
+ // the Server that is used to run all the tests with
+ // -------------------------------------------------
+ 
+ struct Serve {
+     addr: SocketAddr,
+     msg_rx: mpsc::Receiver<Msg>,
+     trailers_rx: mpsc::Receiver<HeaderMap>,
+     reply_tx: Mutex<spmc::Sender<Reply>>,
+     shutdown_signal: Option<oneshot::Sender<()>>,
+     thread: Option<thread::JoinHandle<()>>,
+ }
+ 
+ impl Serve {
+     fn addr(&self) -> &SocketAddr {
+         &self.addr
+     }
+ 
+     fn body(&self) -> Vec<u8> {
+         self.try_body().expect("body")
+     }
+ 
+     fn body_err(&self) -> hyper::Error {
+         self.try_body().expect_err("body_err")
+     }
+ 
+     fn try_body(&self) -> Result<Vec<u8>, hyper::Error> {
+         let mut buf = vec![];
+         loop {
+             match self.msg_rx.recv() {
+                 Ok(Msg::Chunk(msg)) => {
+                     buf.extend(&msg);
+                 }
+                 Ok(Msg::Error(e)) => return Err(e),
+                 Ok(Msg::End) => break,
+                 Err(e) => panic!("expected body, found: {:?}", e),
+             }
+         }
+         Ok(buf)
+     }
+ 
+     fn trailers(&self) -> HeaderMap {
+         self.trailers_rx.recv().expect("trailers")
+     }
+ 
+     fn reply(&self) -> ReplyBuilder<'_> {
+         ReplyBuilder { tx: &self.reply_tx }
+     }
+ }
+ 
+ type BoxError = Box<dyn std::error::Error + Send + Sync>;
+ type BoxFuture = Pin<Box<dyn Future<Output = Result<Response<ReplyBody>, BoxError>> + Send>>;
+ 
+ struct ReplyBuilder<'a> {
+     tx: &'a Mutex<spmc::Sender<Reply>>,
+ }
+ 
+ impl ReplyBuilder<'_> {
+     fn status(self, status: hyper::StatusCode) -> Self {
+         self.tx.lock().unwrap().send(Reply::Status(status)).unwrap();
+         self
+     }
+ 
+     fn reason_phrase(self, reason: &str) -> Self {
+         self.tx
+             .lock()
+             .unwrap()
+             .send(Reply::ReasonPhrase(
+                 reason.as_bytes().try_into().expect("reason phrase"),
+             ))
+             .unwrap();
+         self
+     }
+ 
+     fn version(self, version: hyper::Version) -> Self {
+         self.tx
+             .lock()
+             .unwrap()
+             .send(Reply::Version(version))
+             .unwrap();

@@ -1,0 +1,84 @@
+{
+  "candidate": {
+    "id": "BurntSushi-ripgrep-801",
+    "repo": "BurntSushi/ripgrep",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/801"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "5c1af3c25dd1281ff3e8bd6cb13be9a2bb7a2e38",
+    "body": "This change ensures that `add_custom_ignore_filename` works even if all other ignore rules are disabled, see #800.\r\n\r\nI'm not whether it is a good idea to adapt the existing unit test (or if I should have added another unit test).",
+    "comments": [
+      {
+        "author": {
+          "login": "BurntSushi"
+        },
+        "authorAssociation": "OWNER",
+        "body": "@sharkdp Thanks so much! Could you include a regression test? (I think you actually included one in your initial bug report!)",
+        "createdAt": "2018-02-13T23:19:57Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDM2NTQzOTQxMw==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/801#issuecomment-365439413",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "sharkdp"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Fixed.",
+        "createdAt": "2018-02-14T07:23:02Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDM2NTUxODA3NQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/801#issuecomment-365518075",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 10,
+        "changeType": "MODIFIED",
+        "deletions": 8,
+        "path": "ignore/src/dir.rs"
+      },
+      {
+        "additions": 20,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "ignore/src/walk.rs"
+      }
+    ],
+    "headRefName": "custom-ignore-files-issue-800",
+    "headRefOid": "5420c13eb2987f2c1c7b1b9ba0cc6b25edf41bae",
+    "labels": [],
+    "mergedAt": "2018-02-14T11:53:27Z",
+    "number": 801,
+    "reviewDecision": "",
+    "reviews": [
+      {
+        "author": {
+          "login": "BurntSushi"
+        },
+        "authorAssociation": "OWNER",
+        "body": "",
+        "commit": {
+          "oid": "6fa552eee3c7b5097b0fa2fb7ae9f706ebed6bd2"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3OTYzMzg0MTc=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2018-02-13T23:20:49Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "Allow custom ignore files to be used exclusively",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/801"
+  }
+}

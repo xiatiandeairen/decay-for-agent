@@ -1,0 +1,5 @@
+{"attempts": 1, "case_id": "serde-rs-json-757", "normalize_error": null, "status": "ok"}
+{"attempts": 1, "case_id": "hyperium-hyper-3616", "normalize_error": "top_risks[0].evidence_refs[0] not found verbatim in diff.patch", "status": "ai-baseline-failed"}
+{"attempts": 1, "case_id": "tokio-rs-tokio-8021", "normalize_error": "top_risks[1].evidence_refs[0] not found verbatim in diff.patch", "status": "ai-baseline-failed"}
+{"attempts": 1, "case_id": "hyper-3621", "normalize_error": "top_risks[1]: rationale length 202 exceeds max 200", "status": "ai-baseline-failed"}
+{"attempts": 1, "case_id": "tokio-rs-tokio-7922", "normalize_error": null, "status": "ok"}

@@ -1,0 +1,53 @@
+{
+  "case_id": "tokio-rs-tokio-8068",
+  "refs": [
+    {
+      "detail": {
+        "body": "https://github.com/tokio-rs/tokio/pull/7757 landed a sharded spawn blocking queue to improve scalability, however this was reverted due to causing hangs (see: https://github.com/tokio-rs/tokio/issues/8056).\n\nI'm pretty sure the bug that caused this was due to handling of idle threads and whether a thread could be woken vs. needed to be spawned.\n\nIn any event, my proposed path to re-landing is:\n\n- [x] [Land regression tests for the bug](https://github.com/tokio-rs/tokio/pull/8068)\n- [ ] [Land refactor to enable...](https://github.com/tokio-rs/tokio/pull/8135)\n- [ ] Land sharded queue in a disabled-by-default configuration so users can opt into it\n- [ ] After we've had time to collect feedback/testing, make the sharded queue the default behavior",
+        "closedAt": null,
+        "comments": [
+          {
+            "author": {
+              "login": "philjb"
+            },
+            "authorAssociation": "NONE",
+            "body": "I know you have the oxide/omicron example too but I will share how I saw the bug manifest. \n\nOur test infrastructure started a influxdb server and hit the http api twice as fast as possible to trigger concurrent execution of a python plugin. \n\nHere's the `spawn_blocking` call:\n\nhttps://github.com/influxdata/influxdb/blob/b66fe858e3758b45c615e76e53cfedc73ef0c1c2/influxdb3_processing_engine/src/plugins.rs#L654-L655\n\nEach http api request creates a future wrapping `process_request`, stuffing it into a `FuturesUnordered` that is polled on a loop {tokio::select!{}}.  The test plugin I was using had a facility to see if another instance (peer) of the plugin was running, if so, it is concurrent execution, if not, no. \n\nI added debugging information like this\n\n```\n    async fn process_request( ...\n...\n        let submit_time = std::time::Instant::now();\n        let result = tokio::task::spawn_blocking(move || {\n            let thread = std::thread::current();\n            debug!(\n                trigger = %trigger_name_closure,\n                probe_id = %probe_id_closure,\n                queue_wait_us = submit_time.elapsed().as_micros() as u64,\n                thread_id = ?thread.id(),\n                thread_name = thread.name().unwrap_or(\"unnamed\"),\n                \"spawn_blocking: closure entered on blocking thread\"\n            );\n            execute_request_trigger(\n...\n```\n\nThe server was running with 2 threads for async work in the runtime and the default 512 limit for spawned threads. \nI've summarized the debug logging below. One can see that the http requests came in at nearly the same time (29.722119) and pushed the futures to the unordered set (29.722503 & 29.722685) but one spawn_blocking waited for the first to finish before execution and both executed on the same thread `78`. The `queue_wait_us` value being of most significance. \n\n```\n  29.722119  request_trigger: received                         probe_id=2\n  29.722119  request_trigger: received                         probe_id=1\n  29.722503  run_request_plugin: pushed to futures             probe_id=1  pending=1\n  29.722534  process_request: future polled                    probe_id=1\n  29.722685  run_request_plugin: pushed to futures             probe_id=2  pending=2\n  29.722713  process_request: future polled                    probe_id=2\n  29.723053  spawn_blocking: closure entered                   probe_id=1  queue_wait_us=434      thread_id=ThreadId(78)\n  37.164590  spawn_blocking: closure entered                   probe_id=2  queue_wait_us=7441829  thread_id=ThreadId(78)\n```\n\n## tldr\n\n>  due to handling of idle threads and whether a thread could be woken vs. needed to be spawned\n\nI think you're on the right idea here. I saw a stall here in my test over half the runs. ",
+            "createdAt": "2026-04-21T19:36:16Z",
+            "id": "IC_kwDOBAsbdc7_x607",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/tokio-rs/tokio/issues/8067#issuecomment-4291276091",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2026-04-18T13:03:45Z",
+        "labels": [
+          {
+            "color": "f7e101",
+            "description": "Area: The main tokio crate",
+            "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+            "name": "A-tokio"
+          },
+          {
+            "color": "f7b101",
+            "description": "Module: tokio/task/blocking",
+            "id": "MDU6TGFiZWwxOTkzNTQxNTU5",
+            "name": "M-blocking"
+          }
+        ],
+        "number": 8067,
+        "state": "OPEN",
+        "title": "Re-land sharded spawn blocking queue",
+        "url": "https://github.com/tokio-rs/tokio/issues/8067"
+      },
+      "target": {
+        "number": 8067,
+        "reason": "Regression-test target for blocking task abort behavior.",
+        "repo": "tokio-rs/tokio",
+        "type": "issue"
+      }
+    }
+  ]
+}

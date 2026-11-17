@@ -1,0 +1,58 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Enriched candidate; production HTTP/1 IO and client tests changed.",
+    "id": "hyperium-hyper-3812",
+    "limitations": "Needs full parser context.",
+    "production_files": [
+      "src/proto/h1/io.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "HTTP/1 partial header parsing could intermittently panic.",
+    "signal_ids": [
+      "assumption_boundary",
+      "non_happy_path",
+      "state_transition"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/3812",
+      "eval/semantic-candidates/enriched.jsonl"
+    ],
+    "status": "candidate",
+    "test_files": [
+      "tests/client.rs"
+    ],
+    "url": "https://github.com/hyperium/hyper/pull/3812",
+    "why_high_value": "Partial/malformed header parsing is a non-happy protocol path and panic boundary.",
+    "why_not_noise": "Specific intermittent panic and regression test path."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "a3bda62da36060a38638fba983a0c07c0ab6259d",
+    "body": "Closes #3811 ",
+    "comments": [],
+    "files": [
+      {
+        "additions": 4,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "src/proto/h1/io.rs"
+      },
+      {
+        "additions": 57,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/client.rs"
+      }
+    ],
+    "headRefName": "bug-is-complete-fast",
+    "headRefOid": "e94b14a44d9f55321864d2c49628e62fe86cfc10",
+    "labels": [],
+    "mergedAt": "2024-12-16T15:36:41Z",
+    "number": 3812,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "fix(http1): fix intermitent panic parsing partial headers",
+    "url": "https://github.com/hyperium/hyper/pull/3812"
+  }
+}

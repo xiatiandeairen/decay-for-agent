@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyper-4061"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "PipeToSendStream no longer speculatively reserve_capacity(1) before polling the body. It now polls the next frame first, then reserves exactly the chunk size, buffering the chunk in self across Poll::Pending from poll_capacity. An idle stream therefore pins zero connection-level flow-control window, so a second stream can ship its DATA even when the first stream has drained the connection window…"
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 0
+notes = "Rank 2 lifecycle_ordering names the reserve/poll ordering and that poll_reset moved to loop top — directly matches one primary signal. Rank 1 state_transition correctly characterizes the new buffered_data sub-state but isn't a primary signal. Concurrency_ordering (cross-stream connection window) is… [recovered-from-raw: judge response exceeded schema free-text caps; metrics unaffected]"

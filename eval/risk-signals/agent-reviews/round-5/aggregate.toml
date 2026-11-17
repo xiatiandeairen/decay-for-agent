@@ -1,0 +1,83 @@
+round = 5
+reviewed_at = "2026-05-14"
+policy = "strict aggregation; skeptic blocker prevents freeze until follow-up context resolves it"
+
+[[cases]]
+id = "hyper-4011"
+ground_truth_score = 4
+signal_fit_score = 5
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["external_contract", "non_happy_path"]
+decision = "Freeze. HTTP/1 trailer casing is an external protocol contract, and the PR includes integration-test evidence."
+remaining_gap = "Linked issue #4010/#4012 full text is useful but not blocking."
+
+[[cases]]
+id = "hyper-3952"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = true
+final_status = "needs_more_context"
+final_signal_ids = ["concurrency_ordering", "state_transition"]
+decision = "Do not freeze yet. Strong waker/fairness evidence, but the related revert/follow-up relationship must be resolved."
+remaining_gap = "Compare with hyper #3977 and confirm whether this original fix is stable ground truth."
+
+[[cases]]
+id = "ripgrep-3189"
+ground_truth_score = 4
+signal_fit_score = 4
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["external_contract", "non_happy_path", "risk_path_test_gap"]
+decision = "Freeze. Absolute-path global gitignore handling is externally visible and backed by regression-test/changelog evidence."
+remaining_gap = "Semantic correctness still requires path/root interpretation beyond raw decay scanning."
+
+[[cases]]
+id = "ripgrep-3154"
+ground_truth_score = 4
+signal_fit_score = 3
+skeptic_blocker = true
+final_status = "needs_more_context"
+final_signal_ids = ["external_contract", "non_happy_path"]
+decision = "Do not freeze yet. The risk is plausible, but the PR calls the fix a narrow hack and the old candidate metadata pointed at the wrong production file."
+remaining_gap = "Fetch issues #2528/#3139 and test hunk details to verify transferability."
+
+[[cases]]
+id = "ripgrep-2885"
+ground_truth_score = 4
+signal_fit_score = 4
+skeptic_blocker = true
+final_status = "needs_more_context"
+final_signal_ids = ["external_contract", "state_transition", "assumption_boundary"]
+decision = "Do not freeze yet. False negatives are high value, but current evidence is optimizer-internal and needs invariant/test grounding."
+remaining_gap = "Fetch issue #2884 and identify the exact regression assertion."
+
+[[cases]]
+id = "hyperium-hyper-3967"
+ground_truth_score = 3
+signal_fit_score = 4
+skeptic_blocker = true
+final_status = "needs_more_context"
+final_signal_ids = ["external_contract", "lifecycle_ordering", "concurrency_ordering", "state_transition", "risk_path_test_gap"]
+decision = "Do not freeze yet. The risk surface is strong, but this could be a large architecture/API migration rather than a verified high-value bug diff."
+remaining_gap = "Fetch issue #3966, review/app validation, and tests or downstream reproduction."
+
+[[cases]]
+id = "tokio-rs-tokio-8057"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = true
+final_status = "needs_more_context"
+final_signal_ids = ["concurrency_ordering", "lifecycle_ordering", "risk_path_test_gap"]
+decision = "Do not freeze yet. Revert evidence is strong, but the evaluation target should include the original regression PR, not only the revert."
+remaining_gap = "Compare PR #7757 with issue #8056 and the revert diff."
+
+[[cases]]
+id = "hyperium-hyper-3812"
+ground_truth_score = 3
+signal_fit_score = 4
+skeptic_blocker = true
+final_status = "needs_more_context"
+final_signal_ids = ["assumption_boundary", "non_happy_path", "state_transition"]
+decision = "Do not freeze yet. Intermittent partial-header panic is likely high value, but PR body is too thin without issue/test hunk context."
+remaining_gap = "Fetch issue #3811 and the regression test hunk."

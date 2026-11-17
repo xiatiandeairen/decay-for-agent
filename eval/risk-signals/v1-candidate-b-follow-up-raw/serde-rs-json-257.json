@@ -1,0 +1,62 @@
+{
+  "case_id": "serde-rs-json-257",
+  "refs": [
+    {
+      "detail": {
+        "body": "I know that it's not correct according to the JSON standard, but sometimes you get to deal with json that has arbitrary bytes inside a string literal (except '\"'). To accomodate this use case, I suggest that we explictly implement the following two functions for the Deserializer:\r\n\r\n* deserialize_bytes\r\n* deserialize_byte_buf\r\n\r\nto parse Strings without doing any processing on them, just returning the bytes. They can then be used to explictly request that one wants to parse a \"raw\" string. ",
+        "closedAt": "2017-02-20T17:23:44Z",
+        "comments": [
+          {
+            "author": {
+              "login": "bennofs"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "If I were to implement this and submit a PR, would the PR be accepted?",
+            "createdAt": "2017-02-18T16:09:39Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI4MDg1NTE2Ng==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/256#issuecomment-280855166",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Yes I would accept this.",
+            "createdAt": "2017-02-18T16:12:19Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI4MDg1NTM1Mg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/256#issuecomment-280855352",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2017-02-18T16:09:18Z",
+        "labels": [
+          {
+            "color": "84b6eb",
+            "description": "",
+            "id": "MDU6TGFiZWwyMTM0OTkyNTk=",
+            "name": "enhancement"
+          }
+        ],
+        "number": 256,
+        "state": "CLOSED",
+        "title": "Support deserializing arbitrary bytes inside strings",
+        "url": "https://github.com/serde-rs/json/issues/256"
+      },
+      "target": {
+        "number": 256,
+        "reason": "Arbitrary byte string deserialization use case.",
+        "repo": "serde-rs/json",
+        "type": "issue"
+      }
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "case_id": "hyperium-hyper-3616",
+  "reason": "top_risks[0].subject references unknown file 'src/server/conn/http1.rs'; not in changed_files",
+  "status": "ai-baseline-failed"
+}

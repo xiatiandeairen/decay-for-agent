@@ -1,0 +1,297 @@
+diff --git a/crates/printer/src/summary.rs b/crates/printer/src/summary.rs
+index 86ce095..615abd2 100644
+--- a/crates/printer/src/summary.rs
++++ b/crates/printer/src/summary.rs
+@@ -606,161 +606,165 @@ impl<'p, 's, M: Matcher, W: WriteColor> SummarySink<'p, 's, M, W> {
+     fn write_path(&mut self) -> io::Result<()> {
+         if self.path.is_some() {
+             let status = self.start_hyperlink()?;
+             self.write_spec(
+                 self.summary.config.colors.path(),
+                 self.path.as_ref().unwrap().as_bytes(),
+             )?;
+             self.end_hyperlink(status)?;
+         }
+         Ok(())
+     }
+ 
+     /// Starts a hyperlink span when applicable.
+     fn start_hyperlink(
+         &mut self,
+     ) -> io::Result<hyperlink::InterpolatorStatus> {
+         let Some(hyperpath) =
+             self.path.as_ref().and_then(|p| p.as_hyperlink())
+         else {
+             return Ok(hyperlink::InterpolatorStatus::inactive());
+         };
+         let values = hyperlink::Values::new(hyperpath);
+         self.interpolator.begin(&values, &mut *self.summary.wtr.borrow_mut())
+     }
+ 
+     fn end_hyperlink(
+         &self,
+         status: hyperlink::InterpolatorStatus,
+     ) -> io::Result<()> {
+         self.interpolator.finish(status, &mut *self.summary.wtr.borrow_mut())
+     }
+ 
+     /// Write the line terminator configured on the given searcher.
+     fn write_line_term(&self, searcher: &Searcher) -> io::Result<()> {
+         self.write(searcher.line_terminator().as_bytes())
+     }
+ 
+     /// Write the given bytes using the give style.
+     fn write_spec(&self, spec: &ColorSpec, buf: &[u8]) -> io::Result<()> {
+         self.summary.wtr.borrow_mut().set_color(spec)?;
+         self.write(buf)?;
+         self.summary.wtr.borrow_mut().reset()?;
+         Ok(())
+     }
+ 
+     /// Write all of the given bytes.
+     fn write(&self, buf: &[u8]) -> io::Result<()> {
+         self.summary.wtr.borrow_mut().write_all(buf)
+     }
+ }
+ 
+ impl<'p, 's, M: Matcher, W: WriteColor> Sink for SummarySink<'p, 's, M, W> {
+     type Error = io::Error;
+ 
+     fn matched(
+         &mut self,
+         searcher: &Searcher,
+         mat: &SinkMatch<'_>,
+     ) -> Result<bool, io::Error> {
+         let is_multi_line = self.multi_line(searcher);
+         let sink_match_count = if self.stats.is_none() && !is_multi_line {
+             1
+         } else {
+             // This gives us as many bytes as the searcher can offer. This
+             // isn't guaranteed to hold the necessary context to get match
+             // detection correct (because of look-around), but it does in
+             // practice.
+             let buf = mat.buffer();
+             let range = mat.bytes_range_in_buffer();
+             let mut count = 0;
+             find_iter_at_in_context(
+                 searcher,
+                 &self.matcher,
+                 buf,
+                 range,
+                 |_| {
+                     count += 1;
+                     true
+                 },
+             )?;
+-            count
++            // Because of `find_iter_at_in_context` being a giant
++            // kludge internally, it's possible that it won't find
++            // *any* matches even though we clearly know that there is
++            // at least one. So make sure we record at least one here.
++            count.max(1)
+         };
+         if is_multi_line {
+             self.match_count += sink_match_count;
+         } else {
+             self.match_count += 1;
+         }
+         if let Some(ref mut stats) = self.stats {
+             stats.add_matches(sink_match_count);
+             stats.add_matched_lines(mat.lines().count() as u64);
+         } else if self.summary.config.kind.quit_early() {
+             return Ok(false);
+         }
+         Ok(!self.should_quit())
+     }
+ 
+     fn binary_data(
+         &mut self,
+         searcher: &Searcher,
+         binary_byte_offset: u64,
+     ) -> Result<bool, io::Error> {
+         if searcher.binary_detection().quit_byte().is_some() {
+             if let Some(ref path) = self.path {
+                 log::debug!(
+                     "ignoring {path}: found binary data at \
+                      offset {binary_byte_offset}",
+                     path = path.as_path().display(),
+                 );
+             }
+         }
+         Ok(true)
+     }
+ 
+     fn begin(&mut self, _searcher: &Searcher) -> Result<bool, io::Error> {
+         if self.path.is_none() && self.summary.config.kind.requires_path() {
+             return Err(io::Error::error_message(format!(
+                 "output kind {:?} requires a file path",
+                 self.summary.config.kind,
+             )));
+         }
+         self.summary.wtr.borrow_mut().reset_count();
+         self.start_time = Instant::now();
+         self.match_count = 0;
+         self.binary_byte_offset = None;
+         if self.summary.config.max_matches == Some(0) {
+             return Ok(false);
+         }
+ 
+         Ok(true)
+     }
+ 
+     fn finish(
+         &mut self,
+         searcher: &Searcher,
+         finish: &SinkFinish,
+     ) -> Result<(), io::Error> {
+         self.binary_byte_offset = finish.binary_byte_offset();
+         if let Some(ref mut stats) = self.stats {
+             stats.add_elapsed(self.start_time.elapsed());
+             stats.add_searches(1);
+             if self.match_count > 0 {
+                 stats.add_searches_with_match(1);
+             }
+             stats.add_bytes_searched(finish.byte_count());
+             stats.add_bytes_printed(self.summary.wtr.borrow().count());
+         }
+         // If our binary detection method says to quit after seeing binary
+         // data, then we shouldn't print any results at all, even if we've
+         // found a match before detecting binary data. The intent here is to
+         // keep BinaryDetection::quit as a form of filter. Otherwise, we can
+         // present a matching file with a smaller number of matches than
+         // there might be, which can be quite misleading.
+         //
+         // If our binary detection method is to convert binary data, then we
+         // don't quit and therefore search the entire contents of the file.
+         //
+         // There is an unfortunate inconsistency here. Namely, when using
+         // QuietWithMatch or PathWithMatch, then the printer can quit after the
+         // first match seen, which could be long before seeing binary data.
+         // This means that using PathWithMatch can print a path where as using
+         // Count might not print it at all because of binary data.
+diff --git a/tests/regression.rs b/tests/regression.rs
+index 2f1ba85..b3d7fb1 100644
+--- a/tests/regression.rs
++++ b/tests/regression.rs
+@@ -1467,80 +1467,121 @@ rgtest!(r2944_incorrect_bytes_searched, |dir: Dir, mut cmd: TestCommand| {
+ #[cfg(unix)]
+ rgtest!(r2990_trip_over_trailing_dot, |dir: Dir, _cmd: TestCommand| {
+     dir.create_dir("asdf");
+     dir.create_dir("asdf.");
+     dir.create("asdf/foo", "");
+     dir.create("asdf./foo", "");
+ 
+     let got = dir.command().args(&["--files", "-g", "!asdf/"]).stdout();
+     eqnice!("asdf./foo\n", got);
+ 
+     // This used to ignore the glob given and included `asdf./foo` in output.
+     let got = dir.command().args(&["--files", "-g", "!asdf./"]).stdout();
+     eqnice!("asdf/foo\n", got);
+ });
+ 
+ // See: https://github.com/BurntSushi/ripgrep/issues/3108
+ rgtest!(r3108_files_without_match_quiet_exit, |dir: Dir, _: TestCommand| {
+     dir.create("yes-match", "abc");
+     dir.create("non-match", "xyz");
+ 
+     dir.command().args(&["-q", "abc", "non-match"]).assert_exit_code(1);
+     dir.command().args(&["-q", "abc", "yes-match"]).assert_exit_code(0);
+     dir.command()
+         .args(&["--files-with-matches", "-q", "abc", "non-match"])
+         .assert_exit_code(1);
+     dir.command()
+         .args(&["--files-with-matches", "-q", "abc", "yes-match"])
+         .assert_exit_code(0);
+ 
+     dir.command()
+         .args(&["--files-without-match", "abc", "non-match"])
+         .assert_exit_code(0);
+     dir.command()
+         .args(&["--files-without-match", "abc", "yes-match"])
+         .assert_exit_code(1);
+ 
+     let got = dir
+         .command()
+         .args(&["--files-without-match", "abc", "non-match"])
+         .stdout();
+     eqnice!("non-match\n", got);
+ 
+     dir.command()
+         .args(&["--files-without-match", "-q", "abc", "non-match"])
+         .assert_exit_code(0);
+     dir.command()
+         .args(&["--files-without-match", "-q", "abc", "yes-match"])
+         .assert_exit_code(1);
+ 
+     let got = dir
+         .command()
+         .args(&["--files-without-match", "-q", "abc", "non-match"])
+         .stdout();
+     eqnice!("", got);
+ });
+ 
+ // See: https://github.com/BurntSushi/ripgrep/issues/3127
+ rgtest!(
+     r3127_gitignore_allow_unclosed_class,
+     |dir: Dir, mut cmd: TestCommand| {
+         dir.create_dir(".git");
+         dir.create(".gitignore", "[abc");
+         dir.create("[abc", "");
+         dir.create("test", "");
+ 
+         let got = cmd.args(&["--files"]).stdout();
+         eqnice!("test\n", got);
+     }
+ );
+ 
+ // See: https://github.com/BurntSushi/ripgrep/issues/3127
+ rgtest!(
+     r3127_glob_flag_not_allow_unclosed_class,
+     |dir: Dir, mut cmd: TestCommand| {
+         dir.create("[abc", "");
+         dir.create("test", "");
+ 
+         cmd.args(&["--files", "-g", "[abc"]).assert_err();
+     }
+ );
++
++rgtest!(
++    r3139_multiline_lookahead_files_with_matches,
++    |dir: Dir, _cmd: TestCommand| {
++        // Only PCRE2 supports look-around.
++        if !dir.is_pcre2() {
++            return;
++        }
++        dir.create(
++            "test",
++            "\
++Start \n   \n\n   \
++XXXXXXXXXXXXXXXXXXXXXXXXXX\n   \
++YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\n   \
++\n      thing2 \n\n",
++        );
++
++        let got = dir
++            .command()
++            .args(&[
++                "--multiline",
++                "--pcre2",
++                r"(?s)Start(?=.*thing2)",
++                "test",
++            ])
++            .stdout();
++        eqnice!("Start \n", got);
++
++        let got = dir
++            .command()
++            .args(&[
++                "--multiline",
++                "--pcre2",
++                "--files-with-matches",
++                r"(?s)Start(?=.*thing2)",
++                "test",
++            ])
++            .stdout();
++        eqnice!("test\n", got);
++    }
++);

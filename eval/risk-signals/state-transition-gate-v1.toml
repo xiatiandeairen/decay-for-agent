@@ -1,0 +1,64 @@
+version = "state-transition-gate.v1"
+risk_item = "state_transition_change"
+
+[gates]
+raw_contract_valid_rate_min = 1.0
+detection_precision_min = 1.0
+detection_recall_min = 1.0
+review_worthy_precision_min = 1.0
+boundary_honesty_rate_min = 1.0
+duplicate_wrapper_case_count_max = 0
+
+[[cases]]
+id = "tokio-rs-tokio-8021"
+role = "high_value_positive"
+expected_detection = "detect"
+expected_judgement = "review_worthy_state_transition_change"
+max_wrapper_count = 1
+ground_truth_summary = "Closed semaphore state must remain terminal when permits are forgotten."
+why_high_value = "Terminal-state preservation on a synchronization primitive is a high-impact concurrency invariant."
+
+[[cases]]
+id = "hyperium-hyper-3261"
+role = "high_value_positive"
+expected_detection = "detect"
+expected_judgement = "review_worthy_state_transition_change"
+max_wrapper_count = 1
+ground_truth_summary = "Graceful shutdown before the first request must transition the connection into shutdown instead of hanging in the initial state."
+why_high_value = "Lifecycle/state transitions before first I/O are low-frequency but high-impact server correctness paths."
+
+[[cases]]
+id = "hyper-4042"
+role = "boundary_positive"
+expected_detection = "detect"
+expected_judgement = "needs_more_context_before_review_claim"
+max_wrapper_count = 1
+ground_truth_summary = "Dropping an HTTP/2 response future changes cancellation/reset transition behavior."
+why_high_value = "Cancel/reset transitions are caller-visible protocol-state paths, but the wrapper alone should stay conservative."
+
+[[cases]]
+id = "hyperium-hyper-3275"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "This is an error-propagation case and should not emit a duplicate state-transition wrapper."
+why_high_value = "Cross-signal suppression must keep stronger error-propagation evidence from turning into duplicate state claims."
+
+[[cases]]
+id = "hyper-4056"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "This is an integer-boundary case, not a state-transition case."
+why_high_value = "State wrapper should stay silent on architecture-boundary arithmetic fixes."
+
+[[cases]]
+id = "serde-rs-json-757"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "This is malformed-input error propagation, not a state-transition case."
+why_high_value = "State wrapper should not absorb explicit panic-to-error cases."

@@ -1,0 +1,100 @@
+{
+  "case_id": "clap-rs-clap-6068",
+  "refs": [
+    {
+      "detail": {
+        "body": "I just found something strange, in this function `sc_spec_vals` for the aliases of the Command, I see we have 3 types:\n- **aliases** -> and we show them in the help with `.get_visible_aliases()`\n- **short_flag_aliases** -> with `.get_visible_short_flag_aliases()`\n- **long_flag_aliases** -> with `.get_visible_long_flag_aliases()`\n\nThe visible aliases and the short flag ones are collected, but the long flag aliases are forgotten.\n\n_Originally posted by @GilShoshan94 in https://github.com/clap-rs/clap/pull/6057#discussion_r2182025630_\n            ",
+        "closedAt": "2025-07-30T02:16:25Z",
+        "comments": [
+          {
+            "author": {
+              "login": "GilShoshan94"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "This was overlooked in #1974 and it is taken care of in PR #6068 as a minor fix in a commit",
+            "createdAt": "2025-07-09T21:51:43Z",
+            "id": "IC_kwDOAd3Usc62C0Oo",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/clap-rs/clap/issues/6067#issuecomment-3054191528",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2025-07-09T21:47:44Z",
+        "labels": [
+          {
+            "color": "f5f1fd",
+            "description": "Category: bug",
+            "id": "MDU6TGFiZWwxODA3NTkyNzk=",
+            "name": "C-bug"
+          },
+          {
+            "color": "f7e101",
+            "description": "Area: documentation, including docs.rs, readme, examples, etc...",
+            "id": "MDU6TGFiZWwyMzY0MjE2NTY=",
+            "name": "A-help"
+          },
+          {
+            "color": "02E10C",
+            "description": "Call for participation: Help is requested to fix this issue.",
+            "id": "MDU6TGFiZWw0NzM0NzUyNjY=",
+            "name": "E-help-wanted"
+          },
+          {
+            "color": "02E10C",
+            "description": "Call for participation: Experience needed to fix: Easy / not much",
+            "id": "MDU6TGFiZWw3MTgzMTIxMzU=",
+            "name": "E-easy"
+          }
+        ],
+        "number": 6067,
+        "state": "CLOSED",
+        "title": "Missing visible long flag aliases in help",
+        "url": "https://github.com/clap-rs/clap/issues/6067"
+      },
+      "target": {
+        "number": 6067,
+        "reason": "Visible long flag alias help report.",
+        "repo": "clap-rs/clap",
+        "type": "issue"
+      }
+    },
+    {
+      "detail": {
+        "body": "Hi,\nThe tests for aliases (of arguments and subcommands) are distributed between several files:\n\nFor Arg:\n-tests/builder/arg_aliases_short.rs\n-tests/builder/arg_aliases.rs\nIt covers well everything I think regarding aliases.\n\nFor Command (on the subcommand):\n-tests/builder/flag_subcommands.rs\n-tests/builder/subcommands.rs\nIt does not 100% fully cover in my opinion as **it is missing the following cases:**\n\n[visible_aliases](https://docs.rs/clap/4.5.41/clap/struct.Command.html#method.visible_aliases) (but visible_alias is tested, but only to match the help, not tested with a try_get_matches_from)\n[visible_short_flag_alias](https://docs.rs/clap/4.5.41/clap/struct.Command.html#method.visible_short_flag_alias) (but visible_short_flag_aliases is properly tested)\n[visible_long_flag_alias](https://docs.rs/clap/4.5.41/clap/struct.Command.html#method.visible_long_flag_alias) (but visible_long_flag_aliases is properly tested)\n\n---\n\n**Either we should add the few missing case, or we should maybe consolidate all the aliases cases into one place** (expect for the help that are fully covered in `tests/builder/help.rs`).\n\n---\n\nHere a code for inspiration that covers all the aliases and check for matching.\n```rust\nuse clap::{Arg, Command};\n\nfn setup_aliases() -> Command {\n    Command::new(\"ctest\")\n        .version(\"0.1\")\n        .arg(\n            Arg::new(\"dest\")\n                .short('d')\n                .long(\"destination\")\n                .value_name(\"FILE\")\n                .help(\"File to save into\")\n                .long_help(\"The Filepath to save into the result\")\n                .short_alias('q')\n                .short_aliases(['w', 'e'])\n                .alias(\"arg-alias\")\n                .aliases([\"do-stuff\", \"do-tests\"])\n                .visible_short_alias('t')\n                .visible_short_aliases(['i', 'o'])\n                .visible_alias(\"file\")\n                .visible_aliases([\"into\", \"to\"])\n                .action(ArgAction::Set),\n        )\n        .subcommand(\n            Command::new(\"rev\")\n                .short_flag('r')\n                .long_flag(\"inplace\")\n                .about(\"In place\")\n                .long_about(\"Change mode to work in place on source\")\n                .alias(\"subc-alias\")\n                .aliases([\"subc-do-stuff\", \"subc-do-tests\"])\n                .short_flag_alias('j')\n                .short_flag_aliases(['k', 'l'])\n                .long_flag_alias(\"subc-long-flag-alias\")\n                .long_flag_aliases([\"subc-long-do-stuff\", \"subc-long-do-tests\"])\n                .visible_alias(\"source\")\n                .visible_aliases([\"from\", \"onsource\"])\n                .visible_short_flag_alias('s')\n                .visible_short_flag_aliases(['f', 'g'])\n                .visible_long_flag_alias(\"origin\")\n                .visible_long_flag_aliases([\"path\", \"tryfrom\"])\n                .arg(\n                    Arg::new(\"input\")\n                        .value_name(\"INPUT\")\n                        .help(\"The source file\"),\n                ),\n        )\n}\n\n#[test]\nfn all_aliases_work() {\n    let app = setup_aliases();\n\n    for arg_al in [\n        \"-d\",\n        \"--destination\",\n        \"-q\",\n        \"-w\",\n        \"-e\",\n        \"--arg-alias\",\n        \"--do-stuff\",\n        \"--do-tests\",\n        \"-t\",\n        \"-i\",\n        \"-o\",\n        \"--file\",\n        \"--into\",\n        \"--to\",\n    ] {\n        let m = app\n            .clone()\n            .try_get_matches_from(vec![\"ctest\", arg_al, \"filepath\"]);\n        assert!(m.is_ok(), \"{}\", m.unwrap_err());\n        let m = m.unwrap();\n        assert!(m.subcommand_name().is_none());\n    }\n\n    for subc_al in [\n        \"rev\",\n        \"-r\",\n        \"--inplace\",\n        \"subc-alias\",\n        \"subc-do-stuff\",\n        \"subc-do-tests\",\n        \"-j\",\n        \"-k\",\n        \"-l\",\n        \"--subc-long-flag-alias\",\n        \"--subc-long-do-tests\",\n        \"source\",\n        \"from\",\n        \"onsource\",\n        \"-s\",\n        \"-f\",\n        \"-g\",\n        \"--origin\",\n        \"--path\",\n        \"--tryfrom\",\n    ] {\n        let m = app\n            .clone()\n            .try_get_matches_from(vec![\"ctest\", subc_al, \"filepath\"]);\n        assert!(m.is_ok(), \"{}\", m.unwrap_err());\n        let m = m.unwrap();\n        assert!(m.subcommand_name().is_some());\n    }\n}\n```",
+        "closedAt": "2025-07-30T02:16:26Z",
+        "comments": [
+          {
+            "author": {
+              "login": "GilShoshan94"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Closed by https://github.com/clap-rs/clap/pull/6068",
+            "createdAt": "2025-07-21T21:30:50Z",
+            "id": "IC_kwDOAd3Usc64ubJZ",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/clap-rs/clap/issues/6073#issuecomment-3099177561",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2025-07-21T20:08:32Z",
+        "labels": [],
+        "number": 6073,
+        "state": "CLOSED",
+        "title": "Add some test cases for Command aliases",
+        "url": "https://github.com/clap-rs/clap/issues/6073"
+      },
+      "target": {
+        "number": 6073,
+        "reason": "Related visible alias help report.",
+        "repo": "clap-rs/clap",
+        "type": "issue"
+      }
+    }
+  ]
+}

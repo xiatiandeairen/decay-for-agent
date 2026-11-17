@@ -1,0 +1,12 @@
+{
+  "case_id": "hyperium-hyper-3812",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"hyperium-hyper-3812\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"state_transition\",\"subject\":\"src/proto/h1/io.rs:parse\",\"evidence_refs\":[\"// 1xx gobled some bytes\\n                        self.partial_len = None;\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"New else-branch resets partial_len to None when read_buf is empty after parse_headers returns None, changing the loop's progress-tracking state on the assumption that emptiness implies 1xx consumed bytes.\"},{\"rank\":2,\"risk_signal\":\"non_happy_path\",\"subject\":\"src/proto/h1/io.rs:parse\",\"evidence_refs\":[\"trace!(\\\"partial headers; {} bytes so far\\\", curr_len);\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"Partial-headers fallback path is now split into two branches (curr_len>0 vs ==0); the ==0 branch is the new 1xx-after-consume path whose interaction with subsequent poll_read_from_io is untested for EOF.\"},{\"rank\":3,\"risk_signal\":\"test_gap_for_risk_path\",\"subject\":\"tests/client.rs:client_100_then_http09\",\"evidence_refs\":[\"// That it's separate writes is important to this test\",\"thread::sleep(Duration::from_millis(50));\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"Test depends on real thread::sleep timing to force separate reads; if scheduler coalesces writes the 1xx-then-empty-buf state is not exercised, leaving the new else-branch effectively uncovered.\"}]\n",
+      "stderr_tail": ""
+    }
+  ]
+}

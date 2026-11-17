@@ -1,0 +1,12 @@
+{
+  "case_id": "hyper-3988",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"hyper-3988\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"concurrency_ordering\",\"subject\":\"src/proto/h1/dispatch.rs:poll_loop\",\"evidence_refs\":[\"// If we return `Ready(Ok(())` here, we will yield\\n            // without a guaranteed wake-up from the write side of the connection.\",\"let wants_write_again = self.can_write_again() && (write_ready || flush_ready);\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"poll_loop now decides whether to yield based on write/flush readiness; if waker registration from poll_write/poll_flush is incomplete on the path that yields, the task may not be re-woken.\"},{\"rank\":2,\"risk_signal\":\"assumption_boundary\",\"subject\":\"src/proto/h1/dispatch.rs:can_write_again\",\"evidence_refs\":[\"fn can_write_again(&mut self) -> bool {\\n        self.body_rx.is_some()\\n    }\"],\"confidence\":\"medium\",\"value\":\"direct\",\"rationale\":\"can_write_again only checks body_rx presence, not whether the connection can actually accept more writes; this may keep the 16-iteration loop spinning when no real progress is possible.\"},{\"rank\":3,\"risk_signal\":\"state_transition\",\"subject\":\"src/proto/h1/dispatch.rs:poll_loop\",\"evidence_refs\":[\"if self.poll_write(cx)?.is_pending() {\\n                    // write is pending, so it is safe to yield and rely on wake-up from connection\\n                    // futures.\\n                    return Poll::Ready(Ok(()));\\n                }\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"poll_write is invoked a second time within the same loop iteration to recheck readiness; double-invocation changes the previously single-call-per-iteration contract and may interact poorly with stateful writers.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

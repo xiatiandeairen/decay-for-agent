@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "hyperium-hyper-2544"
+repo = "hyperium/hyper"
+pr = 2544
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Malformed header defensive parse boundary."
+
+[fact_only]
+top3_total = 3
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 1
+notes = "True risk is malformed header defensive parse boundary. Fact output flags panic-like additions in src/proto/h1/role.rs and missing tests; this is relevant boundary-safety evidence, though not exact illegal-header semantics."
+
+[semantic_filtered]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Semantic keeps panic-like additions as a high-confidence boundary-safety review target and combines error.rs test gap, but still lacks exact illegal-header parse semantics."
+
+[comparison]
+semantic_improved_ranking = true
+semantic_reduced_noise = true
+semantic_introduced_noise = false
+notes = "Semantic reduces broad/test-gap noise and keeps the relevant boundary-safety evidence."

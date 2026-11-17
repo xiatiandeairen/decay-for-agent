@@ -1,0 +1,82 @@
+version = "external-contract-gate.v1"
+risk_item = "external_contract_change"
+
+[gates]
+raw_contract_valid_rate_min = 1.0
+detection_precision_min = 1.0
+detection_recall_min = 1.0
+review_worthy_precision_min = 1.0
+boundary_honesty_rate_min = 1.0
+duplicate_wrapper_case_count_max = 0
+
+[[cases]]
+id = "hyper-3621"
+role = "high_value_positive"
+expected_detection = "detect"
+expected_judgement = "review_worthy_external_contract_change"
+max_wrapper_count = 4
+ground_truth_summary = "Host header construction must not include URI userinfo and must remain protocol-compatible with routing semantics."
+why_high_value = "This is a protocol-visible and security-sensitive external contract change."
+
+[[cases]]
+id = "ripgrep-3224"
+role = "high_value_positive"
+expected_detection = "detect"
+expected_judgement = "review_worthy_external_contract_change"
+max_wrapper_count = 1
+ground_truth_summary = "Built-in decompression command defaults must separate flags from filenames with `--`."
+why_high_value = "This is an external process invocation contract change with safety and compatibility impact."
+
+[[cases]]
+id = "hyper-3936"
+role = "high_value_positive"
+expected_detection = "detect"
+expected_judgement = "review_worthy_external_contract_change"
+max_wrapper_count = 5
+ground_truth_summary = "New public HTTP/1.0 keep-alive builder options change the client/server compatibility contract and security behavior."
+why_high_value = "This is a caller-visible public API and protocol-behavior change tied to a security advisory."
+
+[[cases]]
+id = "hyperium-hyper-518"
+role = "boundary_positive"
+expected_detection = "detect"
+expected_judgement = "needs_more_context_before_review_claim"
+max_wrapper_count = 1
+ground_truth_summary = "Public mock connector surface changed while verifier/connector behavior also changed, but wrapper-only evidence should stay conservative."
+why_high_value = "The API surface is real, but compatibility and lifecycle intent are under-specified in the wrapper."
+
+[[cases]]
+id = "tokio-rs-tokio-7922"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "This is a concurrency-ordering race fix, not an external contract case."
+why_high_value = "External contract wrapper should stay silent on internal scheduler ordering fixes."
+
+[[cases]]
+id = "hyper-4056"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "This is an integer-boundary fix, not an external contract change."
+why_high_value = "External contract wrapper should not absorb pointer-sized arithmetic fixes."
+
+[[cases]]
+id = "serde-rs-json-757"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "This is malformed-input error propagation, not an external contract case."
+why_high_value = "External contract wrapper should stay silent on parser panic-to-error fixes."
+
+[[cases]]
+id = "hyperium-hyper-3616"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "This is a lifecycle-ordering shutdown fix, not an external contract change."
+why_high_value = "External contract wrapper should not absorb internal shutdown-guard fixes without public contract evidence."

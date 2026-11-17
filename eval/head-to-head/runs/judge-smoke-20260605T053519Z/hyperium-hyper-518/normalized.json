@@ -1,0 +1,45 @@
+{
+  "case_id": "hyperium-hyper-518",
+  "ground_truth_draft": {
+    "expected_behavior": "Client::set_ssl_verifier must not drop the existing Connector (and its pooled connections / user-supplied settings); it must delegate the verifier into the live connector. To enable this, NetworkConnector gains a required set_ssl_verifier method that Pool/HttpConnector/ConnAdapter all forward.",
+    "high_value": true,
+    "primary_signal_ids": [
+      "lifecycle_ordering",
+      "external_contract"
+    ],
+    "rationale_from_pr_metadata": "Title: 'fix(client): keep the underlying connector when setting an SSL verifier'. Body: 'The client no longer drops the old Connector instance, along with its entire context (such as the settings and pooled connections in the case of a Pool connector); rather, it passes the SSL verifier on to the Connector so that it uses it for any future connections.' Closes #495. Two regression tests assert the old connector is NOT dropped and that set_ssl_verifier is delegated.",
+    "subject_files": [
+      "src/client/mod.rs",
+      "src/net.rs",
+      "src/client/pool.rs"
+    ]
+  },
+  "judgement_drafts": {
+    "ai_baseline": {
+      "actionable": true,
+      "missed_high_risk_count": 1,
+      "notes": "Rank1 nails the new required NetworkConnector method (external_contract). Rank2 (tagged state_transition) accurately describes the connector-discard lifecycle bug \u2014 substantively correct mechanism though tag is not lifecycle_ordering. Rank3 is supporting only.",
+      "top3_total": 3,
+      "top3_useful": 2,
+      "weak_only_top_risk_count": 0
+    },
+    "fact_only": {
+      "actionable": false,
+      "missed_high_risk_count": 2,
+      "notes": "Top item flags panic_like/public_api in src/mock.rs \u2014 that's the test harness ChannelMockConnector, not the bug. Items 2-3 are weak quality context (blast_radius, mixed_concerns) on the right file but with no mechanism. Misses the lifecycle drop and the trait-contract addition entirely.",
+      "top3_total": 3,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 0
+    },
+    "semantic_filtered": {
+      "actionable": false,
+      "missed_high_risk_count": 2,
+      "notes": "Single finding amplifies the fact-only mock.rs stability claim. Points reviewer at the test-mock connector rather than the actual lifecycle/trait change that motivated the PR. No semantic insight into the bug.",
+      "top3_total": 1,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 0
+    }
+  },
+  "manifest_hash": "06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208",
+  "model": "claude-opus-4-7"
+}

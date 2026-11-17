@@ -1,0 +1,781 @@
+diff --git a/src/client/dispatch.rs b/src/client/dispatch.rs
+index 2cbc1b92..6dbc8672 100644
+--- a/src/client/dispatch.rs
++++ b/src/client/dispatch.rs
+@@ -289,160 +289,163 @@ impl<T, U> Callback<T, U> {
+             Callback::NoRetry(ref mut tx) => {
+                 let _ = tx.take().unwrap().send(val.map_err(|e| e.error));
+             }
+         }
+     }
+ }
+ 
+ impl<T> TrySendError<T> {
+     /// Take the message from this error.
+     ///
+     /// The message will not always have been recovered. If an error occurs
+     /// after the message has been serialized onto the connection, it will not
+     /// be available here.
+     pub fn take_message(&mut self) -> Option<T> {
+         self.message.take()
+     }
+ 
+     /// Returns a reference to the recovered message.
+     ///
+     /// The message will not always have been recovered. If an error occurs
+     /// after the message has been serialized onto the connection, it will not
+     /// be available here.
+     pub fn message(&self) -> Option<&T> {
+         self.message.as_ref()
+     }
+ 
+     /// Consumes this to return the inner error.
+     pub fn into_error(self) -> crate::Error {
+         self.error
+     }
+ 
+     /// Returns a reference to the inner error.
+     pub fn error(&self) -> &crate::Error {
+         &self.error
+     }
+ }
+ 
+ #[cfg(feature = "http2")]
+ pin_project! {
+     pub struct SendWhen<B, E>
+     where
+         B: Body,
+         B: 'static,
+     {
+         #[pin]
+         pub(crate) when: ResponseFutMap<B, E>,
+         #[pin]
+         pub(crate) call_back: Option<Callback<Request<B>, Response<Incoming>>>,
+     }
+ }
+ 
+ #[cfg(feature = "http2")]
+ impl<B, E> Future for SendWhen<B, E>
+ where
+     B: Body + 'static,
+     E: crate::rt::bounds::Http2UpgradedExec<B::Data>,
+ {
+     type Output = ();
+ 
+     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+         let mut this = self.project();
+ 
+         let mut call_back = this.call_back.take().expect("polled after complete");
+ 
+         match Pin::new(&mut this.when).poll(cx) {
+             Poll::Ready(Ok(res)) => {
+                 call_back.send(Ok(res));
+                 Poll::Ready(())
+             }
+             Poll::Pending => {
+                 // check if the callback is canceled
+                 match call_back.poll_canceled(cx) {
+                     Poll::Ready(v) => v,
+                     Poll::Pending => {
+                         // Move call_back back to struct before return
+                         this.call_back.set(Some(call_back));
+                         return Poll::Pending;
+                     }
+                 };
+                 trace!("send_when canceled");
++                // Tell pipe_task to reset the h2 stream so that
++                // RST_STREAM is sent and flow-control capacity freed.
++                this.when.as_mut().cancel();
+                 Poll::Ready(())
+             }
+             Poll::Ready(Err((error, message))) => {
+                 call_back.send(Err(TrySendError { error, message }));
+                 Poll::Ready(())
+             }
+         }
+     }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     #[cfg(feature = "nightly")]
+     extern crate test;
+ 
+     use std::future::Future;
+     use std::pin::Pin;
+     use std::task::{Context, Poll};
+ 
+     use super::{channel, Callback, Receiver};
+ 
+     #[derive(Debug)]
+     struct Custom(#[allow(dead_code)] i32);
+ 
+     impl<T, U> Future for Receiver<T, U> {
+         type Output = Option<(T, Callback<T, U>)>;
+ 
+         fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+             self.poll_recv(cx)
+         }
+     }
+ 
+     /// Helper to check if the future is ready after polling once.
+     struct PollOnce<'a, F>(&'a mut F);
+ 
+     impl<F, T> Future for PollOnce<'_, F>
+     where
+         F: Future<Output = T> + Unpin,
+     {
+         type Output = Option<()>;
+ 
+         fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+             match Pin::new(&mut self.0).poll(cx) {
+                 Poll::Ready(_) => Poll::Ready(Some(())),
+                 Poll::Pending => Poll::Ready(None),
+             }
+         }
+     }
+ 
+     #[cfg(not(miri))]
+     #[tokio::test]
+     async fn drop_receiver_sends_cancel_errors() {
+         let _ = pretty_env_logger::try_init();
+ 
+         let (mut tx, mut rx) = channel::<Custom, ()>();
+ 
+         // must poll once for try_send to succeed
+         assert!(PollOnce(&mut rx).await.is_none(), "rx empty");
+ 
+         let promise = tx.try_send(Custom(43)).unwrap();
+         drop(rx);
+ 
+         let fulfilled = promise.await;
+         let err = fulfilled
+             .expect("fulfilled")
+             .expect_err("promise should error");
+         match (err.error.is_canceled(), err.message) {
+             (true, Some(_)) => (),
+             e => panic!("expected Error::Cancel(_), found {:?}", e),
+         }
+     }
+ 
+     #[cfg(not(miri))]
+     #[tokio::test]
+     async fn sender_checks_for_want_on_send() {
+         let (mut tx, mut rx) = channel::<Custom, ()>();
+ 
+         // one is allowed to buffer, second is rejected
+         let _ = tx.try_send(Custom(1)).expect("1 buffered");
+         tx.try_send(Custom(2)).expect_err("2 not ready");
+diff --git a/src/proto/h2/client.rs b/src/proto/h2/client.rs
+index f96d67d7..bf154e45 100644
+--- a/src/proto/h2/client.rs
++++ b/src/proto/h2/client.rs
+@@ -384,257 +384,294 @@ pin_project! {
+ }
+ 
+ impl<B, T, E> Future for H2ClientFuture<B, T, E>
+ where
+     B: http_body::Body + 'static,
+     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+     T: Read + Write + Unpin,
+     E: Http2UpgradedExec<B::Data>,
+ {
+     type Output = ();
+ 
+     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> std::task::Poll<Self::Output> {
+         let this = self.project();
+ 
+         match this {
+             H2ClientFutureProject::Pipe { pipe } => pipe.poll(cx),
+             H2ClientFutureProject::Send { send_when } => send_when.poll(cx),
+             H2ClientFutureProject::Task { task } => task.poll(cx),
+         }
+     }
+ }
+ 
+ struct FutCtx<B>
+ where
+     B: Body,
+ {
+     is_connect: bool,
+     eos: bool,
+     fut: ResponseFuture,
+     body_tx: SendStream<SendBuf<B::Data>>,
+     body: B,
+     cb: Callback<Request<B>, Response<IncomingBody>>,
+ }
+ 
+ impl<B: Body> Unpin for FutCtx<B> {}
+ 
+ pub(crate) struct ClientTask<B, E, T>
+ where
+     B: Body,
+     E: Unpin,
+ {
+     ping: ping::Recorder,
+     conn_drop_ref: ConnDropRef,
+     conn_eof: ConnEof,
+     executor: E,
+     h2_tx: SendRequest<SendBuf<B::Data>>,
+     req_rx: ClientRx<B>,
+     fut_ctx: Option<FutCtx<B>>,
+     marker: PhantomData<T>,
+ }
+ 
+ impl<B, E, T> ClientTask<B, E, T>
+ where
+     B: Body + 'static,
+     E: Http2ClientConnExec<B, T> + Unpin,
+     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+     T: Read + Write + Unpin,
+ {
+     pub(crate) fn is_extended_connect_protocol_enabled(&self) -> bool {
+         self.h2_tx.is_extended_connect_protocol_enabled()
+     }
+     pub(crate) fn current_max_send_streams(&self) -> usize {
+         self.h2_tx.current_max_send_streams()
+     }
+     pub(crate) fn current_max_recv_streams(&self) -> usize {
+         self.h2_tx.current_max_recv_streams()
+     }
+ }
+ 
+ pin_project! {
+     pub struct PipeMap<S>
+     where
+         S: Body,
+     {
+         #[pin]
+         pipe: PipeToSendStream<S>,
+         #[pin]
+         conn_drop_ref: Option<Sender<Infallible>>,
+         #[pin]
+         ping: Option<Recorder>,
++        cancel_rx: Option<oneshot::Receiver<()>>,
+     }
+ }
+ 
+ impl<B> Future for PipeMap<B>
+ where
+     B: http_body::Body,
+     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+ {
+     type Output = ();
+ 
+     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> std::task::Poll<Self::Output> {
+         let mut this = self.project();
+ 
++        // Check if the client cancelled the request (e.g. dropped the
++        // response future due to a timeout). If so, reset the h2 stream
++        // so that a RST_STREAM is sent and flow-control capacity is freed.
++        let cancel_result = this.cancel_rx.as_mut().map(|rx| Pin::new(rx).poll(cx));
++        match cancel_result {
++            Some(Poll::Ready(Ok(()))) => {
++                debug!("client request body send cancelled, resetting stream");
++                this.pipe.as_mut().send_reset(h2::Reason::CANCEL);
++                drop(this.conn_drop_ref.take().expect("Future polled twice"));
++                drop(this.ping.take().expect("Future polled twice"));
++                return Poll::Ready(());
++            }
++            Some(Poll::Ready(Err(_))) => {
++                // Sender dropped without cancelling (normal response or error).
++                // Stop polling the receiver.
++                *this.cancel_rx = None;
++            }
++            Some(Poll::Pending) | None => {}
++        }
++
+         match Pin::new(&mut this.pipe).poll(cx) {
+             Poll::Ready(result) => {
+                 if let Err(_e) = result {
+                     debug!("client request body error: {}", _e);
+                 }
+                 drop(this.conn_drop_ref.take().expect("Future polled twice"));
+                 drop(this.ping.take().expect("Future polled twice"));
+                 return Poll::Ready(());
+             }
+             Poll::Pending => (),
+         };
+         Poll::Pending
+     }
+ }
+ 
+ impl<B, E, T> ClientTask<B, E, T>
+ where
+     B: Body + 'static + Unpin,
+     B::Data: Send,
+     E: Http2ClientConnExec<B, T> + Clone + Unpin,
+     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+     T: Read + Write + Unpin,
+ {
+     fn poll_pipe(&mut self, f: FutCtx<B>, cx: &mut Context<'_>) {
+         let ping = self.ping.clone();
+ 
++        // A one-shot channel so that send_task can tell pipe_task to
++        // reset the stream when the client cancels the request.
++        let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
++
+         let send_stream = if !f.is_connect {
+             if !f.eos {
+                 let mut pipe = PipeToSendStream::new(f.body, f.body_tx);
+ 
+                 // eagerly see if the body pipe is ready and
+                 // can thus skip allocating in the executor
+                 match Pin::new(&mut pipe).poll(cx) {
+                     Poll::Ready(_) => (),
+                     Poll::Pending => {
+                         let conn_drop_ref = self.conn_drop_ref.clone();
+                         // keep the ping recorder's knowledge of an
+                         // "open stream" alive while this body is
+                         // still sending...
+                         let ping = ping.clone();
+ 
+                         let pipe = PipeMap {
+                             pipe,
+                             conn_drop_ref: Some(conn_drop_ref),
+                             ping: Some(ping),
++                            cancel_rx: Some(cancel_rx),
+                         };
+                         // Clear send task
+                         self.executor
+                             .execute_h2_future(H2ClientFuture::Pipe { pipe });
+                     }
+                 }
+             }
+ 
+             None
+         } else {
+             Some(f.body_tx)
+         };
+ 
+         self.executor.execute_h2_future(H2ClientFuture::Send {
+             send_when: SendWhen {
+                 when: ResponseFutMap {
+                     fut: f.fut,
+                     ping: Some(ping),
+                     send_stream: Some(send_stream),
+                     exec: self.executor.clone(),
++                    cancel_tx: Some(cancel_tx),
+                 },
+                 call_back: Some(f.cb),
+             },
+         });
+     }
+ }
+ 
+ pin_project! {
+     pub(crate) struct ResponseFutMap<B, E>
+     where
+         B: Body,
+         B: 'static,
+     {
+         #[pin]
+         fut: ResponseFuture,
+         ping: Option<Recorder>,
+         #[pin]
+         send_stream: Option<Option<SendStream<SendBuf<<B as Body>::Data>>>>,
+         exec: E,
++        cancel_tx: Option<oneshot::Sender<()>>,
++    }
++}
++
++impl<B: Body + 'static, E> ResponseFutMap<B, E> {
++    /// Signal the pipe_task to reset the stream (e.g. on client cancellation).
++    pub(crate) fn cancel(self: Pin<&mut Self>) {
++        if let Some(cancel_tx) = self.project().cancel_tx.take() {
++            let _ = cancel_tx.send(());
++        }
+     }
+ }
+ 
+ impl<B, E> Future for ResponseFutMap<B, E>
+ where
+     B: Body + 'static,
+     E: Http2UpgradedExec<B::Data>,
+ {
+     type Output = Result<Response<crate::body::Incoming>, (crate::Error, Option<Request<B>>)>;
+ 
+     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+         let mut this = self.as_mut().project();
+ 
+         let result = ready!(this.fut.poll(cx));
+ 
+         let ping = this.ping.take().expect("Future polled twice");
+         let send_stream = this.send_stream.take().expect("Future polled twice");
+ 
+         match result {
+             Ok(res) => {
+                 // record that we got the response headers
+                 ping.record_non_data();
+ 
+                 let content_length = headers::content_length_parse_all(res.headers());
+                 if let (Some(mut send_stream), StatusCode::OK) = (send_stream, res.status()) {
+                     if content_length.map_or(false, |len| len != 0) {
+                         warn!("h2 connect response with non-zero body not supported");
+ 
+                         send_stream.send_reset(h2::Reason::INTERNAL_ERROR);
+                         return Poll::Ready(Err((
+                             crate::Error::new_h2(h2::Reason::INTERNAL_ERROR.into()),
+                             None::<Request<B>>,
+                         )));
+                     }
+                     let (parts, recv_stream) = res.into_parts();
+                     let mut res = Response::from_parts(parts, IncomingBody::empty());
+ 
+                     let (pending, on_upgrade) = crate::upgrade::pending();
+ 
+                     let (h2_up, up_task) = super::upgrade::pair(send_stream, recv_stream, ping);
+                     self.exec.execute_upgrade(up_task);
+                     let upgraded = Upgraded::new(h2_up, Bytes::new());
+ 
+                     pending.fulfill(upgraded);
+                     res.extensions_mut().insert(on_upgrade);
+ 
+                     Poll::Ready(Ok(res))
+                 } else {
+                     let res = res.map(|stream| {
+                         let ping = ping.for_stream(&stream);
+                         IncomingBody::h2(stream, content_length.into(), ping)
+                     });
+                     Poll::Ready(Ok(res))
+                 }
+             }
+             Err(err) => {
+                 ping.ensure_not_timed_out().map_err(|e| (e, None))?;
+ 
+                 debug!("client response error: {}", err);
+                 Poll::Ready(Err((crate::Error::new_h2(err), None::<Request<B>>)))
+             }
+         }
+     }
+ }
+ 
+ impl<B, E, T> Future for ClientTask<B, E, T>
+ where
+     B: Body + 'static + Unpin,
+     B::Data: Send,
+     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+     E: Http2ClientConnExec<B, T> + Clone + Unpin,
+     T: Read + Write + Unpin,
+ {
+     type Output = crate::Result<Dispatched>;
+ 
+     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+         loop {
+             match ready!(self.h2_tx.poll_ready(cx)) {
+                 Ok(()) => (),
+                 Err(err) => {
+diff --git a/src/proto/h2/mod.rs b/src/proto/h2/mod.rs
+index 1a70b789..9d482615 100644
+--- a/src/proto/h2/mod.rs
++++ b/src/proto/h2/mod.rs
+@@ -27,160 +27,165 @@ cfg_server! {
+ }
+ 
+ /// Default initial stream window size defined in HTTP2 spec.
+ pub(crate) const SPEC_WINDOW_SIZE: u32 = 65_535;
+ 
+ // List of connection headers from RFC 9110 Section 7.6.1
+ //
+ // TE headers are allowed in HTTP/2 requests as long as the value is "trailers", so they're
+ // tested separately.
+ static CONNECTION_HEADERS: [HeaderName; 4] = [
+     HeaderName::from_static("keep-alive"),
+     HeaderName::from_static("proxy-connection"),
+     TRANSFER_ENCODING,
+     UPGRADE,
+ ];
+ 
+ fn strip_connection_headers(headers: &mut HeaderMap, is_request: bool) {
+     for header in &CONNECTION_HEADERS {
+         if headers.remove(header).is_some() {
+             warn!("Connection header illegal in HTTP/2: {}", header.as_str());
+         }
+     }
+ 
+     if is_request {
+         if headers
+             .get(TE)
+             .map_or(false, |te_header| te_header != "trailers")
+         {
+             warn!("TE headers not set to \"trailers\" are illegal in HTTP/2 requests");
+             headers.remove(TE);
+         }
+     } else if headers.remove(TE).is_some() {
+         warn!("TE headers illegal in HTTP/2 responses");
+     }
+ 
+     if let Some(header) = headers.remove(CONNECTION) {
+         warn!(
+             "Connection header illegal in HTTP/2: {}",
+             CONNECTION.as_str()
+         );
+         // A `Connection` header may have a comma-separated list of names of other headers that
+         // are meant for only this specific connection.
+         //
+         // Iterate these names and remove them as headers. Connection-specific headers are
+         // forbidden in HTTP2, as that information has been moved into frame types of the h2
+         // protocol.
+         if let Ok(header_contents) = header.to_str() {
+             for name in header_contents.split(',') {
+                 let name = name.trim();
+                 headers.remove(name);
+             }
+         }
+     }
+ }
+ 
+ // body adapters used by both Client and Server
+ 
+ pin_project! {
+     pub(crate) struct PipeToSendStream<S>
+     where
+         S: Body,
+     {
+         body_tx: SendStream<SendBuf<S::Data>>,
+         data_done: bool,
+         #[pin]
+         stream: S,
+     }
+ }
+ 
+ impl<S> PipeToSendStream<S>
+ where
+     S: Body,
+ {
+     fn new(stream: S, tx: SendStream<SendBuf<S::Data>>) -> PipeToSendStream<S> {
+         PipeToSendStream {
+             body_tx: tx,
+             data_done: false,
+             stream,
+         }
+     }
++
++    #[cfg(feature = "client")]
++    fn send_reset(self: Pin<&mut Self>, reason: h2::Reason) {
++        self.project().body_tx.send_reset(reason);
++    }
+ }
+ 
+ impl<S> Future for PipeToSendStream<S>
+ where
+     S: Body,
+     S::Error: Into<Box<dyn StdError + Send + Sync>>,
+ {
+     type Output = crate::Result<()>;
+ 
+     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+         let mut me = self.project();
+         loop {
+             // we don't have the next chunk of data yet, so just reserve 1 byte to make
+             // sure there's some capacity available. h2 will handle the capacity management
+             // for the actual body chunk.
+             me.body_tx.reserve_capacity(1);
+ 
+             if me.body_tx.capacity() == 0 {
+                 loop {
+                     match ready!(me.body_tx.poll_capacity(cx)) {
+                         Some(Ok(0)) => {}
+                         Some(Ok(_)) => break,
+                         Some(Err(e)) => return Poll::Ready(Err(crate::Error::new_body_write(e))),
+                         None => {
+                             // None means the stream is no longer in a
+                             // streaming state, we either finished it
+                             // somehow, or the remote reset us.
+                             return Poll::Ready(Err(crate::Error::new_body_write(
+                                 "send stream capacity unexpectedly closed",
+                             )));
+                         }
+                     }
+                 }
+             } else if let Poll::Ready(reason) = me
+                 .body_tx
+                 .poll_reset(cx)
+                 .map_err(crate::Error::new_body_write)?
+             {
+                 debug!("stream received RST_STREAM: {:?}", reason);
+                 return Poll::Ready(Err(crate::Error::new_body_write(::h2::Error::from(reason))));
+             }
+ 
+             match ready!(me.stream.as_mut().poll_frame(cx)) {
+                 Some(Ok(frame)) => {
+                     if frame.is_data() {
+                         let chunk = frame.into_data().unwrap_or_else(|_| unreachable!());
+                         let is_eos = me.stream.is_end_stream();
+                         trace!(
+                             "send body chunk: {} bytes, eos={}",
+                             chunk.remaining(),
+                             is_eos,
+                         );
+ 
+                         let buf = SendBuf::Buf(chunk);
+                         me.body_tx
+                             .send_data(buf, is_eos)
+                             .map_err(crate::Error::new_body_write)?;
+ 
+                         if is_eos {
+                             return Poll::Ready(Ok(()));
+                         }
+                     } else if frame.is_trailers() {
+                         // no more DATA, so give any capacity back
+                         me.body_tx.reserve_capacity(0);
+                         me.body_tx
+                             .send_trailers(frame.into_trailers().unwrap_or_else(|_| unreachable!()))
+                             .map_err(crate::Error::new_body_write)?;
+                         return Poll::Ready(Ok(()));
+                     } else {
+                         trace!("discarding unknown frame");
+                         // loop again
+                     }
+                 }
+                 Some(Err(e)) => return Poll::Ready(Err(me.body_tx.on_user_err(e))),
+                 None => {
+                     // no more frames means we're done here
+                     // but at this point, we haven't sent an EOS DATA, or
+                     // any trailers, so send an empty EOS DATA.
+                     return Poll::Ready(me.body_tx.send_eos_frame());
+                 }
+diff --git a/tests/client.rs b/tests/client.rs
+index 5f976b17..e8045932 100644
+--- a/tests/client.rs
++++ b/tests/client.rs
+@@ -2791,98 +2791,139 @@ mod conn {
+         let (client_io, server_io, _) = setup_duplex_test_server();
+ 
+         // spawn a server that reads but doesn't write
+         tokio::spawn(async move {
+             let sock = server_io;
+             drain_til_eof(sock).await.expect("server read");
+         });
+ 
+         let io = TokioIo::new(client_io);
+         let (mut client, conn) = conn::http1::Builder::new()
+             .handshake(io)
+             .await
+             .expect("handshake");
+ 
+         tokio::spawn(async move {
+             conn.await.expect("client conn shouldn't error");
+         });
+ 
+         let req = Request::post("/a")
+             .body(http_body_util::BodyExt::map_frame::<_, bytes::Bytes>(
+                 http_body_util::Full::<bytes::Bytes>::from("baguette"),
+                 |_| panic!("oopsie"),
+             ))
+             .unwrap();
+ 
+         let error = client.send_request(req).await.unwrap_err();
+ 
+         assert!(error.is_user());
+     }
+ 
+     async fn drain_til_eof<T: tokio::io::AsyncRead + Unpin>(mut sock: T) -> io::Result<()> {
+         let mut buf = [0u8; 1024];
+         loop {
+             let n = sock.read(&mut buf).await?;
+             if n == 0 {
+                 // socket closed, lets go!
+                 return Ok(());
+             }
+         }
+     }
+ 
+     struct DebugStream {
+         tcp: TokioIo<TcpStream>,
+         shutdown_called: bool,
+     }
+ 
+     impl hyper::rt::Write for DebugStream {
+         fn poll_shutdown(
+             mut self: Pin<&mut Self>,
+             cx: &mut Context<'_>,
+         ) -> Poll<Result<(), io::Error>> {
+             self.shutdown_called = true;
+             Pin::new(&mut self.tcp).poll_shutdown(cx)
+         }
+ 
+         fn poll_flush(
+             mut self: Pin<&mut Self>,
+             cx: &mut Context<'_>,
+         ) -> Poll<Result<(), io::Error>> {
+             Pin::new(&mut self.tcp).poll_flush(cx)
+         }
+ 
+         fn poll_write(
+             mut self: Pin<&mut Self>,
+             cx: &mut Context<'_>,
+             buf: &[u8],
+         ) -> Poll<Result<usize, io::Error>> {
+             Pin::new(&mut self.tcp).poll_write(cx, buf)
+         }
+     }
+ 
+     impl hyper::rt::Read for DebugStream {
+         fn poll_read(
+             mut self: Pin<&mut Self>,
+             cx: &mut Context<'_>,
+             buf: hyper::rt::ReadBufCursor<'_>,
+         ) -> Poll<io::Result<()>> {
+             Pin::new(&mut self.tcp).poll_read(cx, buf)
+         }
+     }
++
++    // https://github.com/hyperium/hyper/issues/4040
++    #[tokio::test]
++    async fn h2_pipe_task_cancelled_on_response_future_drop() {
++        let (client_io, server_io, _) = setup_duplex_test_server();
++        let (rst_tx, rst_rx) = oneshot::channel::<bool>();
++
++        tokio::spawn(async move {
++            let mut builder = h2::server::Builder::new();
++            builder.initial_window_size(0);
++            let mut h2 = builder.handshake::<_, Bytes>(server_io).await.unwrap();
++            let (req, _respond) = h2.accept().await.unwrap().unwrap();
++            tokio::spawn(async move {
++                let _ = poll_fn(|cx| h2.poll_closed(cx)).await;
++            });
++
++            let mut body = req.into_body();
++            let got_rst = tokio::time::timeout(Duration::from_secs(2), body.data())
++                .await
++                .map_or(false, |frame| matches!(frame, Some(Err(_)) | None));
++            let _ = rst_tx.send(got_rst);
++        });
++
++        let io = TokioIo::new(client_io);
++        let (mut client, conn) = conn::http2::Builder::new(TokioExecutor)
++            .handshake(io)
++            .await
++            .expect("http handshake");
++        tokio::spawn(async move {
++            let _ = conn.await;
++        });
++
++        let req = Request::post("http://localhost/")
++            .body(Full::new(Bytes::from(vec![b'x'; 50])))
++            .unwrap();
++        let res = tokio::time::timeout(Duration::from_millis(5), client.send_request(req)).await;
++        assert!(res.is_err(), "should timeout waiting for response");
++
++        let got_rst = rst_rx.await.expect("server task should complete");
++        assert!(got_rst, "server should receive RST_STREAM");
++    }
+ }
+ 
+ trait FutureHyperExt: TryFuture {
+     fn expect(self, msg: &'static str) -> Pin<Box<dyn Future<Output = Self::Ok>>>;
+ }
+ 
+ impl<F> FutureHyperExt for F
+ where
+     F: TryFuture + 'static,
+     F::Error: std::fmt::Debug,
+ {
+     fn expect(self, msg: &'static str) -> Pin<Box<dyn Future<Output = Self::Ok>>> {
+         Box::pin(
+             self.inspect_err(move |e| panic!("expect: {}; error={:?}", msg, e))
+                 .map(Result::unwrap),
+         )
+     }
+ }

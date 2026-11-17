@@ -1,0 +1,64 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Title identifies boundary value zero and panic in production connection pool logic.",
+    "id": "hyperium-hyper-3365",
+    "limitations": "Needs issue/follow-up context or test detail before frozen eval.",
+    "production_files": [
+      "src/client/pool.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "Client pool idle timeout set to zero could panic.",
+    "signal_ids": [
+      "assumption_boundary",
+      "non_happy_path"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/3365"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/hyperium/hyper/pull/3365",
+    "why_high_value": "Boundary config value can crash client connection pooling.",
+    "why_not_noise": "The failure mode is explicit and maps to one production file."
+  },
+  "pr": {
+    "baseRefName": "0.14.x",
+    "baseRefOid": "41eaf2042b8169d3dd067d49cfdbdaaf36678903",
+    "body": "From issue: https://github.com/hyperium/hyper/issues/2997\r\n\r\nTest Example:\r\n```rust\r\n#![deny(warnings)]\r\n#![warn(rust_2018_idioms)]\r\n\r\nuse hyper::body::Buf;\r\nuse serde::Deserialize;\r\n\r\n// A simple type alias so as to DRY.\r\ntype Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;\r\n\r\n#[tokio::main]\r\nasync fn main() -> Result<()> {\r\n    let url = \"http://jsonplaceholder.typicode.com/users\".parse().unwrap();\r\n    let users = fetch_json(url).await?;\r\n    // print users\r\n    println!(\"users: {:#?}\", users);\r\n\r\n    // print the sum of ids\r\n    let sum = users.iter().fold(0, |acc, user| acc + user.id);\r\n    println!(\"sum of ids: {}\", sum);\r\n    Ok(())\r\n}\r\n\r\nasync fn fetch_json(url: hyper::Uri) -> Result<Vec<User>> {\r\n    let client = hyper::client::Builder::default()\r\n        .pool_idle_timeout(Some(std::time::Duration::ZERO))\r\n        .build_http::<hyper::Body>();\r\n\r\n    // Fetch the url...\r\n    let res = client.get(url).await?;\r\n\r\n    // asynchronously aggregate the chunks of the body\r\n    let body = hyper::body::aggregate(res).await?;\r\n\r\n    // try to parse as json with serde_json\r\n    let users = serde_json::from_reader(body.reader())?;\r\n\r\n    Ok(users)\r\n}\r\n\r\n#[derive(Deserialize, Debug)]\r\nstruct User {\r\n    id: i32,\r\n    #[allow(unused)]\r\n    name: String,\r\n}\r\n\r\n```",
+    "comments": [],
+    "files": [
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/client/pool.rs"
+      }
+    ],
+    "headRefName": "patch-2",
+    "headRefOid": "cc3f25188d3f2b89b25c55c8c1cd76c05f272ba9",
+    "labels": [],
+    "mergedAt": "2023-10-20T11:07:44Z",
+    "number": 3365,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "cc3f25188d3f2b89b25c55c8c1cd76c05f272ba9"
+        },
+        "id": "PRR_kwDOAWaYQc5kuFfg",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2023-10-20T11:07:22Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix(client): panic when pool idle timeout set to zero",
+    "url": "https://github.com/hyperium/hyper/pull/3365"
+  }
+}

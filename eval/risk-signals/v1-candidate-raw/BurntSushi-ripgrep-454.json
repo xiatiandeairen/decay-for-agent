@@ -1,0 +1,144 @@
+{
+  "candidate": {
+    "id": "BurntSushi-ripgrep-454",
+    "repo": "BurntSushi/ripgrep",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/454"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "c50b8b4125dc7f1181944dd92d0aca97c2450421",
+    "body": "Fixes #451 \r\n\r\n```\r\n~/ripgrep$ cat tests/digits.txt \r\n1 2 3\r\n123\r\n~/ripgrep$ cargo run -- \"\\d\" tests/digits.txt -o --column\r\n    Finished dev [unoptimized + debuginfo] target(s) in 0.0 secs\r\n     Running `target/debug/rg '\\d' tests/digits.txt -o --column`\r\n1:1:1\r\n1:3:2\r\n1:5:3\r\n2:1:1\r\n2:2:2\r\n2:3:3\r\n~/ripgrep$ cargo run -- \"\\d+\" tests/digits.txt -o --column\r\n    Finished dev [unoptimized + debuginfo] target(s) in 0.0 secs\r\n     Running `target/debug/rg '\\d+' tests/digits.txt -o --column`\r\n1:1:1\r\n1:3:2\r\n1:5:3\r\n2:1:123\r\n\r\n```",
+    "comments": [
+      {
+        "author": {
+          "login": "kpp"
+        },
+        "authorAssociation": "NONE",
+        "body": "@BurntSushi ?",
+        "createdAt": "2017-04-21T11:42:26Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5NjE2OTIyOQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/454#issuecomment-296169229",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "BurntSushi"
+        },
+        "authorAssociation": "OWNER",
+        "body": "Looks good, thank you!",
+        "createdAt": "2017-04-21T12:12:02Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5NjE3NDQ0Nw==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/454#issuecomment-296174447",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 9,
+        "changeType": "MODIFIED",
+        "deletions": 18,
+        "path": "src/printer.rs"
+      },
+      {
+        "additions": 45,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/tests.rs"
+      }
+    ],
+    "headRefName": "bug_451_only_mathing_digits",
+    "headRefOid": "5854b69073442061d8add29633fbe5dea678943a",
+    "labels": [],
+    "mergedAt": "2017-04-21T12:11:56Z",
+    "number": 454,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "BurntSushi"
+        },
+        "authorAssociation": "OWNER",
+        "body": "Thanks for this fix! I think this mostly looks good, but I left some nits on the test. I also think we should include a regression test that roughly matches what the reporter initially presented.",
+        "commit": {
+          "oid": ""
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MzM3OTY4MDI=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "CHANGES_REQUESTED",
+        "submittedAt": "2017-04-20T15:12:53Z"
+      },
+      {
+        "author": {
+          "login": "kpp"
+        },
+        "authorAssociation": "NONE",
+        "body": "",
+        "commit": {
+          "oid": ""
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MzM3OTkwMDE=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2017-04-20T15:14:42Z"
+      },
+      {
+        "author": {
+          "login": "kpp"
+        },
+        "authorAssociation": "NONE",
+        "body": "",
+        "commit": {
+          "oid": ""
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MzM4MDAwNDA=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2017-04-20T15:18:15Z"
+      },
+      {
+        "author": {
+          "login": "kpp"
+        },
+        "authorAssociation": "NONE",
+        "body": "",
+        "commit": {
+          "oid": ""
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MzM4MDM0MDQ=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2017-04-20T15:29:38Z"
+      },
+      {
+        "author": {
+          "login": "BurntSushi"
+        },
+        "authorAssociation": "OWNER",
+        "body": "",
+        "commit": {
+          "oid": "5854b69073442061d8add29633fbe5dea678943a"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MzQwMDczNDg=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2017-04-21T12:11:50Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "Fix reiteration of the first found match with --only-mathing flag",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/454"
+  }
+}

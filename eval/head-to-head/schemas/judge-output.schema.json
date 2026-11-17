@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://decay.local/schemas/judge-output.schema.json",
+  "title": "Judge output v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["case_id", "model", "manifest_hash", "ground_truth_draft", "judgement_drafts"],
+  "properties": {
+    "case_id": {"type": "string", "minLength": 1},
+    "model": {"type": "string", "minLength": 1},
+    "manifest_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "ground_truth_draft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "high_value",
+        "primary_signal_ids",
+        "subject_files",
+        "expected_behavior",
+        "rationale_from_pr_metadata"
+      ],
+      "properties": {
+        "high_value": {"type": "boolean"},
+        "primary_signal_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "assumption_boundary",
+              "non_happy_path",
+              "state_transition",
+              "error_propagation",
+              "lifecycle_ordering",
+              "concurrency_ordering",
+              "external_contract",
+              "test_gap_for_risk_path"
+            ]
+          }
+        },
+        "subject_files": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "expected_behavior": {"type": "string", "minLength": 0, "maxLength": 400},
+        "rationale_from_pr_metadata": {"type": "string", "minLength": 0, "maxLength": 600}
+      }
+    },
+    "judgement_drafts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fact_only", "semantic_filtered", "ai_baseline"],
+      "properties": {
+        "fact_only": {"$ref": "#/definitions/mode_judgement"},
+        "semantic_filtered": {"$ref": "#/definitions/mode_judgement"},
+        "ai_baseline": {"$ref": "#/definitions/mode_judgement"}
+      }
+    }
+  },
+  "definitions": {
+    "mode_judgement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "top3_total",
+        "top3_useful",
+        "actionable",
+        "missed_high_risk_count",
+        "weak_only_top_risk_count",
+        "notes"
+      ],
+      "properties": {
+        "top3_total": {"type": "integer", "minimum": 0, "maximum": 3},
+        "top3_useful": {"type": "integer", "minimum": 0, "maximum": 3},
+        "actionable": {"type": "boolean"},
+        "missed_high_risk_count": {"type": "integer", "minimum": 0},
+        "weak_only_top_risk_count": {"type": "integer", "minimum": 0, "maximum": 1},
+        "notes": {"type": "string", "minLength": 0, "maxLength": 300}
+      }
+    }
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Previously accepted large-scale candidate; maintainer context called this tracking down critical cancellation behavior.",
+    "id": "hyper-4042",
+    "limitations": "Needs full lifecycle analysis before frozen eval.",
+    "production_files": [
+      "src/proto/h2/client.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "Dropping an HTTP/2 response future needed to cancel pipe_task and send RST_STREAM.",
+    "signal_ids": [
+      "lifecycle_ordering",
+      "state_transition",
+      "error_propagation"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/4042",
+      "eval/large-scale-50/candidates/open-source.toml"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/hyperium/hyper/pull/4042",
+    "why_high_value": "Cancellation and stream reset behavior affects task lifetime and peer-visible protocol state.",
+    "why_not_noise": "Concrete drop/cancel/RST_STREAM lifecycle risk."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "d51cb71569bbca7927b3828ef11e3bec4fa97eb4",
+    "body": "When the client drops the response future (e.g. due to a timeout), send_task detects the cancellation but does not notify pipe_task. The pipe_task continues to hold the h2 SendStream, preventing a RST_STREAM from being sent and keeping flow-control window capacity locked.\r\n\r\nAdd a oneshot channel between send_task and pipe_task. When send_task detects cancellation via poll_canceled, it signals pipe_task through the channel. pipe_task then calls send_reset(CANCEL) on the h2 SendStream, which sends RST_STREAM to the server and frees flow-control capacity.\r\n\r\nCloses #4040\r\n\r\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 3,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "src/client/dispatch.rs"
+      },
+      {
+        "additions": 37,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "src/proto/h2/client.rs"
+      },
+      {
+        "additions": 5,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "src/proto/h2/mod.rs"
+      },
+      {
+        "additions": 41,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/client.rs"
+      }
+    ],
+    "headRefName": "send_explicit_reset_on_response_future_drop",
+    "headRefOid": "4c38fdeab1dfacdca78e005dea8c51d2938db626",
+    "labels": [],
+    "mergedAt": "2026-03-31T13:40:12Z",
+    "number": 4042,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "927f8b25992b13bf2b030c8ea22d14996a70e34c"
+        },
+        "id": "PRR_kwDOAWaYQc7wo1aw",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-03-31T13:04:46Z"
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Great work tracking this down, thank you!",
+        "commit": {
+          "oid": "4c38fdeab1dfacdca78e005dea8c51d2938db626"
+        },
+        "id": "PRR_kwDOAWaYQc7wpsbP",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2026-03-31T13:38:48Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix(http2): cancel pipe_task and send RST_STREAM on response future drop",
+    "url": "https://github.com/hyperium/hyper/pull/4042"
+  }
+}

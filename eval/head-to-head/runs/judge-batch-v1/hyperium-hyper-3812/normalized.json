@@ -1,0 +1,43 @@
+{
+  "case_id": "hyperium-hyper-3812",
+  "ground_truth_draft": {
+    "expected_behavior": "In Buffered::parse, when parse_headers returns None with curr_len==0 (a 1xx informational response was just consumed and emptied the buffer), partial_len must be reset to None instead of leaving the previous Some(_) value, otherwise the next parse uses stale partial_len and intermittently panics.",
+    "high_value": true,
+    "primary_signal_ids": [
+      "state_transition",
+      "non_happy_path"
+    ],
+    "rationale_from_pr_metadata": "PR title 'fix(http1): fix intermitent panic parsing partial headers' and 'Closes #3811' identify this as a panic-fix bug. The added comment '1xx gobled some bytes' and new test client_100_then_http09 (sends 100 Continue then HTTP/0.9-style body in separate writes) anchor the mechanism: 1xx consumption empties read_buf, and partial_len carried over from prior partial state must be cleared on the empty-buffer non-happy path.",
+    "subject_files": [
+      "src/proto/h1/io.rs"
+    ]
+  },
+  "judgement_drafts": {
+    "ai_baseline": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "Rank 1 is direct/high on state_transition, pinpointing the new else-branch resetting partial_len on the 1xx-consumed empty-buffer path \u2014 exactly the bug fix. Ranks 2-3 are supporting but coherent.",
+      "top3_total": 3,
+      "top3_useful": 1,
+      "weak_only_top_risk_count": 0
+    },
+    "fact_only": {
+      "actionable": false,
+      "missed_high_risk_count": 2,
+      "notes": "Only a low-confidence supporting 'prod_change_with_tests' signal. No mention of parse state, partial_len, or 1xx path; would not change reviewer action.",
+      "top3_total": 1,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 1
+    },
+    "semantic_filtered": {
+      "actionable": false,
+      "missed_high_risk_count": 2,
+      "notes": "Paraphrases the same low-confidence quality evidence as fact_only; no direct mechanism, no reference to partial_len reset or 1xx informational path.",
+      "top3_total": 1,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 1
+    }
+  },
+  "manifest_hash": "06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208",
+  "model": "claude-opus-4-7"
+}

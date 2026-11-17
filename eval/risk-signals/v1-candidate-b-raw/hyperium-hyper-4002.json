@@ -1,0 +1,54 @@
+{
+  "candidate": {
+    "id": "hyperium-hyper-4002",
+    "repo": "hyperium/hyper",
+    "url": "https://github.com/hyperium/hyper/pull/4002"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "32b76f4742df62f4419b9f87ef464bc0b1c21e72",
+    "body": "close https://github.com/hyperium/hyper/issues/3923\r\n\r\nIn this PR, I changed the server implementation to use the h1 parser configuration for parsing the request. This will allow us to utilize the configuration we set in the context.\r\n\r\nhttps://github.com/hyperium/hyper/pull/3929 This allows us to set this configuration, but it isn't actually used in the server implementation.",
+    "comments": [],
+    "files": [
+      {
+        "additions": 60,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/proto/h1/role.rs"
+      }
+    ],
+    "headRefName": "poe-patch-parser",
+    "headRefOid": "eaf3dfb16038a161bcfc560d26cae8b63a9d3955",
+    "labels": [],
+    "mergedAt": "2026-01-05T14:13:00Z",
+    "number": 4002,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Excellent work, thank you!",
+        "commit": {
+          "oid": "eaf3dfb16038a161bcfc560d26cae8b63a9d3955"
+        },
+        "id": "PRR_kwDOAWaYQc7YL9EA",
+        "includesCreatedEdit": false,
+        "reactionGroups": [
+          {
+            "content": "HEART",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "state": "APPROVED",
+        "submittedAt": "2026-01-05T14:11:08Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix: use h1 parser config when parsing server req",
+    "url": "https://github.com/hyperium/hyper/pull/4002"
+  }
+}

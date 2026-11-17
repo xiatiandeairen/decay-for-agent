@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "hyperium-hyper-3242"
+repo = "hyperium/hyper"
+pr = 3242
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "HTTP/2 Extended CONNECT missing required pseudo-headers."
+
+[fact_only]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 1
+notes = "True risk is HTTP/2 Extended CONNECT missing required pseudo-headers. Fact output flags worsened src/client/client.rs:send_request, the relevant request-construction path."
+
+[semantic_filtered]
+top3_total = 2
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Semantic preserves send_request complexity and ties test review to client request path. It remains structural but actionable."
+
+[comparison]
+semantic_improved_ranking = true
+semantic_reduced_noise = true
+semantic_introduced_noise = false
+notes = "Semantic improves by contextualizing the weak prod/test evidence."

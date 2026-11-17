@@ -1,0 +1,105 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Enriched candidate; production HTTP/2 client/dispatch/proto files changed.",
+    "id": "hyperium-hyper-3967",
+    "limitations": "Needs issue/review context.",
+    "production_files": [
+      "src/client/conn/http2.rs",
+      "src/client/dispatch.rs",
+      "src/proto/h2/client.rs",
+      "src/proto/h2/mod.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "HTTP/2 CONNECT upgrade internals needed fixing.",
+    "signal_ids": [
+      "state_transition",
+      "lifecycle_ordering",
+      "external_contract"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/3967",
+      "eval/semantic-candidates/enriched.jsonl"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/hyperium/hyper/pull/3967",
+    "why_high_value": "CONNECT upgrade affects protocol state and external behavior.",
+    "why_not_noise": "Specific HTTP/2 upgrade internals, not broad refactor."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "f9f8f44058745d23fa52abf51b96b61ee7665642",
+    "body": "This refactors the way hyper handles HTTP/2 CONNECT / Extended CONNECT. Before, an uninhabited enum was used to try to prevent sending of the `Buf` type once the STREAM had been upgraded. However, the way it was originally written was incorrect, and will eventually have compilation issues.\r\n\r\nThe change here is to spawn an extra task and use a channel to bridge the IO operations of the `Upgraded` object to be `Cursor` buffers in the new task.\r\n\r\nref: https://github.com/rust-lang/rust/issues/147588\r\nCloses #3966 \r\n\r\nBREAKING CHANGE: The HTTP/2 client connection no longer allows an executor that can not spawn itself.\r\n  \r\n  This was an oversight originally. The client connection will now include spawning a future that keeps a copy of the executor to spawn other futures. Thus, if it is `!Send`, it needs to spawn `!Send` futures. The likelihood of executors that match the previously allowed behavior should be very remote.\r\n\r\n  There is also technically a semver break in here, which is that the `Http2ClientConnExec` trait no longer dyn-compatible, because it now expects to be `Clone`. This should not break usage of the `conn` builder, because it already separately had `E: Clone` bounds. If someone were using `dyn Http2ClientConnExec`, that will break. However, there is no purpose for doing so, and it is not usable otherwise, since the trait only exists to propagate bounds into hyper. Thus, the breakage should not affect anyone.\r\n\r\n",
+    "comments": [
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "@nox you originally implemented this, I presume because you needed it in an application. Would you be able to take a look, or even try the branch in your app?",
+        "createdAt": "2025-10-28T14:00:43Z",
+        "id": "IC_kwDOAWaYQc7OB_w_",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3967#issuecomment-3456629823",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 0,
+        "changeType": "MODIFIED",
+        "deletions": 38,
+        "path": "src/client/conn/http2.rs"
+      },
+      {
+        "additions": 4,
+        "changeType": "MODIFIED",
+        "deletions": 3,
+        "path": "src/client/dispatch.rs"
+      },
+      {
+        "additions": 20,
+        "changeType": "MODIFIED",
+        "deletions": 21,
+        "path": "src/proto/h2/client.rs"
+      },
+      {
+        "additions": 3,
+        "changeType": "MODIFIED",
+        "deletions": 190,
+        "path": "src/proto/h2/mod.rs"
+      },
+      {
+        "additions": 23,
+        "changeType": "MODIFIED",
+        "deletions": 18,
+        "path": "src/proto/h2/server.rs"
+      },
+      {
+        "additions": 280,
+        "changeType": "ADDED",
+        "deletions": 0,
+        "path": "src/proto/h2/upgrade.rs"
+      },
+      {
+        "additions": 52,
+        "changeType": "MODIFIED",
+        "deletions": 18,
+        "path": "src/rt/bounds.rs"
+      }
+    ],
+    "headRefName": "push-nvrlowqkoptx",
+    "headRefOid": "b57bd9646ed379aa3581beb0d6ae287757e260c6",
+    "labels": [],
+    "mergedAt": "2025-11-10T16:20:31Z",
+    "number": 3967,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "fix(http2): fix internals of HTTP/2 CONNECT upgrades",
+    "url": "https://github.com/hyperium/hyper/pull/3967"
+  }
+}

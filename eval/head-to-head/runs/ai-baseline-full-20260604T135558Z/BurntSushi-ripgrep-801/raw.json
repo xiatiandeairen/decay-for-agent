@@ -1,0 +1,12 @@
+{
+  "case_id": "BurntSushi-ripgrep-801",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"BurntSushi-ripgrep-801\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"state_transition\",\"subject\":\"ignore/src/dir.rs:has_any_ignore_rules\",\"evidence_refs\":[\"opts.ignore || opts.git_global || opts.git_ignore\\n                    || opts.git_exclude || has_custom_ignore_files\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Gating condition for matched_ignore now also considers custom_ignore_filenames; previously custom ignores were skipped when all builtin ignore flags were false, changing matched() behavior for callers using only custom ignore files.\"},{\"rank\":2,\"risk_signal\":\"assumption_boundary\",\"subject\":\"ignore/src/dir.rs:matched\",\"evidence_refs\":[\"if self.has_any_ignore_rules() {\",\"let has_custom_ignore_files = !self.0.custom_ignore_filenames.is_empty();\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"New precondition relies on custom_ignore_filenames vector being authoritative; if custom_ignore_matcher could be non-empty while filenames list is empty (or vice-versa), matched_ignore may be skipped or invoked incorrectly.\"},{\"rank\":3,\"risk_signal\":\"test_gap_for_risk_path\",\"subject\":\"ignore/src/walk.rs:custom_ignore_exclusive_use\",\"evidence_refs\":[\"fn custom_ignore_exclusive_use() {\",\"builder.ignore(false);\\n        builder.git_ignore(false);\\n        builder.git_global(false);\\n        builder.git_exclude(false);\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"New test only covers serial walk_collect via assert_paths (which also runs parallel) for single custom ignore; no coverage of mixing whitelist overrides, explicit_ignores, or nested parent directories with all builtin flags off.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

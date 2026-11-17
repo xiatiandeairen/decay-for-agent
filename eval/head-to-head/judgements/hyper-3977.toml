@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyper-3977"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "Reverts #3952: poll_loop's yield condition no longer considers wants_write_again, so the loop yields whenever wants_read_again is false. This re-removes the guard that the prior fix added to prevent a rare missed write-side wakeup/deadlock when body_rx still has data but no read is expected. The dedicated ready_stream test and its Cargo.toml entry are also deleted."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 3
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Correctly pinpoints poll_loop wakeup-guard removal (citing the deleted deadlock-warning comment), the yield-condition change, and the deleted ready_stream test as a coverage gap. Both primary signals covered. [mechanical-flag: ai_baseline: ai=3, mechanical=2]"

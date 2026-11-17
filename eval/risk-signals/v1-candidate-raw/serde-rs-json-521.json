@@ -1,0 +1,55 @@
+{
+  "candidate": {
+    "id": "serde-rs-json-521",
+    "repo": "serde-rs/json",
+    "url": "https://github.com/serde-rs/json/pull/521"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "6ac689b2b327ed00e8a56d812a5c860177ab10dd",
+    "body": "Fixes #520.",
+    "comments": [],
+    "files": [
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "Cargo.toml"
+      },
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/number.rs"
+      },
+      {
+        "additions": 6,
+        "changeType": "ADDED",
+        "deletions": 0,
+        "path": "tests/regression.rs"
+      },
+      {
+        "additions": 18,
+        "changeType": "ADDED",
+        "deletions": 0,
+        "path": "tests/regression/issue520.rs"
+      },
+      {
+        "additions": 1,
+        "changeType": "ADDED",
+        "deletions": 0,
+        "path": "tests/regression/mod.rs"
+      }
+    ],
+    "headRefName": "f",
+    "headRefOid": "d79c8e5f1e38011f5e85f394baf3f33f2c3d679c",
+    "labels": [],
+    "mergedAt": "2019-02-28T09:07:20Z",
+    "number": 521,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "Fix adjacently tagged f32 roundtrip regression",
+    "url": "https://github.com/serde-rs/json/pull/521"
+  }
+}

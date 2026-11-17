@@ -1,0 +1,84 @@
+{
+  "case_id": "serde-rs-json-303",
+  "refs": [
+    {
+      "detail": {
+        "body": "Use case from IRC:\r\n\r\n> **\\<Yorhel>** Hi everyone. Does serde_json support decoding JSON with trailing data?\r\n> **\\<Yorhel>** E.g. I'd like to do something in the form of: let (val, data) = serde_json::from_str(\"{}garbage\");\r\n> **\\<Yorhel>** With val being the parsed Value and data pointing to the trailing \"garbage\"\r\n\r\nBincode has a bytes_read() method on their Deserializer that would support this much better than serde_json. You can kind of fake it like this:\r\n\r\n```rust\r\nlet mut bytes = 0;\r\nlet stream = StreamDeserializer::new(s.bytes().map(|b| { bytes += 1; Ok(b) });\r\n/* deserialize a thing */\r\nlet garbage = &s[bytes..];\r\n```\r\n\r\nBut there must be a better way for us to support this.",
+        "closedAt": "2017-04-13T16:34:03Z",
+        "comments": [
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Specifically, I think the number we want is the number of bytes so far deserialized into a successful T.\r\n\r\n```rust\r\nlet data = b\"[0] [1] [\";\r\n\r\nlet de = serde_json::Deserializer::from_slice(data);\r\nlet mut stream = de.into_iter::<Vec<i32>>();\r\nassert_eq!(0, stream.byte_offset());\r\n\r\nprintln!(\"{:?}\", stream.next()); // [0]\r\nassert_eq!(3, stream.byte_offset());\r\n\r\nprintln!(\"{:?}\", stream.next()); // [1]\r\nassert_eq!(7, stream.byte_offset());\r\n\r\nprintln!(\"{:?}\", stream.next()); // error\r\nassert_eq!(8, stream.byte_offset());\r\n\r\n// If err.is_eof(), can join the remaining data to new data and continue.\r\nlet remaining = &data[stream.byte_offset()..];\r\n```",
+            "createdAt": "2017-04-12T16:07:43Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI5MzYyNzcxNg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/serde-rs/json/issues/183#issuecomment-293627716",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Here is a related use case from @vorner that I believe is addressed by byte_offset().\r\n\r\n> **\\<vorner>** Hello. I'm trying to create a JSONRPC server, so I want to combine tokio and serde_json. The problem is, I'd either need something like from_slice which would tell me how many bytes it used, or StreamDeserializer that would work on top of Futures' Stream instead of an iterator. Is there a way to get something like that?\r\n> **\\<oli_obk_>** vorner: can't you tunr a Stream into an Iterator that simply stops on encountering an error?\r\n> **\\<oli_obk_>** vorner: it might even store the error inside the iterator itself, so you can obtain it afterwards\r\n> **\\<vorner>** oli_obk_: Stops? Like ends?\r\n> **\\<vorner>** I don't worry about errors.\r\n> **\\<vorner>** The problem is, the data arrive in chunks over network.\r\n> **\\<vorner>** So it returns NotReady\r\n> **\\<oli_obk_>** ohh...\r\n> **\\<vorner>** I need to stop processing that Stream *for now* and resume later when more data arrive.\r\n> **\\<vorner>** Which might be in the middle of an object\r\n> **\\<oli_obk_>** hmm... don't we have an impl for \\`Read\\`\r\n> **\\<oli_obk_>** vorner: \\`from_reader\\` might be more up your alley\r\n> **\\<vorner>** Yes. But that'd expect the Read to block, not return EWOULDBLOCK (or what is the exact name).\r\n> **\\<oli_obk_>** vorner: oh, just return Ok(0) ^^\r\n> **\\<oli_obk_>** actually that's probably wrong\r\n> **\\<vorner>** That means EOF, doesn't it?\r\n> **\\<oli_obk_>** maybe ErrorKind::WouldBlock\r\n> **\\<oli_obk_>** https://doc.rust-lang.org/nightly/std/io/enum.ErrorKind.html\r\n> **\\<vorner>** Yes, that'd be the one. But if I return that, the StreamReader would give up forever.\r\n> **\\<vorner>** But that WouldBlock means only „No data for now, try again later“\r\n> **\\<vorner>** The other option is to feed it with a buffer of whatever data I have. But then I'd need to know how much it consumed.\r\n> **\\<oli_obk_>** vorner: yea, that's not implemented yet.. I guess blocking is out of the option?\r\n> **\\<oli_obk_>** I mean... you could wrap the blocking op in an async\r\n> **\\<vorner>** Well, then I'd need to have a thread for each connection.\r\n> **\\<oli_obk_>** oh\r\n> **\\<dtolnay>** vorner: this might work for getting number of bytes processed by a StreamDeserializer https://github.com/serde-rs/json/issues/183\r\n> **\\<vorner>** Now I'm assuming I get one object per line, so I split the input into lines. But it is possible to have a multi-line objects, at least the jsonrpc specs have such examples.\r\n> **\\<vorner>** dtolnay: Yes, that one looks like a reasonable workaround.\r\n> **\\<dtolnay>** after each successful read from the stream, you would need to save the bytes read and after the first error (which might be because of a cut-off object) you can keep the rest of the data for next time\r\n> **\\<vorner>** At least until I get enough time to understand the internals of the StreamDeserializer and make a Stream-based version. But it seems I find bits to improve on every library I touch. Likely because Rust is so young.",
+            "createdAt": "2017-04-12T18:04:33Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI5MzY2MDQ2MQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/183#issuecomment-293660461",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Fixed in #303.",
+            "createdAt": "2017-04-13T16:34:02Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI5Mzk1Mjg3OA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/183#issuecomment-293952878",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2017-01-03T18:24:10Z",
+        "labels": [
+          {
+            "color": "84b6eb",
+            "description": "",
+            "id": "MDU6TGFiZWwyMTM0OTkyNTk=",
+            "name": "enhancement"
+          }
+        ],
+        "number": 183,
+        "state": "CLOSED",
+        "title": "Expose number of bytes processed by StreamDeserializer",
+        "url": "https://github.com/serde-rs/json/issues/183"
+      },
+      "target": {
+        "number": 183,
+        "reason": "StreamDeserializer byte offset feature request and behavior context.",
+        "repo": "serde-rs/json",
+        "type": "issue"
+      }
+    }
+  ]
+}

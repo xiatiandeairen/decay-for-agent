@@ -1,0 +1,12 @@
+{
+  "case_id": "hyper-4061",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"hyper-4061\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"state_transition\",\"subject\":\"src/proto/h2/mod.rs:PipeToSendStream::poll\",\"evidence_refs\":[\"if me.buffered_data.is_some() {\",\"*me.buffered_data = Some(Peeked {\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Poll loop restructured around new buffered_data state: a chunk polled from body is stashed in self across Pending returns from poll_capacity, splitting frame-poll and send-data across iterations.\"},{\"rank\":2,\"risk_signal\":\"lifecycle_ordering\",\"subject\":\"src/proto/h2/mod.rs:PipeToSendStream::poll\",\"evidence_refs\":[\"if let Poll::Ready(reason) = me\\n                .body_tx\\n                .poll_reset(cx)\",\"// Register for RST_STREAM notification while we wait for the next\\n            // body chunk or for send capacity\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"poll_reset moved to the top of every loop iteration (previously only in the else branch when capacity>0); reset is now observed before draining buffered_data, dropping any pending chunk.\"},{\"rank\":3,\"risk_signal\":\"assumption_boundary\",\"subject\":\"src/proto/h2/mod.rs:PipeToSendStream::poll\",\"evidence_refs\":[\"if len == 0 {\",\"// Zero-length data frames need no capacity; send\\n                            // them straight through\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"New zero-length fast path bypasses reserve_capacity entirely and sends directly via send_data; relies on h2 accepting zero-byte DATA frames (including is_eos) without any flow-control reservation.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

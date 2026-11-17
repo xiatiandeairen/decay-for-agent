@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "tokio-rs-tokio-7922"
+repo = "tokio-rs/tokio"
+pr = 7922
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Blocking pool shutdown race."
+
+[fact_only]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 1
+notes = "True risk is blocking pool shutdown race. Fact output flags worsened complexity in tokio/src/runtime/blocking/pool.rs:run, the relevant function/path, plus generic prod/test context. Useful but not a concurrency-semantic explanation."
+
+[semantic_filtered]
+top3_total = 2
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Semantic keeps the direct worsened-function evidence and ties prod/test context to that file. It still lacks race mechanism, but the review action is focused enough."
+
+[comparison]
+semantic_improved_ranking = true
+semantic_reduced_noise = true
+semantic_introduced_noise = false
+notes = "Semantic improves by linking the weak quality signal to direct complexity evidence instead of leaving it standalone."

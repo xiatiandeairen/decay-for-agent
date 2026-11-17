@@ -1,0 +1,74 @@
+# Decay Evidence
+
+- evidence_count: 5
+
+## Top risk findings
+
+```text
+1. [high] src/body/incoming.rs
+   semantic error_propagation_changed return Poll::Ready(None);
+   action: review caller-visible error propagation and require focused regression coverage
+2. [high] src/body/incoming.rs
+   semantic error_propagation_changed Poll::Ready(None)
+   action: review caller-visible error propagation and require focused regression coverage
+3. [high] src/body/incoming.rs:poll_frame
+   complexity worsened
+   action: review function complexity and add focused regression tests
+4. [medium] src/body/incoming.rs
+   quality prod_change_with_tests
+   action: review changed behavior invariants and confirm regression tests cover the risky path
+```
+
+## Complexity impact
+
+```text
+changed_functions=1 evidence=1 partial=false diagnostics=0
+  value_note=direct for worsened/new_high_risk; touched_existing_risky is supporting context, not proof of current-diff risk
+- id=1 category=complexity kind=worsened subject=function source=diff_hunk+ast_snapshot confidence=high value=direct
+  function=src/body/incoming.rs:poll_frame
+  metrics=cognitive:19->21, cyclomatic:12->13, statements:20->24
+```
+
+## Coverage impact
+
+```text
+evidence=0
+  value_note=scan coverage gaps limit decay confidence; this is tool coverage evidence, not proof of product code risk
+```
+
+## Stability impact
+
+```text
+evidence=0
+  value_note=direct for newly introduced unsafe/panic/public-api evidence; move/refactor diffs can weaken this signal
+```
+
+## Quality impact
+
+```text
+evidence=1 prod_files_changed=1 test_files_changed=1 docs_files_changed=0
+  value_note=missing-test signals are supporting evidence; broad scope signals are weak unless paired with direct diff evidence
+- id=2 category=quality kind=prod_change_with_tests subject=production code changed with test changes source=quality confidence=low value=supporting
+  file=src/body/incoming.rs
+```
+
+## Semantic impact
+
+```text
+evidence=2
+  value_note=high confidence only for explicit scanned patterns; this is not general semantic understanding
+- id=3 category=semantic kind=error_propagation_changed subject=return Poll::Ready(None); source=semantic_diff confidence=medium value=direct
+  file=src/body/incoming.rs
+- id=4 category=semantic kind=error_propagation_changed subject=Poll::Ready(None) source=semantic_diff confidence=medium value=direct
+  file=src/body/incoming.rs
+```
+
+## History impact
+
+```text
+evidence=1
+  value_note=context only; excluded from top risk unless direct diff evidence exists
+- id=5 category=history kind=recently_bugfixed_area subject=test(lib): fix unused warnings due to feature gating test imports (#3997) source=git_history confidence=low value=context
+  file=src/body/incoming.rs
+recorded=true changeset=1 evidence_saved=5
+```

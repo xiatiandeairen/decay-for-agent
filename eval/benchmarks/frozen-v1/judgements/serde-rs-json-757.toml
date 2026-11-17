@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "serde-rs-json-757"
+repo = "serde-rs/json"
+pr = 757
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "RawValue invalid UTF-8 panic."
+
+[fact_only]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "True risk is RawValue invalid UTF-8 panic. Fact output only reports generic prod_change_with_tests on src/read.rs."
+
+[semantic_filtered]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "Semantic states read.rs behavior and tests but misses invalid UTF-8 and RawValue panic mechanism."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = false
+notes = "No material improvement."

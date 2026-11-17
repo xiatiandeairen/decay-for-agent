@@ -1,0 +1,138 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Enriched candidate; revert/fix regression in runtime blocking pool.",
+    "id": "tokio-rs-tokio-8057",
+    "limitations": "Needs original PR #7757 comparison.",
+    "production_files": [
+      "tokio/src/runtime/blocking/mod.rs",
+      "tokio/src/runtime/blocking/pool.rs",
+      "tokio/src/runtime/blocking/sharded_queue.rs"
+    ],
+    "repo": "tokio-rs/tokio",
+    "risk_summary": "Reverted #7757 to fix regression in spawn_blocking.",
+    "signal_ids": [
+      "concurrency_ordering",
+      "lifecycle_ordering"
+    ],
+    "source_refs": [
+      "https://github.com/tokio-rs/tokio/pull/8057",
+      "eval/semantic-candidates/enriched.jsonl"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/tokio-rs/tokio/pull/8057",
+    "why_high_value": "Revert of runtime concurrency behavior is strong risk evidence.",
+    "why_not_noise": "Specific regression fix in spawn_blocking."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "57ff47ab589bfb4dab6766de78655ffef4fb250b",
+    "body": "This reverts commit 1604bc335157be9a131e24cfde55cab3c90ebc92.\r\n\r\nUnfortunately, this commit introduced a regression that causes programs using `spawn_blocking` to hang (see #8056). To fix the regression, we need to undo this change and publish a v1.52.1 release as soon as possible.\r\n\r\nIn the future, we may wish to bring back a sharded queue for `spawn_blocking` tasks, either based on the implementation added in #7757 or a new one. However, since this is a substantial change to the runtime internals, I think such a change should probably be done as an unstable, opt-in `tokio::runtime::Builder` setting initially, so that we don't regress existing users. I had hoped we could do this now, but unfortunately, the sharded queue implementation from #7757 is kind of tightly coupled with the rest of the `spawn_blocking` machinery and cannot be easily swapped out --- and the hang still occurs with `NUM_SHARDS` set to 1, so there isn't an easy way to turn it on and off. Therefore, in the interest of getting a fix out ASAP, this is just a simple revert.\r\n\r\nFixes #8056",
+    "comments": [
+      {
+        "author": {
+          "login": "hawkw"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "The remaining CI failures are due to CI picking up `rustc` 1.95, which changes some error messages and breaks some of the `trybuild` tests. I've opened a separate PR (#8058) to fix that.",
+        "createdAt": "2026-04-16T20:14:19Z",
+        "id": "IC_kwDOBAsbdc7-GdOh",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8057#issuecomment-4263105441",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 3,
+        "path": "spellcheck.dic"
+      },
+      {
+        "additions": 0,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "tokio/src/runtime/blocking/mod.rs"
+      },
+      {
+        "additions": 119,
+        "changeType": "MODIFIED",
+        "deletions": 95,
+        "path": "tokio/src/runtime/blocking/pool.rs"
+      },
+      {
+        "additions": 0,
+        "changeType": "DELETED",
+        "deletions": 238,
+        "path": "tokio/src/runtime/blocking/sharded_queue.rs"
+      },
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "tokio/src/runtime/context.rs"
+      },
+      {
+        "additions": 5,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "tokio/src/util/rand.rs"
+      }
+    ],
+    "headRefName": "eliza/unclaude-blocking-queue",
+    "headRefOid": "2d97cdf553d3e5480ab98e95b856c92c20475761",
+    "labels": [
+      {
+        "color": "f7e101",
+        "description": "Area: The main tokio crate",
+        "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+        "name": "A-tokio"
+      },
+      {
+        "color": "f7b101",
+        "description": "Module: tokio/runtime",
+        "id": "MDU6TGFiZWwxOTkzNTEwODc4",
+        "name": "M-runtime"
+      },
+      {
+        "color": "f7b101",
+        "description": "Module: tokio/task/blocking",
+        "id": "MDU6TGFiZWwxOTkzNTQxNTU5",
+        "name": "M-blocking"
+      },
+      {
+        "color": "D9C0F1",
+        "description": "Run loom `runtime::spawn_blocking` tests on this PR",
+        "id": "LA_kwDOBAsbdc8AAAACZB7wvw",
+        "name": "R-loom-blocking"
+      }
+    ],
+    "mergedAt": "2026-04-16T20:57:23Z",
+    "number": 8057,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Unfortunate, but thanks.\n\ncc @alex",
+        "commit": {
+          "oid": "2d97cdf553d3e5480ab98e95b856c92c20475761"
+        },
+        "id": "PRR_kwDOBAsbdc710ZzR",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2026-04-16T20:18:25Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "rt: revert #7757 to fix regression in `spawn_blocking`",
+    "url": "https://github.com/tokio-rs/tokio/pull/8057"
+  }
+}

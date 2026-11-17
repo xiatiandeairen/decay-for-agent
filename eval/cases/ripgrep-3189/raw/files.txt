@@ -1,0 +1,7 @@
+M	CHANGELOG.md
+M	crates/core/flags/hiargs.rs
+M	crates/ignore/src/default_types.rs
+M	crates/ignore/src/dir.rs
+M	crates/ignore/src/gitignore.rs
+M	crates/ignore/src/walk.rs
+M	tests/regression.rs

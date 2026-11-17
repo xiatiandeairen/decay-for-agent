@@ -1,0 +1,12 @@
+{
+  "case_id": "tokio-rs-tokio-8021",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"tokio-rs-tokio-8021\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"state_transition\",\"subject\":\"tokio/src/sync/batch_semaphore.rs:forget_permits\",\"evidence_refs\":[\"(new << Self::PERMIT_SHIFT) | (curr_bits & Self::CLOSED),\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"forget_permits CAS now preserves the CLOSED bit when writing back permits; previously the shift-left would clobber CLOSED, silently re-opening a closed semaphore.\"},{\"rank\":2,\"risk_signal\":\"concurrency_ordering\",\"subject\":\"tokio/src/sync/batch_semaphore.rs:forget_permits\",\"evidence_refs\":[\"match self.permits.compare_exchange_weak(\\n                curr_bits,\\n-                new << Self::PERMIT_SHIFT,\\n+                (new << Self::PERMIT_SHIFT) | (curr_bits & Self::CLOSED),\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"CLOSED bit read from curr_bits inside the CAS loop; relies on compare_exchange_weak to retry if another thread sets CLOSED between load and CAS, which it does via Err(actual).\"},{\"rank\":3,\"risk_signal\":\"test_gap_for_risk_path\",\"subject\":\"tokio/tests/sync_semaphore.rs:forget_closed\",\"evidence_refs\":[\"fn forget_closed() {\",\"sem.close();\\n            let actual_sub = sem.forget_permits(sub);\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"New tests cover forget_permits / add_permits under closed state single-threaded, but no concurrent test exercises close() racing with forget_permits where CLOSED bit preservation matters.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

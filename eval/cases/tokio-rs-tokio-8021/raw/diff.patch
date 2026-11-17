@@ -1,0 +1,371 @@
+diff --git a/tokio/src/sync/batch_semaphore.rs b/tokio/src/sync/batch_semaphore.rs
+index 8662af3b..6447cefb 100644
+--- a/tokio/src/sync/batch_semaphore.rs
++++ b/tokio/src/sync/batch_semaphore.rs
+@@ -307,161 +307,161 @@ impl Semaphore {
+         let mut wakers = WakeList::new();
+         let mut lock = Some(waiters);
+         let mut is_empty = false;
+         while rem > 0 {
+             let mut waiters = lock.take().unwrap_or_else(|| self.waiters.lock());
+             'inner: while wakers.can_push() {
+                 // Was the waiter assigned enough permits to wake it?
+                 match waiters.queue.last() {
+                     Some(waiter) => {
+                         if !waiter.assign_permits(&mut rem) {
+                             break 'inner;
+                         }
+                     }
+                     None => {
+                         is_empty = true;
+                         // If we assigned permits to all the waiters in the queue, and there are
+                         // still permits left over, assign them back to the semaphore.
+                         break 'inner;
+                     }
+                 };
+                 let mut waiter = waiters.queue.pop_back().unwrap();
+                 if let Some(waker) =
+                     unsafe { waiter.as_mut().waker.with_mut(|waker| (*waker).take()) }
+                 {
+                     wakers.push(waker);
+                 }
+             }
+ 
+             if rem > 0 && is_empty {
+                 let permits = rem;
+                 assert!(
+                     permits <= Self::MAX_PERMITS,
+                     "cannot add more than MAX_PERMITS permits ({})",
+                     Self::MAX_PERMITS
+                 );
+                 let prev = self.permits.fetch_add(rem << Self::PERMIT_SHIFT, Release);
+                 let prev = prev >> Self::PERMIT_SHIFT;
+                 assert!(
+                     prev + permits <= Self::MAX_PERMITS,
+                     "number of added permits ({}) would overflow MAX_PERMITS ({})",
+                     rem,
+                     Self::MAX_PERMITS
+                 );
+ 
+                 // add remaining permits back
+                 #[cfg(all(tokio_unstable, feature = "tracing"))]
+                 self.resource_span.in_scope(|| {
+                     tracing::trace!(
+                     target: "runtime::resource::state_update",
+                     permits = rem,
+                     permits.op = "add",
+                     )
+                 });
+ 
+                 rem = 0;
+             }
+ 
+             drop(waiters); // release the lock
+ 
+             wakers.wake_all();
+         }
+ 
+         assert_eq!(rem, 0);
+     }
+ 
+     /// Decrease a semaphore's permits by a maximum of `n`.
+     ///
+     /// If there are insufficient permits and it's not possible to reduce by `n`,
+     /// return the number of permits that were actually reduced.
+     pub(crate) fn forget_permits(&self, n: usize) -> usize {
+         if n == 0 {
+             return 0;
+         }
+ 
+         let mut curr_bits = self.permits.load(Acquire);
+         loop {
+             let curr = curr_bits >> Self::PERMIT_SHIFT;
+             let new = curr.saturating_sub(n);
+             match self.permits.compare_exchange_weak(
+                 curr_bits,
+-                new << Self::PERMIT_SHIFT,
++                (new << Self::PERMIT_SHIFT) | (curr_bits & Self::CLOSED),
+                 AcqRel,
+                 Acquire,
+             ) {
+                 Ok(_) => return std::cmp::min(curr, n),
+                 Err(actual) => curr_bits = actual,
+             };
+         }
+     }
+ 
+     fn poll_acquire(
+         &self,
+         cx: &mut Context<'_>,
+         num_permits: usize,
+         node: Pin<&mut Waiter>,
+         queued: bool,
+     ) -> Poll<Result<(), AcquireError>> {
+         let mut acquired = 0;
+ 
+         let needed = if queued {
+             node.state.load(Acquire) << Self::PERMIT_SHIFT
+         } else {
+             num_permits << Self::PERMIT_SHIFT
+         };
+ 
+         let mut lock = None;
+         // First, try to take the requested number of permits from the
+         // semaphore.
+         let mut curr = self.permits.load(Acquire);
+         let mut waiters = loop {
+             // Has the semaphore closed?
+             if curr & Self::CLOSED > 0 {
+                 return Poll::Ready(Err(AcquireError::closed()));
+             }
+ 
+             let mut remaining = 0;
+             let total = curr
+                 .checked_add(acquired)
+                 .expect("number of permits must not overflow");
+             let (next, acq) = if total >= needed {
+                 let next = curr - (needed - acquired);
+                 (next, needed >> Self::PERMIT_SHIFT)
+             } else {
+                 remaining = (needed - acquired) - curr;
+                 (0, curr >> Self::PERMIT_SHIFT)
+             };
+ 
+             if remaining > 0 && lock.is_none() {
+                 // No permits were immediately available, so this permit will
+                 // (probably) need to wait. We'll need to acquire a lock on the
+                 // wait queue before continuing. We need to do this _before_ the
+                 // CAS that sets the new value of the semaphore's `permits`
+                 // counter. Otherwise, if we subtract the permits and then
+                 // acquire the lock, we might miss additional permits being
+                 // added while waiting for the lock.
+                 lock = Some(self.waiters.lock());
+             }
+ 
+             match self.permits.compare_exchange(curr, next, AcqRel, Acquire) {
+                 Ok(_) => {
+                     acquired += acq;
+                     if remaining == 0 {
+                         if !queued {
+                             #[cfg(all(tokio_unstable, feature = "tracing"))]
+                             self.resource_span.in_scope(|| {
+                                 tracing::trace!(
+                                     target: "runtime::resource::state_update",
+                                     permits = acquired,
+                                     permits.op = "sub",
+                                 );
+                                 tracing::trace!(
+                                     target: "runtime::resource::async_op::state_update",
+                                     permits_obtained = acquired,
+                                     permits.op = "add",
+                                 )
+                             });
+ 
+                             return Poll::Ready(Ok(()));
+                         } else if lock.is_none() {
+                             break self.waiters.lock();
+                         }
+diff --git a/tokio/tests/sync_semaphore.rs b/tokio/tests/sync_semaphore.rs
+index ab4b316c..d976f1e6 100644
+--- a/tokio/tests/sync_semaphore.rs
++++ b/tokio/tests/sync_semaphore.rs
+@@ -1,145 +1,199 @@
+ #![cfg(feature = "sync")]
+ 
+ #[cfg(all(target_family = "wasm", not(target_os = "wasi")))]
+ use wasm_bindgen_test::wasm_bindgen_test as test;
+ 
+ use std::sync::Arc;
+ use tokio::sync::Semaphore;
+ 
+ #[test]
+ fn no_permits() {
+     // this should not panic
+     Semaphore::new(0);
+ }
+ 
+ #[test]
+ fn try_acquire() {
+     let sem = Semaphore::new(1);
+     {
+         let p1 = sem.try_acquire();
+         assert!(p1.is_ok());
+         let p2 = sem.try_acquire();
+         assert!(p2.is_err());
+     }
+     let p3 = sem.try_acquire();
+     assert!(p3.is_ok());
+ }
+ 
+ #[tokio::test]
+ #[cfg(feature = "full")]
+ async fn acquire() {
+     let sem = Arc::new(Semaphore::new(1));
+     let p1 = sem.try_acquire().unwrap();
+     let sem_clone = sem.clone();
+     let j = tokio::spawn(async move {
+         let _p2 = sem_clone.acquire().await;
+     });
+     drop(p1);
+     j.await.unwrap();
+ }
+ 
+ #[tokio::test]
+ #[cfg(feature = "full")]
+ async fn add_permits() {
+     let sem = Arc::new(Semaphore::new(0));
+     let sem_clone = sem.clone();
+     let j = tokio::spawn(async move {
+         let _p2 = sem_clone.acquire().await;
+     });
+     sem.add_permits(1);
+     j.await.unwrap();
+ }
+ 
++#[test]
++fn add_permits_open() {
++    for size in 0..4 {
++        for add in 0..4 {
++            let sem = Arc::new(Semaphore::new(size));
++            sem.add_permits(add);
++            assert_eq!(sem.available_permits(), size + add);
++            assert!(!sem.is_closed());
++        }
++    }
++}
++
++#[test]
++fn add_permits_closed() {
++    for size in 0..4 {
++        for add in 0..4 {
++            let sem = Arc::new(Semaphore::new(size));
++            sem.close();
++            sem.add_permits(add);
++            assert_eq!(sem.available_permits(), size + add);
++            assert!(sem.is_closed());
++        }
++    }
++}
++
+ #[test]
+ fn forget() {
+     let sem = Arc::new(Semaphore::new(1));
+     {
+         let p = sem.try_acquire().unwrap();
+         assert_eq!(sem.available_permits(), 0);
+         p.forget();
+         assert_eq!(sem.available_permits(), 0);
+     }
+     assert_eq!(sem.available_permits(), 0);
+     assert!(sem.try_acquire().is_err());
+ }
+ 
++#[test]
++fn forget_open() {
++    for size in 0..4 {
++        for sub in 0..4 {
++            let sem = Arc::new(Semaphore::new(size));
++            let actual_sub = sem.forget_permits(sub);
++            let expected = size.saturating_sub(sub);
++            assert_eq!(sem.available_permits(), expected, "case: {size}-{sub}");
++            assert_eq!(actual_sub, size - expected);
++            assert!(!sem.is_closed());
++        }
++    }
++}
++
++#[test]
++fn forget_closed() {
++    for size in 0..4 {
++        for sub in 0..4 {
++            let sem = Arc::new(Semaphore::new(size));
++            sem.close();
++            let actual_sub = sem.forget_permits(sub);
++            let expected = size.saturating_sub(sub);
++            assert_eq!(sem.available_permits(), expected, "case: {size}-{sub}");
++            assert_eq!(actual_sub, size - expected);
++            assert!(sem.is_closed());
++        }
++    }
++}
++
+ #[test]
+ fn merge() {
+     let sem = Arc::new(Semaphore::new(3));
+     {
+         let mut p1 = sem.try_acquire().unwrap();
+         assert_eq!(sem.available_permits(), 2);
+         let p2 = sem.try_acquire_many(2).unwrap();
+         assert_eq!(sem.available_permits(), 0);
+         p1.merge(p2);
+         assert_eq!(sem.available_permits(), 0);
+     }
+     assert_eq!(sem.available_permits(), 3);
+ }
+ 
+ #[test]
+ #[cfg(not(target_family = "wasm"))] // No stack unwinding on wasm targets
+ #[should_panic]
+ fn merge_unrelated_permits() {
+     let sem1 = Arc::new(Semaphore::new(3));
+     let sem2 = Arc::new(Semaphore::new(3));
+     let mut p1 = sem1.try_acquire().unwrap();
+     let p2 = sem2.try_acquire().unwrap();
+     p1.merge(p2);
+ }
+ 
+ #[test]
+ fn split() {
+     let sem = Semaphore::new(5);
+     let mut p1 = sem.try_acquire_many(3).unwrap();
+     assert_eq!(sem.available_permits(), 2);
+     assert_eq!(p1.num_permits(), 3);
+     let mut p2 = p1.split(1).unwrap();
+     assert_eq!(sem.available_permits(), 2);
+     assert_eq!(p1.num_permits(), 2);
+     assert_eq!(p2.num_permits(), 1);
+     let p3 = p1.split(0).unwrap();
+     assert_eq!(p3.num_permits(), 0);
+     drop(p1);
+     assert_eq!(sem.available_permits(), 4);
+     let p4 = p2.split(1).unwrap();
+     assert_eq!(p2.num_permits(), 0);
+     assert_eq!(p4.num_permits(), 1);
+     assert!(p2.split(1).is_none());
+     drop(p2);
+     assert_eq!(sem.available_permits(), 4);
+     drop(p3);
+     assert_eq!(sem.available_permits(), 4);
+     drop(p4);
+     assert_eq!(sem.available_permits(), 5);
+ }
+ 
+ #[tokio::test]
+ #[cfg(feature = "full")]
+ async fn stress_test() {
+     let sem = Arc::new(Semaphore::new(5));
+     let mut join_handles = Vec::new();
+     for _ in 0..1000 {
+         let sem_clone = sem.clone();
+         join_handles.push(tokio::spawn(async move {
+             let _p = sem_clone.acquire().await;
+         }));
+     }
+     for j in join_handles {
+         j.await.unwrap();
+     }
+     // there should be exactly 5 semaphores available now
+     let _p1 = sem.try_acquire().unwrap();
+     let _p2 = sem.try_acquire().unwrap();
+     let _p3 = sem.try_acquire().unwrap();
+     let _p4 = sem.try_acquire().unwrap();
+     let _p5 = sem.try_acquire().unwrap();
+     assert!(sem.try_acquire().is_err());
+ }
+ 
+ #[test]
+ fn add_max_amount_permits() {
+     let s = tokio::sync::Semaphore::new(0);
+     s.add_permits(tokio::sync::Semaphore::MAX_PERMITS);
+     assert_eq!(s.available_permits(), tokio::sync::Semaphore::MAX_PERMITS);
+ }

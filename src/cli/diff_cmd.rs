@@ -234,11 +234,14 @@ fn print_impact_report(
         "  value_note=direct for worsened/new_high_risk; touched_existing_risky is supporting context, not proof of current-diff risk"
     );
     for (idx, evidence) in report.evidences.iter().enumerate() {
+        let (confidence, value) = impact::evidence_labels("complexity", evidence.kind.as_str());
         println!(
-            "- id={} category=complexity kind={} subject=function source={}",
+            "- id={} category=complexity kind={} subject=function source={} confidence={} value={}",
             idx + 1,
             evidence.kind.as_str(),
-            evidence.source
+            evidence.source,
+            confidence,
+            value
         );
         println!("  function={}:{}", evidence.file, evidence.function);
         if let (Some(previous), Some(current)) = (evidence.previous, evidence.current) {
@@ -254,18 +257,38 @@ fn print_impact_report(
         }
     }
     println!();
+    println!("Coverage impact:");
+    println!("  evidence={}", report.coverage_evidence.len());
+    println!("  value_note=scan coverage gaps limit decay confidence; this is tool coverage evidence, not proof of product code risk");
+    for (idx, evidence) in report.coverage_evidence.iter().enumerate() {
+        let (confidence, value) = impact::evidence_labels("coverage", evidence.kind.as_str());
+        println!(
+            "- id={} category=coverage kind={} subject={} source={} confidence={} value={}",
+            report.evidences.len() + idx + 1,
+            evidence.kind,
+            evidence.subject,
+            evidence.source,
+            confidence,
+            value
+        );
+        println!("  file={}", evidence.file);
+    }
+    println!();
     println!("Stability impact:");
     println!("  evidence={}", report.stability_evidence.len());
     println!(
         "  value_note=direct for newly introduced unsafe/panic/public-api evidence; move/refactor diffs can weaken this signal"
     );
     for (idx, evidence) in report.stability_evidence.iter().enumerate() {
+        let (confidence, value) = impact::evidence_labels("stability", evidence.kind.as_str());
         println!(
-            "- id={} category=stability kind={} subject={} source={}",
-            report.evidences.len() + idx + 1,
+            "- id={} category=stability kind={} subject={} source={} confidence={} value={}",
+            report.evidences.len() + report.coverage_evidence.len() + idx + 1,
             evidence.kind,
             evidence.subject,
-            evidence.source
+            evidence.source,
+            confidence,
+            value
         );
         println!("  file={}", evidence.file);
     }
@@ -282,12 +305,19 @@ fn print_impact_report(
         "  value_note=missing-test signals are supporting evidence; broad scope signals are weak unless paired with direct diff evidence"
     );
     for (idx, evidence) in report.quality.records.iter().enumerate() {
+        let (confidence, value) = impact::evidence_labels("quality", evidence.kind.as_str());
         println!(
-            "- id={} category=quality kind={} subject={} source={}",
-            report.evidences.len() + report.stability_evidence.len() + idx + 1,
+            "- id={} category=quality kind={} subject={} source={} confidence={} value={}",
+            report.evidences.len()
+                + report.coverage_evidence.len()
+                + report.stability_evidence.len()
+                + idx
+                + 1,
             evidence.kind,
             evidence.subject,
-            evidence.source
+            evidence.source,
+            confidence,
+            value
         );
         println!("  file={}", evidence.file);
     }
@@ -298,16 +328,20 @@ fn print_impact_report(
         "  value_note=high confidence only for explicit scanned patterns; this is not general semantic understanding"
     );
     for (idx, evidence) in report.semantic_evidence.iter().enumerate() {
+        let (confidence, value) = impact::evidence_labels("semantic", evidence.kind.as_str());
         println!(
-            "- id={} category=semantic kind={} subject={} source={}",
+            "- id={} category=semantic kind={} subject={} source={} confidence={} value={}",
             report.evidences.len()
+                + report.coverage_evidence.len()
                 + report.stability_evidence.len()
                 + report.quality.records.len()
                 + idx
                 + 1,
             evidence.kind,
             evidence.subject,
-            evidence.source
+            evidence.source,
+            confidence,
+            value
         );
         println!("  file={}", evidence.file);
     }
@@ -318,9 +352,11 @@ fn print_impact_report(
         "  value_note=context only; excluded from top risk unless direct diff evidence exists"
     );
     for (idx, evidence) in report.history.records.iter().enumerate() {
+        let (confidence, value) = impact::evidence_labels("history", evidence.kind.as_str());
         println!(
-            "- id={} category=history kind={} subject={} source={}",
+            "- id={} category=history kind={} subject={} source={} confidence={} value={}",
             report.evidences.len()
+                + report.coverage_evidence.len()
                 + report.stability_evidence.len()
                 + report.quality.records.len()
                 + report.semantic_evidence.len()
@@ -328,7 +364,9 @@ fn print_impact_report(
                 + 1,
             evidence.kind,
             evidence.subject,
-            evidence.source
+            evidence.source,
+            confidence,
+            value
         );
         println!("  file={}", evidence.file);
     }
@@ -423,6 +461,10 @@ fn risk_findings(report: &impact::ImpactReport) -> Vec<RiskFinding> {
             .iter()
             .filter(|kind| **kind == "public_api_added")
             .count();
+        let public_api_function_added_count = kinds
+            .iter()
+            .filter(|kind| **kind == "public_api_function_added")
+            .count();
         let migration_count = kinds
             .iter()
             .filter(|kind| **kind == "storage_migration_touched")
@@ -435,7 +477,11 @@ fn risk_findings(report: &impact::ImpactReport) -> Vec<RiskFinding> {
             87
         } else if unsafe_count > 0 || panic_count > 0 {
             85
-        } else if protocol_count > 0 || public_api_count > 0 || public_api_added_count > 0 {
+        } else if protocol_count > 0
+            || public_api_count > 0
+            || public_api_added_count > 0
+            || public_api_function_added_count > 0
+        {
             83
         } else if ffi_count > 0 {
             70
@@ -457,6 +503,11 @@ fn risk_findings(report: &impact::ImpactReport) -> Vec<RiskFinding> {
         }
         if public_api_added_count > 0 {
             parts.push(format!("{public_api_added_count} public API added"));
+        }
+        if public_api_function_added_count > 0 {
+            parts.push(format!(
+                "{public_api_function_added_count} public API function added"
+            ));
         }
         if migration_count > 0 {
             parts.push(format!("{migration_count} storage migration touched"));
@@ -488,12 +539,25 @@ fn risk_findings(report: &impact::ImpactReport) -> Vec<RiskFinding> {
             score: 45,
         });
     }
+    for evidence in &report.coverage_evidence {
+        findings.push(RiskFinding {
+            severity: "medium",
+            title: evidence.file.clone(),
+            detail: format!("coverage {}", evidence.kind),
+            action: "treat decay output as partial and inspect this diff manually or update parser coverage",
+            score: 58,
+        });
+    }
     for evidence in &report.quality.records {
         let (score, action) = match evidence.kind.as_str() {
             "sensitive_test_gap" => (88, "add or justify missing tests for sensitive code"),
             "test_gap" => (
                 65,
                 "add focused tests or document why existing coverage is enough",
+            ),
+            "prod_change_with_tests" => (
+                52,
+                "review changed behavior invariants and confirm regression tests cover the risky path",
             ),
             "blast_radius" | "mixed_concerns" => {
                 (60, "split the diff or document the shared review rationale")
@@ -539,6 +603,60 @@ fn risk_findings(report: &impact::ImpactReport) -> Vec<RiskFinding> {
                 "high",
                 82,
                 "review behavior boundary change and add regression coverage for old and new defaults",
+                format!("semantic {} {}", evidence.kind, evidence.subject),
+            ),
+            "boundary_condition_changed" => (
+                "high",
+                82,
+                "review changed boundary condition and require focused edge-case tests",
+                format!("semantic {} {}", evidence.kind, evidence.subject),
+            ),
+            "boundary_expression_changed" => (
+                "high",
+                82,
+                "review changed boundary expression and require focused edge-case tests",
+                format!("semantic {} {}", evidence.kind, evidence.subject),
+            ),
+            "integer_platform_boundary_changed" => (
+                "high",
+                86,
+                "review pointer-sized integer boundary behavior on 32-bit and large-input cases",
+                format!("semantic {} {}", evidence.kind, evidence.subject),
+            ),
+            "concurrency_ordering_changed" => (
+                "high",
+                85,
+                "review wakeup, shutdown, or completion ordering and require focused concurrency regression coverage",
+                format!("semantic {} {}", evidence.kind, evidence.subject),
+            ),
+            "lifecycle_ordering_changed" => (
+                "high",
+                84,
+                "review shutdown/upgrade/cancel ordering and require regression coverage for cleanup or terminal-path behavior",
+                format!("semantic {} {}", evidence.kind, evidence.subject),
+            ),
+            "panic_to_error_propagation_changed" => (
+                "high",
+                84,
+                "review malformed-input error propagation and require regression coverage",
+                format!("semantic {} {}", evidence.kind, evidence.subject),
+            ),
+            "readiness_error_propagation_changed" => (
+                "high",
+                84,
+                "review error-path readiness registration and require regression coverage for surfaced socket errors",
+                format!("semantic {} {}", evidence.kind, evidence.subject),
+            ),
+            "drop_error_propagation_changed" => (
+                "high",
+                84,
+                "review drop-path incomplete error surfacing and require regression coverage for truncated body behavior",
+                format!("semantic {} {}", evidence.kind, evidence.subject),
+            ),
+            "error_propagation_changed" => (
+                "high",
+                80,
+                "review caller-visible error propagation and require focused regression coverage",
                 format!("semantic {} {}", evidence.kind, evidence.subject),
             ),
             _ => (

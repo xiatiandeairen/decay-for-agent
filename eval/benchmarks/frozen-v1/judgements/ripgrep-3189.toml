@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "ripgrep-3189"
+repo = "BurntSushi/ripgrep"
+pr = 3189
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Global gitignore absolute-path behavior."
+
+[fact_only]
+top3_total = 3
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "True risk is global gitignore absolute-path behavior. Fact output flags ignore/src/walk.rs build complexity and panic-like boundary, useful adjacent path evidence, but misses absolute-path/global gitignore semantics."
+
+[semantic_filtered]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "Semantic usefully combines walk.rs complexity and panic-like evidence, but still misses global gitignore absolute-path contract."
+
+[comparison]
+semantic_improved_ranking = true
+semantic_reduced_noise = false
+semantic_introduced_noise = false
+notes = "Semantic improves ranking of direct evidence but not semantic recall."

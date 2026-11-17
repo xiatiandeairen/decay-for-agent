@@ -1,0 +1,5 @@
+{
+  "case_id": "tokio-rs-tokio-7922",
+  "reason": "raw output is not valid JSON: Expecting ',' delimiter: line 1 column 1977 (char 1976)",
+  "status": "ai-baseline-failed"
+}

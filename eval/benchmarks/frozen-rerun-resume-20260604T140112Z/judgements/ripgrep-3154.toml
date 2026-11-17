@@ -1,0 +1,63 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+version = "risk-eval-judgement.v1"
+case_id = "ripgrep-3154"
+repo = "BurntSushi/ripgrep"
+pr = 3154
+status = "pending"
+judge = ""
+judged_at = ""
+ground_truth_summary = "PCRE2 multiline files-with-matches output correctness."
+
+[ground_truth]
+gate_role = ""
+high_value = false
+primary_signal_ids = []
+expected_behavior = ""
+forbidden_claims = []
+required_context = []
+notes = ""
+
+[fact_only]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+detection = ""
+value_verdict = ""
+evidence_valid = false
+overclaim = false
+forbidden_claim_breached = false
+unsupported_scope_silence = false
+next_check_useful = false
+notes = ""
+
+[semantic_filtered]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+detection = ""
+value_verdict = ""
+evidence_valid = false
+overclaim = false
+forbidden_claim_breached = false
+unsupported_scope_silence = false
+next_check_useful = false
+notes = ""
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = false
+semantic_net_value = ""
+notes = ""
+
+[gate]
+ground_truth_complete = false
+forbidden_claims_checked = false
+holdout_eligible = false
+notes = ""

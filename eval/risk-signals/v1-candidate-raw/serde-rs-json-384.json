@@ -1,0 +1,144 @@
+{
+  "candidate": {
+    "id": "serde-rs-json-384",
+    "repo": "serde-rs/json",
+    "url": "https://github.com/serde-rs/json/pull/384"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "a4b22237623aef2cada796e7851da7f493fce293",
+    "body": "Currently StreamDeserializer only supports objects and arrays, because it couldn't handle things like `truefalse` properly before. This PR changes the behavior of the parser so that it checks after parsing an identifier whether there's any trailing characters that aren't one of ` \\n\\t\\r\"[]{},:` or EOF, and if there is it will give an error. This means it will error immediately when parsing `truefalse` instead of first emitting `true` followed by an error.\r\n\r\nRelated: https://github.com/serde-rs/json/pull/301\r\n\r\ncc @dtolnay \r\n\r\n",
+    "comments": [
+      {
+        "author": {
+          "login": "bouk"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Thanks for the reply!\r\n\r\n* I am creating a tool that ingests a stream of JSON values, transforms them, and outputs them again. I am just using this crate as a JSON parser for this purpose, not using any of Serde's features. I foresee some use cases that would involve any kind of JSON value, so I figured I would take a stab at implementing this feature\r\n* will do\r\n* Yes, I just realized this is totally possible by moving the end of value check into the next() function of StreamDeserializer. Will make that change\r\n\r\nI will make the required changes later this week",
+        "createdAt": "2017-11-29T10:31:25Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDM0NzgxODczMA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/384#issuecomment-347818730",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Sounds good. I am on board with this change once the documentation is updated and the logic moves into StreamDeserializer. Thanks!",
+        "createdAt": "2017-11-29T16:51:35Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDM0NzkyMzI5Mw==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/384#issuecomment-347923293",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "bouk"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "@dtolnay I've updated the documentation and behavior, let me know what you think. Open to suggestions for the docs, it came out a bit awkward (but I'm not sure how else to describe it)",
+        "createdAt": "2017-12-01T17:42:19Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDM0ODU2MDE2MQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/384#issuecomment-348560161",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "I published serde_json 1.0.7 with this change.",
+        "createdAt": "2017-12-01T18:45:44Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDM0ODU3NTcxNA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/384#issuecomment-348575714",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 36,
+        "changeType": "MODIFIED",
+        "deletions": 11,
+        "path": "src/de.rs"
+      },
+      {
+        "additions": 47,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "tests/stream.rs"
+      }
+    ],
+    "headRefName": "stream-literals",
+    "headRefOid": "8b486189b7325d131d9e0d51d2dcdaed06718136",
+    "labels": [],
+    "mergedAt": "2017-12-01T18:43:19Z",
+    "number": 384,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "bouk"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "2082f48c9683f517c6fdc0a2231d9d6328bcdb37"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3Nzg5NjE1Njc=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2017-11-24T17:07:34Z"
+      },
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "I have not reviewed the code yet but I had a chance to play with telnet and the following program and the behavior all seems reasonable to me.\r\n\r\n```rust\r\nextern crate serde_json;\r\n\r\nuse serde_json::Value;\r\nuse std::net::TcpListener;\r\n\r\nfn main() {\r\n    let listener = TcpListener::bind(\"127.0.0.1:34254\").unwrap();\r\n    let stream = listener.incoming().next().unwrap().unwrap();\r\n    let de = serde_json::Deserializer::from_reader(stream);\r\n    for v in de.into_iter::<Value>() {\r\n        println!(\"{:?}\", v.unwrap());\r\n    }\r\n}\r\n```\r\n\r\n- Could you say a bit about why you need this and how it will be used? Part of the reason for #300 was that nobody had a compelling use case for needing other types in a stream.\r\n\r\n- Please document the new behavior thoroughly on the StreamDeserializer type. The existing comment is outdated by this change.\r\n\r\n- Is it possible to implement this such that it only affects the codepath that involves StreamDeserializer? As far as I can tell, deserializing a single value the usual way using serde_json::from_str should not need to execute all of this new logic in parse_ident and parse_integer. It would be a shame if the only way to support this feature for StreamDeserializer meant a performance regression for users not using StreamDeserializer.",
+        "commit": {
+          "oid": "2082f48c9683f517c6fdc0a2231d9d6328bcdb37"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3Nzk3NDc0MzI=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2017-11-29T06:34:52Z"
+      },
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Nicely done!",
+        "commit": {
+          "oid": "8b486189b7325d131d9e0d51d2dcdaed06718136"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3ODA1ODQyMzE=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2017-12-01T18:43:14Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "Support top-level primitives in StreamDeserializer",
+    "url": "https://github.com/serde-rs/json/pull/384"
+  }
+}

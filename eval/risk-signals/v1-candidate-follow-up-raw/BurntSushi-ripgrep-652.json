@@ -1,0 +1,55 @@
+{
+  "case_id": "BurntSushi-ripgrep-652",
+  "refs": [
+    {
+      "detail": {
+        "body": "Steps\r\n\r\n1. Clone nim project `git clone https://github.com/nim-lang/Nim.git`\r\n2. In nim folder run `rg uint64`.  It gives no results which is incorrect.  Silver searcher gives correct results\r\n3. Used `git check-ignore lib\\system.nim` to verify git doesn't ignore the file\r\n4.  `rg --debug` output [here](https://gist.github.com/kartiku/130d3c63c98fcb3304cc649d23838e2b).  Lib folder is being ignored\r\n\r\nUsing 0.7.1 release from [here](https://github.com/BurntSushi/ripgrep/releases/download/0.7.1/ripgrep-0.7.1-x86_64-pc-windows-msvc.zip)",
+        "closedAt": "2017-11-01T11:10:35Z",
+        "comments": [
+          {
+            "author": {
+              "login": "lambda"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "That is a strange `.gitignore`. Ignoring everything with `*` then unignoring all directories with `!**/`, and all files with extensions with `!*.*`, and finally listing a bunch of more specific ignore rules.\r\n\r\nAnyhow, regardless of how strange a gitignore it is, looks like the issue is with the conversion of `!**/` into `**/**/*` before converting it into a regex. That looks like a clear bug.",
+            "createdAt": "2017-10-24T01:56:10Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDMzODg0ODEyNA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/649#issuecomment-338848124",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "lambda"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "This should be fixed by PR #652, but that's currently held up by an odd, seemingly unrelated test failure on the Mac build. Should be merged once we've sorted that out.",
+            "createdAt": "2017-10-24T15:04:01Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDMzOTAyMTc0OQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/649#issuecomment-339021749",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2017-10-23T14:58:50Z",
+        "labels": [],
+        "number": 649,
+        "state": "CLOSED",
+        "title": "incorrect gitignore behaviour",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/649"
+      },
+      "target": {
+        "number": 649,
+        "reason": "Directory-only gitignore glob matching report.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    }
+  ]
+}

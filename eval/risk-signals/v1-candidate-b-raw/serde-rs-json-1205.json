@@ -1,0 +1,31 @@
+{
+  "candidate": {
+    "id": "serde-rs-json-1205",
+    "repo": "serde-rs/json",
+    "url": "https://github.com/serde-rs/json/pull/1205"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "a810ba985095ecd5bb3f8741f0e6d71e36975cb6",
+    "body": "Measured in https://github.com/serde-rs/json-benchmark using `cargo llvm-lines --bin json-benchmark --no-default-features --features parse-struct,lib-serde,all-files --filter 'next_element_seed|next_key_seed'`, this PR reduces LLVM lines by 53% (compared to 37% for #1102). This is the part of the logic that needs to be instantiated separately per seq/map type, as opposed to once per Read type.\r\n\r\nAcross the whole json-benchmark program, this PR decreases total LLVM lines by 8.8% (compared to 5.6% for #1102) and decreases function instantiations by 3.4%.\r\n\r\nBenchmarked using `cargo build --release --bin json-benchmark --no-default-features --features parse-struct,lib-serde,all-files`, there is no statistically significant performance difference at runtime. (But I notice some opportunities to improve performance of the code in these functions. Leaving for a future PR.)\r\n\r\nAlso benchmarked using the following microbenchmark that targets this code specifically, which likewise shows no regression.\r\n\r\n```rust\r\n#![feature(test)]\r\n\r\nextern crate test;\r\n\r\n#[bench]\r\nfn bench(t: &mut test::Bencher) {\r\n    use serde::de::{Deserialize, Deserializer, SeqAccess, Visitor};\r\n    use std::fmt;\r\n\r\n    struct Arrays;\r\n\r\n    impl<'de> Deserialize<'de> for Arrays {\r\n        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>\r\n        where\r\n            D: Deserializer<'de>,\r\n        {\r\n            deserializer.deserialize_any(Arrays)\r\n        }\r\n    }\r\n\r\n    impl<'de> Visitor<'de> for Arrays {\r\n        type Value = Arrays;\r\n\r\n        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {\r\n            formatter.write_str(\"arrays\")\r\n        }\r\n\r\n        fn visit_u64<E>(self, _: u64) -> Result<Self::Value, E> {\r\n            Ok(Arrays)\r\n        }\r\n\r\n        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>\r\n        where\r\n            A: SeqAccess<'de>,\r\n        {\r\n            while seq.next_element::<Arrays>()?.is_some() {}\r\n            Ok(Arrays)\r\n        }\r\n    }\r\n\r\n    let mut json = \"0\".to_owned();\r\n    for _ in 0..16 {\r\n        json = format!(\"[{json},{json}]\");\r\n    }\r\n    t.bytes = json.len() as u64;\r\n    t.iter(|| serde_json::from_reader::<_, Arrays>(&mut json.as_bytes()));\r\n}\r\n```\r\n\r\nCloses #1102.",
+    "comments": [],
+    "files": [
+      {
+        "additions": 63,
+        "changeType": "MODIFIED",
+        "deletions": 45,
+        "path": "src/de.rs"
+      }
+    ],
+    "headRefName": "hasnext",
+    "headRefOid": "b71ccd2d8f6aabaa0ac6cb889f8e18989038d968",
+    "labels": [],
+    "mergedAt": "2024-10-19T16:20:49Z",
+    "number": 1205,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "Reduce duplicative instantiation of logic in SeqAccess and MapAccess",
+    "url": "https://github.com/serde-rs/json/pull/1205"
+  }
+}

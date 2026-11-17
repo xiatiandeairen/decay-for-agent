@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyper-4011"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "Trailer field declared in the Trailer header is matched case-insensitively against the actual trailer header names per RFC 9110, so a declaration like 'Chunky-Trailer' correctly matches an emitted 'chunky-trailer' trailer instead of being dropped due to case mismatch."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 0
+actionable = true
+missed_high_risk_count = 1
+weak_only_top_risk_count = 0
+notes = "Misses the RFC 9110 case-insensitivity contract that the PR fixes. But surfaces real adjacent risks introduced by the fix: silent drop of invalid trailer names via .ok(), to_str() failure swallowing the whole set, and Vec<HeaderValue>->Vec<HeaderName> signature change. A reviewer would request logg… [recovered-from-raw: judge response exceeded schema free-text caps; metrics unaffected]"

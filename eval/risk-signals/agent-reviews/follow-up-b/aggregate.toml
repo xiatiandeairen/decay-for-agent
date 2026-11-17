@@ -1,0 +1,102 @@
+round = "follow-up-b"
+reviewed_at = "2026-05-14"
+policy = "freeze requires strong ground truth, transferable signal fit, current M3 eval fit, and no unresolved skeptic blocker"
+
+[[cases]]
+id = "hyperium-hyper-3365"
+ground_truth_score = 4
+signal_fit_score = 5
+skeptic_blocker = false
+m3_eval_fit = true
+final_status = "freeze_ready"
+final_signal_ids = ["assumption_boundary", "non_happy_path", "external_contract"]
+decision = "Freeze. Zero idle timeout is a boundary configuration value that caused a concrete tokio interval panic."
+evidence_refs = ["hyperium/hyper#3365", "hyperium/hyper#2997"]
+
+[[cases]]
+id = "hyperium-hyper-3261"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+m3_eval_fit = true
+final_status = "freeze_ready"
+final_signal_ids = ["lifecycle_ordering", "state_transition", "non_happy_path", "external_contract"]
+decision = "Freeze with scoped wording. Graceful shutdown before first request could hang; treat as shutdown lifecycle semantics, not an unconditional bug claim."
+evidence_refs = ["hyperium/hyper#3261", "hyperium/hyper#3233", "hyperium/hyper#2730"]
+
+[[cases]]
+id = "BurntSushi-ripgrep-827"
+ground_truth_score = 5
+signal_fit_score = 2
+skeptic_blocker = true
+m3_eval_fit = false
+final_status = "rejected"
+final_signal_ids = ["risk_path_test_gap", "external_contract"]
+decision = "Reject for current frozen eval. The Windows performance regression is real, but current M3 has no performance/platform signal."
+evidence_refs = ["BurntSushi/ripgrep#827", "BurntSushi/ripgrep#820", "BurntSushi/ripgrep#705", "BurntSushi/walkdir#96"]
+
+[[cases]]
+id = "serde-rs-json-757"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+m3_eval_fit = true
+final_status = "freeze_ready"
+final_signal_ids = ["assumption_boundary", "non_happy_path", "error_propagation"]
+decision = "Freeze. Invalid UTF-8 RawValue panic has minimal input, stacktrace, production patch, and tests."
+evidence_refs = ["serde-rs/json#757", "serde-rs/json#755"]
+
+[[cases]]
+id = "hyper-4056"
+ground_truth_score = 3
+signal_fit_score = 5
+skeptic_blocker = false
+m3_eval_fit = true
+final_status = "freeze_ready"
+final_signal_ids = ["assumption_boundary", "non_happy_path", "error_propagation"]
+decision = "Freeze at lower confidence. The 32-bit u64-to-usize truncation boundary is clear, although no regression test is stored."
+evidence_refs = ["hyperium/hyper#4056", "hyperium/hyper#4055"]
+
+[[cases]]
+id = "hyper-4061"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+m3_eval_fit = true
+final_status = "freeze_ready"
+final_signal_ids = ["concurrency_ordering", "state_transition", "lifecycle_ordering"]
+decision = "Freeze. HTTP/2 flow-control capacity reservation before body data caused a concrete streaming deadlock path."
+evidence_refs = ["hyperium/hyper#4061", "hyperium/hyper#4003", "hyperium/hyper#4051"]
+
+[[cases]]
+id = "hyper-3988"
+ground_truth_score = 4
+signal_fit_score = 5
+skeptic_blocker = false
+m3_eval_fit = true
+final_status = "freeze_ready"
+final_signal_ids = ["concurrency_ordering", "state_transition", "risk_path_test_gap"]
+decision = "Freeze with chain context. This is the v2 readiness/waker fix after the original fix was reverted for hot-loop CPU regression."
+evidence_refs = ["hyperium/hyper#3988", "hyperium/hyper#3977", "hyperium/hyper#3976"]
+
+[[cases]]
+id = "hyperium-hyper-3290"
+ground_truth_score = 3
+signal_fit_score = 4
+skeptic_blocker = true
+m3_eval_fit = false
+final_status = "needs_more_context"
+final_signal_ids = ["concurrency_ordering", "state_transition", "risk_path_test_gap"]
+decision = "Keep NMC. Real panic stack exists, but no stable repro/test and review questioned root-cause coverage."
+evidence_refs = ["hyperium/hyper#3290", "hyperium/hyper#3289"]
+
+[[cases]]
+id = "serde-rs-json-265"
+ground_truth_score = 3
+signal_fit_score = 3
+skeptic_blocker = true
+m3_eval_fit = false
+final_status = "needs_more_context"
+final_signal_ids = ["non_happy_path", "risk_path_test_gap", "state_transition"]
+decision = "Keep NMC. The PR claims correctness and performance regressions from #256, but stored evidence does not yet include the #256 implementation diff or performance proof."
+evidence_refs = ["serde-rs/json#265", "serde-rs/json#256"]

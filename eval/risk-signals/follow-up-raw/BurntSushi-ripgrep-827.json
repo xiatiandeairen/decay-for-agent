@@ -1,0 +1,294 @@
+{
+  "case_id": "BurntSushi-ripgrep-827",
+  "refs": [
+    {
+      "detail": {
+        "body": "Ref: https://github.com/Microsoft/vscode/issues/35433\r\n\r\nFiles On Demand is a new OneDrive feature that only downloads files to the local disk when needed. It has caused some issues in Node/Electron land - https://github.com/nodejs/node/issues/12737, https://github.com/Microsoft/vscode/issues/27285.\r\n\r\nWhen running ripgrep in a folder with this feature enabled, I just get `Access is denied. (os error 5)` immediately. Running with `--debug` doesn't produce any clues. I will investigate if you can point me in the right place to start looking?",
+        "closedAt": "2018-02-02T02:15:11Z",
+        "comments": [
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "I'm on mobile and headed to bed at the moment, but the first thing that\nsprings to mind is memory maps. If you run rg with --no-mmap (--mmap does\nthe opposite) then it will avoid using memory maps and instead use standard\nfile APIs. Linux, for example, has an issue where virtual files can't be\nmemory mapped. ripgrep detects this by looking at file size. If the size is\nzero (which is what virtual files like /proc/cpuinfo report), then it\nforcefully disables use of memory maps and everything works.\n\nIf memory maps are indeed the problem, and if there is a way to tell that\nmemory maps won't work with a stat call or similar then we can change\nripgrep's heuristics on Windows.\n\nIf this isn't the problem, then I personally would probably try to\nreproduce the problem using a minimal Rust program, and then start\ndiagnosing from there. If it comes to that, how easy would it be for me to\nreproduce the bug on my own Windows machine?\n\nOn Dec 3, 2017 9:58 PM, \"Rob Lourens\" <notifications@github.com> wrote:\n\n> Ref: Microsoft/vscode#35433\n> <https://github.com/Microsoft/vscode/issues/35433>\n>\n> Files On Demand is a new OneDrive feature that only downloads files to the\n> local disk when needed. It has caused some issues in Node/Electron land -\n> nodejs/node#12737 <https://github.com/nodejs/node/issues/12737>,\n> Microsoft/vscode#27285 <https://github.com/Microsoft/vscode/issues/27285>.\n>\n> When running ripgrep in a folder with this feature enabled, I just get Access\n> is denied. (os error 5) immediately. Running with --debug doesn't produce\n> any clues. I will investigate if you can point me in the right place to\n> start looking?\n>\n> —\n> You are receiving this because you are subscribed to this thread.\n> Reply to this email directly, view it on GitHub\n> <https://github.com/BurntSushi/ripgrep/issues/705>, or mute the thread\n> <https://github.com/notifications/unsubscribe-auth/AAb34oBLIpawThhCJmvauqV1SEgWmK2Uks5s81_BgaJpZM4Q0C1B>\n> .\n>\n",
+            "createdAt": "2017-12-04T03:04:53Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM0ODg0OTIyMA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/705#issuecomment-348849220",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "roblourens"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "I get the same error with `--no-mmap`. Here is a fix in libuv for this onedrive feature: https://github.com/libuv/libuv/pull/1522/files, if this is a similar problem, it's probably in Rust's `fs`.\r\n\r\nRepro steps are basically \r\n\r\n- Install the latest updates for Windows and OneDrive\r\n- Open OneDrive settings, enable \"Files On-Demand\"\r\n- Wait a couple minutes for OneDrive to do it's thing\r\n- Invoke ripgrep in a OneDrive folder",
+            "createdAt": "2017-12-04T03:14:04Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM0ODg1MDI5Ng==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/705#issuecomment-348850296",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "Thanks!\r\n\r\ncc @retep998 Do you have any insight on this with respect to std?",
+            "createdAt": "2017-12-04T03:32:40Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM0ODg1MjM2Ng==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/705#issuecomment-348852366",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "roblourens"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Filed https://github.com/rust-lang/rust/issues/46484",
+            "createdAt": "2017-12-04T06:05:28Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM0ODg2ODM5OA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/705#issuecomment-348868398",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "roblourens"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Since there isn't much progress on the upstream issue, I'm trying to work around it in the ripgrep build for vscode. Would you be interested in a PR? The workaround is fairly simple, just need to check the `file_attributes` of a directory for the reparse point and directory flags: https://msdn.microsoft.com/en-us/library/windows/desktop/gg258117.aspx. And it needs to be done in a few places in the walkdir and ripgrep repos.",
+            "createdAt": "2018-01-22T02:47:43Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM1OTMxMDgwMg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/705#issuecomment-359310802",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "@roblourens Sorry for the late response, but yes, I would definitely be interested in a patch to ripgrep proper. If I had more Windows expertise, then I'd be happy to push this through upstream too, but I just don't have the bandwidth at the moment, so I'm happy to work around it.",
+            "createdAt": "2018-01-29T18:58:09Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM2MTM0OTA4OQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/705#issuecomment-361349089",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "@roblourens I am working on a fix to this in `walkdir` and `ignore`. I may have convinced someone to fix it in `std` as well, but even if the latter were fixed and merged tonight, ripgrep wouldn't see it for months.",
+            "createdAt": "2018-02-02T01:00:09Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM2MjQ1MjY4NA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/705#issuecomment-362452684",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "roblourens"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Awesome! Sorry I never delivered on my drive-by PR offer, it's been on my list but I was too busy in January.",
+            "createdAt": "2018-02-02T01:02:00Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM2MjQ1MzAwNA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/705#issuecomment-362453004",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "@roblourens No worries! The Windows side of things is pretty straight-forward, but fixing the code itself is a little gnarly!",
+            "createdAt": "2018-02-02T01:08:17Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM2MjQ1NDAzMQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/705#issuecomment-362454031",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "Got it! I manually tested the fix. I can search directories on OneDrive using ripgrep master.",
+            "createdAt": "2018-02-02T02:16:25Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM2MjQ2NDk0MA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/705#issuecomment-362464940",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "roblourens"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "This works great. Thanks! Will update in vscode ASAP.",
+            "createdAt": "2018-02-06T05:12:12Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM2MzMxMzAwOA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/705#issuecomment-363313008",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2017-12-04T02:58:08Z",
+        "labels": [],
+        "number": 705,
+        "state": "CLOSED",
+        "title": "Ripgrep not working in OneDrive folders using Files On Demand",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/705"
+      },
+      "target": {
+        "number": 705,
+        "reason": "Original ignore/walkdir change that introduced Windows performance regression.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    },
+    {
+      "detail": {
+        "body": "#### What version of ripgrep are you using?\r\n\r\n0.8.0\r\n\r\n#### What operating system are you using ripgrep on?\r\n\r\nWindows 10\r\n\r\n#### If this is a bug, what are the steps to reproduce the behavior?\r\n\r\nUsing an old commit of the Chromium sources (`git clone https://chromium.googlesource.com/chromium/src`) as corpus (~230k files).\r\n\r\nWith 0.8.0 `--files` runs about 4x longer:\r\n```\r\nPS C:\\devel\\testWorkspace> (Measure-Command { & 'C:\\devel\\ripgrep-0.8.0-x86_64-pc-windows-msvc\\rg.exe' --files | Measure-Object –Line | Out-Default }).TotalSeconds\r\n\r\n Lines Words Characters Property\r\n ----- ----- ---------- --------\r\n234319 [files]\r\n\r\n43.309153 [seconds]\r\n``` \r\n\r\nThan with 0.7.1:\r\n```\r\nPS C:\\devel\\testWorkspace> (Measure-Command { & 'C:\\devel\\ripgrep-0.7.1-x86_64-pc-windows-msvc\\rg.exe' --files | Measure-Object –Line | Out-Default }).TotalSeconds\r\n\r\n Lines Words Characters Property\r\n ----- ----- ---------- --------\r\n234319 [files]\r\n\r\n11.2432563 [seconds]\r\n```\r\n\r\nUsing Process Monitor it looks like 0.8.0 accesses individual files a lot more:\r\n![image](https://user-images.githubusercontent.com/9205389/36384556-fa76474a-158f-11e8-9c7a-208f270c1b0f.png)\r\n\r\nThan 0.7.1, which seems to only access folders:\r\n![image](https://user-images.githubusercontent.com/9205389/36384611-27245f16-1590-11e8-8a2e-b54f6abe0b1c.png)\r\n\r\n/cc @roblourens",
+        "closedAt": "2018-02-21T00:50:53Z",
+        "comments": [
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "@chrmarti Thanks for another great bug report! I can indeed reproduce this. Your tip about ripgrep stat'ing more files is right on the money. Basically, this is fallout from fixing #705. In particular, in order to fix #705, I had to work-around the corresponding bug in Rust's standard library, and I was apparently careless enough that I introduced an extra stat call for each file that ripgrep visits. This should be possible to fix, but I'll need to take a closer look tomorrow.\r\n\r\nAssuming I get this fixed, and after I get some of the PR backlog cleared, I can put out another release.",
+            "createdAt": "2018-02-20T01:55:45Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM2Njg0NTUxMA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/820#issuecomment-366845510",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "Note that this regression is *also* in walkdir, so it impacts both single threaded and multi-threaded directory traversal.",
+            "createdAt": "2018-02-20T01:57:12Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM2Njg0NTcwNg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/820#issuecomment-366845706",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "This should be fixed in master. I manually QAed this and confirmed that performance is back to `0.7.1` levels for your specific test case. (Both single and multi threaded.)\r\n\r\nIf all goes well, I'm going to try and squeak a 0.8.1 release out tonight.",
+            "createdAt": "2018-02-21T00:59:38Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDM2NzE3NjgyNw==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/820#issuecomment-367176827",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2018-02-19T15:17:49Z",
+        "labels": [
+          {
+            "color": "fc2929",
+            "description": "A bug.",
+            "id": "MDU6TGFiZWwzMzk3MjE2Nzg=",
+            "name": "bug"
+          }
+        ],
+        "number": 820,
+        "state": "CLOSED",
+        "title": "--files performance regression in 0.8.0",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/820"
+      },
+      "target": {
+        "number": 820,
+        "reason": "Windows performance regression report.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    },
+    {
+      "detail": {
+        "baseRefName": "master",
+        "baseRefOid": "44a5dfe6f7a64ec2d8685e8d2b2409a55b7902d5",
+        "body": "This PR fixes a performance regression introduced by 0f4441f9. We had accidentally introduced an additional stat call for every directory entry on Windows.",
+        "comments": [],
+        "files": [
+          {
+            "additions": 61,
+            "changeType": "MODIFIED",
+            "deletions": 5,
+            "path": "src/lib.rs"
+          }
+        ],
+        "headRefName": "ag/fix-perf",
+        "headRefOid": "46fc3f5d0f77e54a952cf32c411b5f3683e456d8",
+        "labels": [],
+        "mergedAt": "2018-02-21T00:24:06Z",
+        "number": 96,
+        "reviewDecision": "",
+        "reviews": [],
+        "state": "MERGED",
+        "title": "fix performance regression",
+        "url": "https://github.com/BurntSushi/walkdir/pull/96"
+      },
+      "target": {
+        "number": 96,
+        "reason": "Companion walkdir fix for the same stat-call regression.",
+        "repo": "BurntSushi/walkdir",
+        "type": "pr"
+      }
+    }
+  ]
+}

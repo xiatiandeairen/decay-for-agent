@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "BurntSushi-ripgrep-3174"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "In matched_ignore, when joining the absolute parent base with the search path, the prefix-stripping logic could strip a leading '.' from a hidden filename (e.g. '.foo.txt') when the parent ig.0.dir was '.'. Fix adds an early bail-out when ig.0.dir == Path::new('.') so hidden whitelisted files remain matchable when searched via '.' or './'."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Items 1 and 2 directly name assumption_boundary on the new exact == Path::new('.') guard and the empty-prefix edge when ig.0.dir is './'. Item 3 is a supporting test-gap note. Matches the real fix mechanism from diff alone; reviewer could request a './' equivalence-class test."

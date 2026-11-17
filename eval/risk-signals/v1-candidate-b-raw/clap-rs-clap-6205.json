@@ -1,0 +1,76 @@
+{
+  "candidate": {
+    "id": "clap-rs-clap-6205",
+    "repo": "clap-rs/clap",
+    "url": "https://github.com/clap-rs/clap/pull/6205"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "e1152433694b253bc1fe048b5b2eda96aff79aa0",
+    "body": "- [x] Demonstrate test showing current behaviour\r\n   The first commit of this PR shows the current behaviour i.e. if there is no description to an argument, then the default value appears on the same line as the last possible value in case there are multiple values for the `--help` flag.\r\n- [x] Update the test to show new behaviour\r\n- [x] Add fix: default value should show up on a separate line even if there's no help description in case there are multiple possible values. related to #6204\r\n\r\n\r\n",
+    "comments": [
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks!",
+        "createdAt": "2026-01-02T21:52:51Z",
+        "id": "IC_kwDOAd3Usc7c6XD6",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "ROCKET",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/clap-rs/clap/pull/6205#issuecomment-3706286330",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 4,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "clap_builder/src/output/help_template.rs"
+      },
+      {
+        "additions": 35,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/builder/help.rs"
+      }
+    ],
+    "headRefName": "default-val-no-desc",
+    "headRefOid": "a062eaf7f5c7b4a510ebc02f991efc1ea0f4e754",
+    "labels": [],
+    "mergedAt": "2026-01-02T21:52:53Z",
+    "number": 6205,
+    "reviewDecision": "",
+    "reviews": [
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "54ebd61d8bb3902854ed08c2bdc11a3d468de518"
+        },
+        "id": "PRR_kwDOAd3Usc7X4TLR",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-01-01T13:22:52Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "Bugfix for default value UI when there's no help description",
+    "url": "https://github.com/clap-rs/clap/pull/6205"
+  }
+}

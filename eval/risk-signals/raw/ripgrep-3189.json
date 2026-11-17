@@ -1,0 +1,80 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Previously accepted large-scale candidate; merged bug fix with changelog and regression test.",
+    "id": "ripgrep-3189",
+    "limitations": "Exact regression test path needs enrichment.",
+    "production_files": [
+      "crates/ignore/src/gitignore.rs"
+    ],
+    "repo": "BurntSushi/ripgrep",
+    "risk_summary": "Global gitignore handling was wrong for absolute paths.",
+    "signal_ids": [
+      "external_contract",
+      "non_happy_path",
+      "state_transition"
+    ],
+    "source_refs": [
+      "https://github.com/BurntSushi/ripgrep/pull/3189",
+      "eval/large-scale-50/candidates/open-source.toml"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3189",
+    "why_high_value": "Path normalization and ignore matching directly affect search correctness.",
+    "why_not_noise": "Specific absolute-path bug in production ignore logic."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "9ec08522bee566c8fbf03c340acd7a1ff1789a9f",
+    "body": "The `ignore` crate currently handles two different kinds of \"global\"\ngitignore files: gitignores from `~/.gitconfig`'s `core.excludesFile`\nand gitignores passed in via `WalkBuilder::add_ignore` (corresponding to\nripgrep's `--ignore-file` flag).\n\nIn contrast to any other kind of gitignore file, these gitignore files\nshould have their patterns interpreted relative to the current working\ndirectory. (Arguably there are other choices we could make here, e.g.,\nbased on the paths given. But the `ignore` infrastructure can't handle\nthat, and it's not clearly correct to me.) Normally, a gitignore file\nhas its patterns interpreted relative to where the gitignore file is.\nThis relative interpretation matters for patterns like `/foo`, which are\nanchored to _some_ directory.\n\nPreviously, we would generally get the global gitignores correct because\nit's most common to use ripgrep without providing a path. Thus, it\nsearches the current working directory. In this case, no stripping of\nthe paths is needed in order for the gitignore patterns to be applied\ndirectly.\n\nBut if one provides an absolute path (or something else) to ripgrep to\nsearch, the paths aren't stripped correctly. Indeed, in the core, I had\njust given up and not provided a \"root\" path to these global gitignores.\nSo it had no hope of getting this correct.\n\nWe fix this assigning the CWD to the `Gitignore` values created from\nglobal gitignore files. This was a painful thing to do because we'd\nideally:\n\n1. Call `std::env::current_dir()` at most once for each traversal.\n2. Provide a way to avoid the library calling `std::env::current_dir()`\n   at all. (Since this is global process state and folks might want to\n   set it to different values for $reasons.)\n\nThe `ignore` crate's internals are a total mess. But I think I've\naddressed the above 2 points in a semver compatible manner.\n\nFixes #3179\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 2,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "CHANGELOG.md"
+      },
+      {
+        "additions": 7,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "crates/core/flags/hiargs.rs"
+      },
+      {
+        "additions": 57,
+        "changeType": "MODIFIED",
+        "deletions": 4,
+        "path": "crates/ignore/src/dir.rs"
+      },
+      {
+        "additions": 4,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "crates/ignore/src/gitignore.rs"
+      },
+      {
+        "additions": 93,
+        "changeType": "MODIFIED",
+        "deletions": 4,
+        "path": "crates/ignore/src/walk.rs"
+      },
+      {
+        "additions": 50,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/regression.rs"
+      }
+    ],
+    "headRefName": "ag/fix-global-gitignore-absolute-path",
+    "headRefOid": "12b81e5ba3468269d60521902db3e6fd5b3d3826",
+    "labels": [],
+    "mergedAt": "2025-10-15T23:44:24Z",
+    "number": 3189,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "ignore: fix global gitignore bug that arises with absolute paths",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3189"
+  }
+}

@@ -1,0 +1,145 @@
+{
+  "case_id": "BurntSushi-ripgrep-2000",
+  "refs": [
+    {
+      "detail": {
+        "body": "#### What version of ripgrep are you using?\r\n\r\nripgrep 13.0.0 (rev af6b6c543b)\r\n-SIMD -AVX (compiled)\r\n\r\n#### How did you install ripgrep?\r\n\r\nI use the MS Windows binary rg.exe from ripgrep-13.0.0-i686-pc-windows-msvc.zip\r\n\r\n#### What operating system are you using ripgrep on?\r\n\r\nMS Windows 10 32bit\r\n\r\n#### Describe your bug.\r\n\r\nFor files bigger than 4 gigabyte result lines are missing.\r\nOnly result lines from the upper part of the file or no lines are printed.\r\n\r\n#### What are the steps to reproduce the behavior?\r\n\r\nSearch e.g. in a 5 gigabyte file for content of the last line.\r\n\r\n#### What is the actual behavior?\r\n\r\nrg \"string_in_last_line_of_big_file\" bigfile.txt\r\n\r\n```\r\nno output\r\n```\r\n\r\n#### What is the expected behavior?\r\n\r\nThe last line of bigfile.txt containing \"string_in_last_line_of_big_file\" should be printed.\r\n",
+        "closedAt": "2021-06-26T16:55:18Z",
+        "comments": [
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "Does `--no-mmap` resolve this?",
+            "createdAt": "2021-06-26T09:35:22Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDg2ODk3NTg1MA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/1911#issuecomment-868975850",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "datatraveller1"
+            },
+            "authorAssociation": "NONE",
+            "body": "Yes, `rg --no-mmap \"string_in_last_line_of_big_file\" bigfile.txt` solves the issue with the 32bit version!\r\nThe missing result lines are printed with the **--no-mmap** option.\r\n\r\nHowever, the previous 32bit version ripgrep-12.1.1-i686-pc-windows-msvc.zip works correctly _without_ the --no-map option.\r\nSome interesting hints about this observation:\r\n**ripgrep 12.1.1 (rev 7cb211378a)**\r\n`rg \"string_in_last_line_of_big_file\" bigfile.txt --debug`\r\n=>\r\nDEBUG|grep_regex::literal|crates\\regex\\src\\literal.rs:58: literal prefixes detected: Literals { lits: [Complete(string_in_last_line_of_big_file)], limit_size: 250, limit_class: 10 }\r\nDEBUG|globset|crates\\globset\\src\\lib.rs:431: built glob set; 0 literals, 0 basenames, 12 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\r\n**DEBUG|grep_searcher::searcher::mmap|crates\\searcher\\src\\searcher\\mmap.rs:86: bigfile.txt: failed to open memory map: memory map length overflows usize**\r\n\r\n**ripgrep 13.0.0 (rev af6b6c543b)**\r\n`rg \"string_in_last_line_of_big_file\" bigfile.txt --debug`\r\n=>\r\nDEBUG|grep_regex::literal|crates\\regex\\src\\literal.rs:58: literal prefixes detected: Literals { lits: [Complete(string_in_last_line_of_big_file)], limit_size: 250, limit_class: 10 }\r\nDEBUG|grep_cli::decompress|crates\\cli\\src\\decompress.rs:482: gzip: could not find executable in PATH\r\nDEBUG|grep_cli::decompress|crates\\cli\\src\\decompress.rs:482: gzip: could not find executable in PATH\r\nDEBUG|grep_cli::decompress|crates\\cli\\src\\decompress.rs:482: bzip2: could not find executable in PATH\r\nDEBUG|grep_cli::decompress|crates\\cli\\src\\decompress.rs:482: bzip2: could not find executable in PATH\r\nDEBUG|grep_cli::decompress|crates\\cli\\src\\decompress.rs:482: xz: could not find executable in PATH\r\nDEBUG|grep_cli::decompress|crates\\cli\\src\\decompress.rs:482: xz: could not find executable in PATH\r\nDEBUG|grep_cli::decompress|crates\\cli\\src\\decompress.rs:482: lz4: could not find executable in PATH\r\nDEBUG|grep_cli::decompress|crates\\cli\\src\\decompress.rs:482: xz: could not find executable in PATH\r\nDEBUG|grep_cli::decompress|crates\\cli\\src\\decompress.rs:482: brotli: could not find executable in PATH\r\nDEBUG|grep_cli::decompress|crates\\cli\\src\\decompress.rs:482: zstd: could not find executable in PATH\r\nDEBUG|grep_cli::decompress|crates\\cli\\src\\decompress.rs:482: zstd: could not find executable in PATH\r\nDEBUG|grep_cli::decompress|crates\\cli\\src\\decompress.rs:482: uncompress: could not find executable in PATH\r\n\r\nI somehow assume `--no-mmap` should be the default for the 32bit version to avoid wrong results.",
+            "createdAt": "2021-06-26T14:09:19Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDg2OTAwODk5Mw==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/1911#issuecomment-869008993",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "Yup. The next release will have mmap disabled in all non-64-bit systems.\r\n\r\nI don't know why this used to work. The only semi-related change in ripgrep 13 that I can think of is that it is now statically linking vcruntime: https://github.com/BurntSushi/ripgrep/pull/1613\r\n\r\nI'm not sure why or how that would change things here, but it's simple enough to just disable mmap on 32-bit.",
+            "createdAt": "2021-06-26T16:56:40Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDg2OTAyOTcwMA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/1911#issuecomment-869029700",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "datatraveller1"
+            },
+            "authorAssociation": "NONE",
+            "body": "Thank you very much! I'll add a few more comments just to ensure there are no misunderstandings with the fix:\r\nI plan to use the MS Windows 32bit binary release both for my PC (32bit) and my laptop (64bit) like it used to work with version 12.1.1.\r\nLike on Windows 32bit, the current 13.0.0 32bit binary release does not work correctly on Windows 64bit unless the --no-mmap option is used. Only the current 13.0.0 64bit binary release works correctly on Windows 64bit for big files.\r\nSo, the patch (disable mmap) should impact the target rust 32bit binary release and not the Windows version currently used by the user (32bit or 64bit). I'm not a Rust programmer but it seems to me the fix takes care of that.\r\n",
+            "createdAt": "2021-06-27T10:58:07Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDg2OTE0MjQ4Mg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/1911#issuecomment-869142482",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "Thank you for copying your comment from email. :-) I'll copy my response as well:\r\n\r\nThe patch I pushed should impact the target used to build the binary.\r\nA `cfg!` is conditional compilation.\r\n\r\nI don't use Windows, so it's a bit annoying to test this patch myself. I have a Windows laptop somewhere in my house,\r\nbut it's always a big production to pull it out because Windows\r\ninsists on spending hours running Windows Update.\r\n\r\nIf anyone has an easy way to build ripgrep's master branch for 32-bit Windows and test it on a >4GB file with a match at the end, that would be most appreciated!",
+            "createdAt": "2021-06-27T11:11:09Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDg2OTE0NDEwMQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/1911#issuecomment-869144101",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": ""
+            },
+            "authorAssociation": "NONE",
+            "body": "I think the underlying reason is https://github.com/RazrFalcon/memmap2-rs/commit/5e271224c8411c89b42060294f9393cfc7b12a2a introduced into `memmap2` version 0.3.0 used here as of https://github.com/BurntSushi/ripgrep/blob/9b01a8f9ae53ebcd05c27ec21843758c2c1e823f/Cargo.lock#L343 and fixed by https://github.com/RazrFalcon/memmap2-rs/commit/9aa838aed99a4879d8357ff295a0ca1c98ba1ae5 which is part of version 0.3.1 (but version 0.5.0 is current).",
+            "createdAt": "2021-09-22T07:20:51Z",
+            "id": "IC_kwDOAzJbyc43HSM_",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/1911#issuecomment-924656447",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": ""
+            },
+            "authorAssociation": "NONE",
+            "body": "> If anyone has an easy way to build ripgrep's master branch for 32-bit Windows and test it on a >4GB file with a match at the end, that would be most appreciated!\r\n\r\nI am not sure if that would have sufficed to catch this, but when working on the `memmap2` code, I have repeatedly resorted to cross building using MinGW and then testing the result under Wine. I am wary of the testing power of the `memmap2` to Win32 to POSIX API conversion though...",
+            "createdAt": "2021-09-22T07:22:46Z",
+            "id": "IC_kwDOAzJbyc43HSgV",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/1911#issuecomment-924657685",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "adamreichold"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "> I am not sure if that would have sufficed to catch this, but when working on the memmap2 code, I have repeatedly resorted to cross building using MinGW and then testing the result under Wine. I am wary of the testing power of the memmap2 to Win32 to POSIX API conversion though...\r\n\r\nI seems it would suffice, but there is a small wrinkle to this for cross building for 32-bit Windows: Due to LLVM/Rust assuming SEH-style unwinding but most Linux distributions 32-bit MinGW toolchains using SjLj-style unwinding, one will run into linker errors related to `_Unwind_Resume`, c.f. https://github.com/rust-lang/rust/issues/12859 Some distributions like Fedora since version 32 however ship cross toolchains using SEH-style unwinding and using such a distribution seems to work as expected, c.f. #2000 ",
+            "createdAt": "2021-09-23T07:56:48Z",
+            "id": "IC_kwDOAzJbyc43K0wm",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/1911#issuecomment-925584422",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2021-06-26T08:58:19Z",
+        "labels": [],
+        "number": 1911,
+        "state": "CLOSED",
+        "title": "MS Windows 32bit binary does not work properly for files bigger than 4 gigabyte",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/1911"
+      },
+      "target": {
+        "number": 1911,
+        "reason": "32-bit mmap regression context.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    }
+  ]
+}

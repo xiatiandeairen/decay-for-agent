@@ -1,0 +1,67 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Previously accepted large-scale candidate; merged performance/behavior fix with changelog.",
+    "id": "ripgrep-3185",
+    "limitations": "Performance evidence should be strengthened before frozen eval.",
+    "production_files": [
+      "crates/searcher/src/searcher/mod.rs"
+    ],
+    "repo": "BurntSushi/ripgrep",
+    "risk_summary": "Searching stdin with large --after-context values was slow.",
+    "signal_ids": [
+      "state_transition",
+      "external_contract"
+    ],
+    "source_refs": [
+      "https://github.com/BurntSushi/ripgrep/pull/3185",
+      "eval/large-scale-50/candidates/open-source.toml"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3185",
+    "why_high_value": "Buffering behavior affects CLI performance for common input mode.",
+    "why_not_noise": "Specific stdin and after-context behavior, not generic performance concern."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "de2567a4c76fa671005538d6cd841abc44932b9a",
+    "body": "The commit messages have the details, but:\r\n\r\n* When searching `stdin`, at least on my Linux machine, calls to `read` never seem to return more than 64K. This caused a pathological problem with large values of `-A/--after-context` that prevented ripgrep from amortizing `read` calls as well as it should.\r\n* When `-A/--after-context` is used, we don't need to find the last N lines before rolling our search buffer. We still do when `-B/--before-context` is set though. And indeed, this can cause ripgrep to be materially slower with large values of `-B` but not with `-A`. Indeed, GNU grep suffers from a similar problem (but is far far slower than ripgrep).\r\n\r\nFixes #3184",
+    "comments": [],
+    "files": [
+      {
+        "additions": 2,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "CHANGELOG.md"
+      },
+      {
+        "additions": 13,
+        "changeType": "MODIFIED",
+        "deletions": 8,
+        "path": "crates/searcher/src/line_buffer.rs"
+      },
+      {
+        "additions": 5,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "crates/searcher/src/searcher/core.rs"
+      },
+      {
+        "additions": 2,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "crates/searcher/src/searcher/glue.rs"
+      }
+    ],
+    "headRefName": "ag/fix-slow-stdin-context",
+    "headRefOid": "146f78f77ff24e74fccf6da91a5e28ce4c48dfa1",
+    "labels": [],
+    "mergedAt": "2025-10-14T18:27:43Z",
+    "number": 3185,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "fix slow searching of `stdin` with large values of `-A/--after-context`",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3185"
+  }
+}

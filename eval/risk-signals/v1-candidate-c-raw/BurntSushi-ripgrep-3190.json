@@ -1,0 +1,37 @@
+{
+  "candidate": {
+    "id": "BurntSushi-ripgrep-3190",
+    "repo": "BurntSushi/ripgrep",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3190"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "b610d1cb1506feab33459c5853e4c0d0cb16a6e2",
+    "body": "Somehow, the JSON printer seems to have never emitted correct summary\nstatistics. And I believe #3178 is the first time anyone has ever\nreported it. I believe this bug has persisted for years. That's\nsurprising.\n\nAnyway, the problem here was that we were bailing out of `finish()` on\nthe sink if we weren't supposed to print anything. But we bailed out\nbefore we tallied our summary statistics. Obviously we shouldn't do\nthat.\n\nFixes #3178\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 2,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "CHANGELOG.md"
+      },
+      {
+        "additions": 3,
+        "changeType": "MODIFIED",
+        "deletions": 4,
+        "path": "crates/printer/src/json.rs"
+      }
+    ],
+    "headRefName": "ag/fix-json-stats",
+    "headRefOid": "5e0e5b538bfc297c92a27465bddf74f7d3f5d1bc",
+    "labels": [],
+    "mergedAt": "2025-10-16T01:21:20Z",
+    "number": 3190,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "printer: fix `--stats` for `--json`",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3190"
+  }
+}

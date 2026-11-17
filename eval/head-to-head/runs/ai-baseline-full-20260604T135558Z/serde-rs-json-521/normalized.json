@@ -1,0 +1,41 @@
+{
+  "case_id": "serde-rs-json-521",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "if ryu::Buffer::new().format(f) == self.n || f.to_string() == self.n {"
+      ],
+      "rank": 1,
+      "rationale": "Under arbitrary_precision, more f64 values now match and are visited as f64 instead of falling through to NumberDeserializer map path, widening the deserialize_any contract.",
+      "risk_signal": "external_contract",
+      "subject": "src/number.rs:deserialize_any",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "if ryu::Buffer::new().format(f) == self.n || f.to_string() == self.n {"
+      ],
+      "rank": 2,
+      "rationale": "Equality check assumes input string self.n was formatted by either ryu or std to_string; numbers stored with other formatting (trailing zeros, exponents) still fall through to map path.",
+      "risk_signal": "assumption_boundary",
+      "subject": "src/number.rs:deserialize_any",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "let e = E::Float(159.1);",
+        "#[cfg(feature = \"arbitrary_precision\")]"
+      ],
+      "rank": 3,
+      "rationale": "Regression test covers a single f32 value but the changed branch is gated on arbitrary_precision; test does not enable that feature nor vary float magnitudes/precisions.",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tests/regression/issue520.rs:test",
+      "value": "supporting"
+    }
+  ]
+}

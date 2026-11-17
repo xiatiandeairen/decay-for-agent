@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "hyperium-hyper-647"
+repo = "hyperium/hyper"
+pr = 647
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Invalid content-length stream handling."
+
+[fact_only]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 2
+notes = "True risk is invalid Content-Length losing stream and later panic. Fact top risks are parse coverage gap and generic prod_change_with_tests; coverage gap is a useful limitation but not product-risk evidence."
+
+[semantic_filtered]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 2
+notes = "Semantic correctly says decay is partial and asks manual inspection, but does not identify invalid Content-Length stream retention."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = false
+notes = "Semantic improves explanation of tool limitation, not product-risk detection."

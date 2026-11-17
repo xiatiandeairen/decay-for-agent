@@ -1,0 +1,421 @@
+# Development self-test set for M3.1 risk-signal logic.
+# Synthetic and reduced-real cases are allowed here. This file is not used for
+# product-value claims.
+
+version = "risk-signal-dev-cases.v1"
+
+[[cases]]
+id = "dev-assumption-boundary-positive-zero-timeout"
+kind = "positive"
+signal_ids = ["assumption_boundary"]
+title = "pool timeout zero now reaches an unchecked expect"
+diff_summary = "A timeout branch treats zero as an ordinary duration and calls expect on a missing timer."
+expected_behavior = "detect"
+ground_truth = "Boundary value zero strengthens a previous non-zero assumption and can panic."
+source_refs = ["synthetic:m3.1"]
+production_files = ["src/client/pool.rs"]
+test_files = ["tests/pool_timeout.rs"]
+limitations = "Synthetic case for local regression only."
+
+[[cases]]
+id = "dev-assumption-boundary-positive-closed-buffer"
+kind = "positive"
+signal_ids = ["assumption_boundary", "non_happy_path"]
+title = "closed channel path assumes caller buffer is empty"
+diff_summary = "Closed-channel branch asserts buffer.is_empty even though callers may pass a reused buffer."
+expected_behavior = "detect"
+ground_truth = "The diff depends on a hidden caller precondition on a closed-state path."
+source_refs = ["reduced-real:tokio-rs-tokio-7991"]
+production_files = ["tokio/src/sync/mpsc/chan.rs"]
+test_files = ["tokio/tests/sync_mpsc.rs"]
+limitations = "Reduced from real PR; exact code context is not embedded."
+
+[[cases]]
+id = "dev-assumption-boundary-negative-weaken-assert"
+kind = "negative"
+near_miss_signals = ["assumption_boundary"]
+title = "replace assert with checked error return"
+diff_summary = "A public parser changes assert(valid) into if !valid { return Err(...) }."
+expected_behavior = "suppress"
+ground_truth = "The assumption is weakened, not strengthened."
+source_refs = ["synthetic:m3.1"]
+production_files = ["src/parser.rs"]
+test_files = ["tests/parser_invalid.rs"]
+limitations = "Negative synthetic case."
+
+[[cases]]
+id = "dev-assumption-boundary-boundary-no-source"
+kind = "boundary"
+signal_ids = ["assumption_boundary"]
+title = "new unwrap appears near input parsing but context is incomplete"
+diff_summary = "A new unwrap is added near parsing code, but no PR body or tests explain reachability."
+expected_behavior = "low_confidence"
+ground_truth = "Signal is plausible but source chain is too weak for high confidence."
+source_refs = ["synthetic:m3.1"]
+production_files = ["src/read.rs"]
+test_files = []
+limitations = "Should not become a high-confidence top finding."
+
+[[cases]]
+id = "dev-non-happy-path-positive-invalid-chunk"
+kind = "positive"
+signal_ids = ["non_happy_path", "state_transition"]
+title = "invalid chunk size parsing changes error recovery"
+diff_summary = "The invalid chunk-size branch changes parser recovery and request stream handling."
+expected_behavior = "detect"
+ground_truth = "Malformed input path changed in a protocol parser."
+source_refs = ["reduced-real:hyperium-hyper-228"]
+production_files = ["src/http.rs", "src/server/request.rs"]
+test_files = ["tests/chunk.rs"]
+limitations = "Reduced-real case."
+
+[[cases]]
+id = "dev-non-happy-path-positive-socket-error"
+kind = "positive"
+signal_ids = ["non_happy_path", "error_propagation", "state_transition"]
+title = "recv waits on readable but not error readiness"
+diff_summary = "Socket receive waits for READABLE but omits ERROR readiness for SO_ERROR."
+expected_behavior = "detect"
+ground_truth = "Error-only readiness is a non-happy path that must wake and surface the error."
+source_refs = ["reduced-real:tokio-rs-tokio-8001"]
+production_files = ["tokio/src/net/udp.rs"]
+test_files = ["tokio/tests/udp.rs"]
+limitations = "Reduced-real case."
+
+[[cases]]
+id = "dev-non-happy-path-negative-main-path-refactor"
+kind = "negative"
+near_miss_signals = ["non_happy_path"]
+title = "rename success branch helper"
+diff_summary = "The happy-path response builder is renamed and split; error branches are unchanged."
+expected_behavior = "suppress"
+ground_truth = "No non-happy path changed."
+source_refs = ["synthetic:m3.1"]
+production_files = ["src/response.rs"]
+test_files = ["tests/response.rs"]
+limitations = "Negative synthetic case."
+
+[[cases]]
+id = "dev-non-happy-path-boundary-test-only"
+kind = "boundary"
+signal_ids = ["non_happy_path"]
+title = "test-only invalid input fixture update"
+diff_summary = "Only malformed fixture files and assertions changed; production parser untouched."
+expected_behavior = "low_confidence"
+ground_truth = "May describe a risk area, but not a production diff risk."
+source_refs = ["synthetic:m3.1"]
+production_files = []
+test_files = ["tests/fixtures/invalid.http"]
+limitations = "Should be rejected as primary high-risk evidence."
+
+[[cases]]
+id = "dev-state-transition-positive-readiness-mask"
+kind = "positive"
+signal_ids = ["state_transition", "error_propagation"]
+title = "readiness mask adds ERROR transition"
+diff_summary = "Poll loop changes readiness condition from READABLE to READABLE | ERROR."
+expected_behavior = "detect"
+ground_truth = "Wakeup condition is a state transition boundary."
+source_refs = ["reduced-real:tokio-rs-tokio-8001"]
+production_files = ["tokio/src/net/udp.rs"]
+test_files = ["tokio/tests/udp.rs"]
+limitations = "Reduced-real case."
+
+[[cases]]
+id = "dev-state-transition-positive-http-upgrade"
+kind = "positive"
+signal_ids = ["state_transition", "lifecycle_ordering"]
+title = "upgraded connection still enters normal shutdown state"
+diff_summary = "HTTP/1 upgraded connection path can flow into ordinary graceful shutdown."
+expected_behavior = "detect"
+ground_truth = "Terminal state differs after upgrade and shutdown transition must be guarded."
+source_refs = ["reduced-real:hyperium-hyper-3616"]
+production_files = ["src/server/conn/http1.rs"]
+test_files = ["tests/server.rs"]
+limitations = "Reduced-real case."
+
+[[cases]]
+id = "dev-state-transition-negative-rename-state"
+kind = "negative"
+near_miss_signals = ["state_transition"]
+title = "rename enum variant without transition change"
+diff_summary = "ParserState::Body is renamed to ParserState::Payload with identical match arms."
+expected_behavior = "suppress"
+ground_truth = "Naming change only; transitions are unchanged."
+source_refs = ["synthetic:m3.1"]
+production_files = ["src/proto/state.rs"]
+test_files = []
+limitations = "Negative synthetic case."
+
+[[cases]]
+id = "dev-state-transition-boundary-no-before-after"
+kind = "boundary"
+signal_ids = ["state_transition"]
+title = "flag condition changed but old transition unknown"
+diff_summary = "A boolean condition changes in a state branch, but context lacks before/after meaning."
+expected_behavior = "low_confidence"
+ground_truth = "Needs source refs or surrounding code before high-confidence claim."
+source_refs = ["synthetic:m3.1"]
+production_files = ["src/proto/role.rs"]
+test_files = []
+limitations = "Should force limitation text."
+
+[[cases]]
+id = "dev-error-propagation-positive-so-error"
+kind = "positive"
+signal_ids = ["error_propagation", "non_happy_path"]
+title = "SO_ERROR is not surfaced to recv caller"
+diff_summary = "Socket error readiness is missed, so the receive future may not expose the lower-level error."
+expected_behavior = "detect"
+ground_truth = "Error exists but caller-visible propagation chain is broken."
+source_refs = ["reduced-real:tokio-rs-tokio-8001"]
+production_files = ["tokio/src/net/udp.rs"]
+test_files = ["tokio/tests/udp.rs"]
+limitations = "Reduced-real case."
+
+[[cases]]
+id = "dev-error-propagation-positive-map-to-default"
+kind = "positive"
+signal_ids = ["error_propagation"]
+title = "parse error is converted to default config"
+diff_summary = "Invalid config parse changes from Err to default fallback without caller visibility."
+expected_behavior = "detect"
+ground_truth = "Lower-level error is hidden by a default fallback."
+source_refs = ["synthetic:m3.1"]
+production_files = ["src/config.rs"]
+test_files = []
+limitations = "Synthetic case."
+
+[[cases]]
+id = "dev-error-propagation-negative-message-only"
+kind = "negative"
+near_miss_signals = ["error_propagation"]
+title = "error message wording changes"
+diff_summary = "The same error variant is returned with clearer text."
+expected_behavior = "suppress"
+ground_truth = "Caller-visible control flow and error type are unchanged."
+source_refs = ["synthetic:m3.1"]
+production_files = ["src/error.rs"]
+test_files = ["tests/error.rs"]
+limitations = "Negative synthetic case."
+
+[[cases]]
+id = "dev-error-propagation-boundary-equivalent-map"
+kind = "boundary"
+signal_ids = ["error_propagation"]
+title = "internal error maps to equivalent public error"
+diff_summary = "A private error type is remapped, but public error category appears equivalent."
+expected_behavior = "low_confidence"
+ground_truth = "Needs contract evidence before claiming risk."
+source_refs = ["synthetic:m3.1"]
+production_files = ["src/error.rs"]
+test_files = ["tests/error_compat.rs"]
+limitations = "Should remain low confidence unless external contract evidence exists."
+
+[[cases]]
+id = "dev-lifecycle-ordering-positive-upgrade-shutdown"
+kind = "positive"
+signal_ids = ["lifecycle_ordering", "state_transition"]
+title = "graceful shutdown called after HTTP upgrade"
+diff_summary = "Connection upgrade path leaves a handle that later receives graceful_shutdown."
+expected_behavior = "detect"
+ground_truth = "Resource lifecycle after upgrade differs from ordinary connection shutdown."
+source_refs = ["reduced-real:hyperium-hyper-3616"]
+production_files = ["src/server/conn/http1.rs"]
+test_files = ["tests/server.rs"]
+limitations = "Reduced-real case."
+
+[[cases]]
+id = "dev-lifecycle-ordering-positive-drain-on-drop"
+kind = "positive"
+signal_ids = ["lifecycle_ordering", "non_happy_path"]
+title = "server request drain behavior changes on drop"
+diff_summary = "Dropping a request changes whether the remaining body is drained."
+expected_behavior = "detect"
+ground_truth = "Drop behavior affects connection reuse and cleanup ordering."
+source_refs = ["reduced-real:hyperium-hyper-310"]
+production_files = ["src/server/request.rs"]
+test_files = []
+limitations = "Reduced-real case from candidate list."
+
+[[cases]]
+id = "dev-lifecycle-ordering-negative-local-reorder"
+kind = "negative"
+near_miss_signals = ["lifecycle_ordering"]
+title = "move local variable declaration earlier"
+diff_summary = "A local buffer declaration moves before a log statement; ownership and drop order are unchanged."
+expected_behavior = "suppress"
+ground_truth = "No lifecycle boundary changed."
+source_refs = ["synthetic:m3.1"]
+production_files = ["src/io.rs"]
+test_files = []
+limitations = "Negative synthetic case."
+
+[[cases]]
+id = "dev-lifecycle-ordering-boundary-test-teardown"
+kind = "boundary"
+signal_ids = ["lifecycle_ordering"]
+title = "test teardown closes resource earlier"
+diff_summary = "Only test teardown changes close ordering to avoid flakes."
+expected_behavior = "low_confidence"
+ground_truth = "Lifecycle signal exists, but not as production diff risk."
+source_refs = ["synthetic:m3.1"]
+production_files = []
+test_files = ["tests/teardown.rs"]
+limitations = "Should not become primary risk finding."
+
+[[cases]]
+id = "dev-concurrency-ordering-positive-blocking-pool"
+kind = "positive"
+signal_ids = ["concurrency_ordering", "lifecycle_ordering"]
+title = "blocking pool shutdown race"
+diff_summary = "Shutdown path changes shared queue and worker handoff ordering."
+expected_behavior = "detect"
+ground_truth = "Shared state and shutdown ordering can race."
+source_refs = ["reduced-real:tokio-rs-tokio-7922"]
+production_files = ["tokio/src/runtime/blocking/pool.rs"]
+test_files = ["tokio/src/runtime/tests/loom_blocking.rs"]
+limitations = "Reduced-real case."
+
+[[cases]]
+id = "dev-concurrency-ordering-positive-waker"
+kind = "positive"
+signal_ids = ["concurrency_ordering", "state_transition"]
+title = "waker registration moves after shared state mutation"
+diff_summary = "Task stores shared state before registering the waker."
+expected_behavior = "detect"
+ground_truth = "Happens-before relation between state change and wakeup changed."
+source_refs = ["synthetic:m3.1"]
+production_files = ["src/runtime/task.rs"]
+test_files = []
+limitations = "Synthetic case."
+
+[[cases]]
+id = "dev-concurrency-ordering-negative-single-thread"
+kind = "negative"
+near_miss_signals = ["concurrency_ordering"]
+title = "single-thread parser loop refactor"
+diff_summary = "A local loop is split into helpers with no shared state, locks, tasks, or channels."
+expected_behavior = "suppress"
+ground_truth = "No concurrency ordering evidence."
+source_refs = ["synthetic:m3.1"]
+production_files = ["src/parser.rs"]
+test_files = ["tests/parser.rs"]
+limitations = "Negative synthetic case."
+
+[[cases]]
+id = "dev-concurrency-ordering-boundary-sleep-test"
+kind = "boundary"
+signal_ids = ["concurrency_ordering"]
+title = "test sleep duration changed around async task"
+diff_summary = "Only a sleep duration in async test changes."
+expected_behavior = "low_confidence"
+ground_truth = "May indicate flake but lacks production synchronization diff."
+source_refs = ["synthetic:m3.1"]
+production_files = []
+test_files = ["tests/async_flake.rs"]
+limitations = "Should require production source refs."
+
+[[cases]]
+id = "dev-external-contract-positive-public-api-revert"
+kind = "positive"
+signal_ids = ["external_contract"]
+title = "dependency upgrade changes public API expectations"
+diff_summary = "A dependency upgrade changes ownership semantics exposed by public YAML API."
+expected_behavior = "detect"
+ground_truth = "Public contract break was severe enough to revert."
+source_refs = ["reduced-real:clap-rs-clap-1439"]
+production_files = ["Cargo.toml", "src/args/arg.rs", "src/lib.rs"]
+test_files = []
+limitations = "Reduced-real case."
+
+[[cases]]
+id = "dev-external-contract-positive-default-flag"
+kind = "positive"
+signal_ids = ["external_contract", "state_transition"]
+title = "default keep alive behavior changes"
+diff_summary = "A public builder default changes connection persistence semantics."
+expected_behavior = "detect"
+ground_truth = "Default config is part of external behavior contract."
+source_refs = ["reduced-real:hyper-3936"]
+production_files = ["src/server/conn/http1.rs"]
+test_files = []
+limitations = "Reduced from existing eval case."
+
+[[cases]]
+id = "dev-external-contract-negative-private-helper"
+kind = "negative"
+near_miss_signals = ["external_contract"]
+title = "private helper signature changes"
+diff_summary = "An unexported helper takes a context parameter, all callers are internal."
+expected_behavior = "suppress"
+ground_truth = "No external surface changed."
+source_refs = ["synthetic:m3.1"]
+production_files = ["src/internal/helper.rs"]
+test_files = []
+limitations = "Negative synthetic case."
+
+[[cases]]
+id = "dev-external-contract-boundary-dev-dependency"
+kind = "boundary"
+signal_ids = ["external_contract"]
+title = "dev dependency major version bump"
+diff_summary = "A test-only dependency major version changes."
+expected_behavior = "low_confidence"
+ground_truth = "Dependency contract changed, but production/user contract is unclear."
+source_refs = ["synthetic:m3.1"]
+production_files = []
+test_files = ["Cargo.toml"]
+limitations = "Should not be high confidence without production impact."
+
+[[cases]]
+id = "dev-risk-path-test-gap-positive-no-test"
+kind = "positive"
+signal_ids = ["risk_path_test_gap", "assumption_boundary"]
+title = "new unwrap near invalid input has no regression test"
+diff_summary = "Production parser adds unwrap on invalid-input path; no tests changed."
+expected_behavior = "detect"
+ground_truth = "Risk path changed without a matching boundary test."
+source_refs = ["synthetic:m3.1"]
+production_files = ["src/read.rs"]
+test_files = []
+limitations = "Synthetic case."
+
+[[cases]]
+id = "dev-risk-path-test-gap-positive-platform"
+kind = "positive"
+signal_ids = ["risk_path_test_gap", "non_happy_path"]
+title = "Windows path walking regression without platform test"
+diff_summary = "Ignore walker platform-specific path logic changes without Windows test coverage."
+expected_behavior = "detect"
+ground_truth = "Platform risk path changed without matching platform regression evidence."
+source_refs = ["reduced-real:BurntSushi-ripgrep-827"]
+production_files = ["ignore/src/walk.rs"]
+test_files = []
+limitations = "Reduced-real case."
+
+[[cases]]
+id = "dev-risk-path-test-gap-negative-direct-regression"
+kind = "negative"
+near_miss_signals = ["risk_path_test_gap"]
+title = "invalid UTF-8 panic fix includes regression test"
+diff_summary = "Production RawValue invalid UTF-8 path changes with a direct regression test."
+expected_behavior = "suppress"
+ground_truth = "Risk exists, but test-gap signal should not fire."
+source_refs = ["reduced-real:serde-rs-json-757"]
+production_files = ["src/read.rs"]
+test_files = ["tests/test.rs"]
+limitations = "Other signals may fire; test-gap should not."
+
+[[cases]]
+id = "dev-risk-path-test-gap-boundary-docs-test-absence"
+kind = "boundary"
+signal_ids = ["risk_path_test_gap"]
+title = "documentation update has no tests"
+diff_summary = "README documents invalid input behavior; no code or tests change."
+expected_behavior = "low_confidence"
+ground_truth = "Test absence alone is not a production risk signal."
+source_refs = ["synthetic:m3.1"]
+production_files = []
+test_files = []
+limitations = "Should prevent generic no-test noise."

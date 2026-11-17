@@ -1,0 +1,106 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Enriched candidate; title explicitly names regressions introduced by #256 and includes tests.",
+    "id": "serde-rs-json-265",
+    "limitations": "Needs comparison with PR #256 before frozen eval.",
+    "production_files": [
+      "json/src/de.rs"
+    ],
+    "repo": "serde-rs/json",
+    "risk_summary": "Fixed regressions introduced by a previous fix.",
+    "signal_ids": [
+      "non_happy_path",
+      "risk_path_test_gap",
+      "state_transition"
+    ],
+    "source_refs": [
+      "https://github.com/serde-rs/json/pull/265",
+      "https://github.com/serde-rs/json/pull/256",
+      "eval/semantic-candidates/enriched.jsonl"
+    ],
+    "status": "candidate",
+    "test_files": [
+      "json_tests/tests/test.rs"
+    ],
+    "url": "https://github.com/serde-rs/json/pull/265",
+    "why_high_value": "Follow-up regression fixes are strong evidence that the original behavior boundary was risky.",
+    "why_not_noise": "Specific regression relationship with production deserialization code and tests."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "ed44d416c5c8dd6fea8d69e5cbd4fa5f0dd4e604",
+    "body": "I'm sorry, my fix for #256 had two errors:\r\n\r\n* I forgot to clear the str_buf before parsing bytes. This results in incorrect parses.\r\n* Somehow, my patch regressed performance by a lot. I'm not sure why this is the case, but using `peek_or_null` instead of `peek` fixes the issue.\r\n\r\nThe release with the previous PR should probably be yanked at crates.io. I apologize for the trouble, I should have verified my code better.\r\n\r\nI also added a test for this particular failure case.",
+    "comments": [
+      {
+        "author": {
+          "login": "bennofs"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Oh, I found why the performance regression occurred: The new code always called `self.peek_error` to construct an error for the call to `ok_or`. `peek_error` calls `peek_position` which is an expensive operation. ",
+        "createdAt": "2017-02-21T14:22:14Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI4MTM1NzUyMA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/265#issuecomment-281357520",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 2,
+        "changeType": "MODIFIED",
+        "deletions": 4,
+        "path": "json/src/de.rs"
+      },
+      {
+        "additions": 8,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "json_tests/tests/test.rs"
+      }
+    ],
+    "headRefName": "fix-256-followup",
+    "headRefOid": "2d39fb0b80a1326f6bd29f62a67780650419a61a",
+    "labels": [],
+    "mergedAt": "2017-02-21T18:02:31Z",
+    "number": 265,
+    "reviewDecision": "",
+    "reviews": [
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "0eec493c2a854928adf444bd1d07de778e319066"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MjMwMjU2NTc=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2017-02-21T17:55:32Z"
+      },
+      {
+        "author": {
+          "login": "bennofs"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "0eec493c2a854928adf444bd1d07de778e319066"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MjMwMjk5ODM=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2017-02-21T18:14:22Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "Fix regressions introduced by #256 fix",
+    "url": "https://github.com/serde-rs/json/pull/265"
+  }
+}

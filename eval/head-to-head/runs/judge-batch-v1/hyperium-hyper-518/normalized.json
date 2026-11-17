@@ -1,0 +1,5 @@
+{
+  "case_id": "hyperium-hyper-518",
+  "reason": "ground_truth_draft: 'rationale_from_pr_metadata' length 614 exceeds max 600",
+  "status": "judge-failed"
+}

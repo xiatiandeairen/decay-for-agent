@@ -1,0 +1,54 @@
+{
+  "case_id": "hyperium-hyper-3365",
+  "refs": [
+    {
+      "detail": {
+        "body": "**Version**\r\n`hyper v0.14.20`, `h2 v0.3.14`, `tokio v1.21.2`\r\n\r\n**Platform**\r\n`Linux seekr-xps15-zorin 5.13.0-35-generic #40~20.04.1-Ubuntu SMP Mon Mar 7 09:18:32 UTC 2022 x86_64 x86_64 x86_64 GNU/Linux`\r\n\r\n**Description**\r\nPassing in `Some(Duration::ZERO)` to [`hyper::client::Builder::pool_idle_timeout()`](https://docs.rs/hyper/0.14.20/hyper/client/struct.Builder.html#method.pool_idle_timeout) can lead to a panic. The panic happens in the [`tokio::time::interval()`](https://docs.rs/tokio/1.21.2/tokio/time/fn.interval.html) function, which disallows specifying a zero duration.\r\n\r\nI have switched my code to use `builder.pool_max_idle_per_host(0)` instead, which works properly.",
+        "closedAt": "2025-02-03T11:17:23Z",
+        "comments": [
+          {
+            "author": {
+              "login": "grodin"
+            },
+            "authorAssociation": "NONE",
+            "body": "Resolved by #3365 but the issue was missed",
+            "createdAt": "2025-02-03T10:48:29Z",
+            "id": "IC_kwDOAWaYQc6cy6ft",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/2997#issuecomment-2630592493",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2022-09-28T09:53:41Z",
+        "labels": [
+          {
+            "color": "d93f0b",
+            "description": "Category: bug. Something is wrong. This is bad!",
+            "id": "MDU6TGFiZWwxMjU3MTAxOTc=",
+            "name": "C-bug"
+          }
+        ],
+        "number": 2997,
+        "state": "CLOSED",
+        "title": "Panic when pool idle timeout set to zero",
+        "url": "https://github.com/hyperium/hyper/issues/2997"
+      },
+      "target": {
+        "number": 2997,
+        "reason": "Pool idle timeout zero panic report and reproduction.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    }
+  ]
+}

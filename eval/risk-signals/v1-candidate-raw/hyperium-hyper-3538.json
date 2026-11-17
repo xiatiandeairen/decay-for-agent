@@ -1,0 +1,97 @@
+{
+  "candidate": {
+    "id": "hyperium-hyper-3538",
+    "repo": "hyperium/hyper",
+    "url": "https://github.com/hyperium/hyper/pull/3538"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "cd15469475cc6a6cecc5a496c09593edb50dc42a",
+    "body": "This sets the default value of `initial_max_send_streams` to 100, which previously was `usize::MAX` as defined in [`h2` crate](https://github.com/hyperium/h2/blob/4ce59557b56943eb8b5d7dc45f97eda3f0ae0104/src/client.rs#L653).\r\n\r\nThis default value can be considered reasonable given that widely-used HTTP/2 client implementations adopt this value such as nghttp2 and Go's x/net/http2, and [the HTTP/2 spec recommends that HTTP/2 servers should set `MAX_CONCURRENT_STREAM` they advertise to clients to at least 100](https://www.rfc-editor.org/rfc/rfc9113.html#section-6.5.2-2.6.1). More details can be found at https://github.com/hyperium/h2/issues/731.\r\n\r\nContinuation of #3524",
+    "comments": [
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "We'll merge this after releasing v1.2.",
+        "createdAt": "2024-01-24T17:00:38Z",
+        "id": "IC_kwDOAWaYQc5xwjOy",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 1
+            }
+          },
+          {
+            "content": "ROCKET",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/hyperium/hyper/pull/3538#issuecomment-1908552626",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 6,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "src/client/conn/http2.rs"
+      },
+      {
+        "additions": 12,
+        "changeType": "MODIFIED",
+        "deletions": 5,
+        "path": "src/proto/h2/client.rs"
+      }
+    ],
+    "headRefName": "initial_max_send_streams_default_value",
+    "headRefOid": "a998ad2ea32f02c4eaccf40e9e94f1afd43cfa24",
+    "labels": [],
+    "mergedAt": "2024-02-28T22:42:33Z",
+    "number": 3538,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "dswij"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "a998ad2ea32f02c4eaccf40e9e94f1afd43cfa24"
+        },
+        "id": "PRR_kwDOAWaYQc5tyYOi",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2024-01-24T16:57:04Z"
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "a998ad2ea32f02c4eaccf40e9e94f1afd43cfa24"
+        },
+        "id": "PRR_kwDOAWaYQc5xs4ej",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2024-02-28T22:42:08Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix(http2): `initial_max_send_streams` defaults to 100",
+    "url": "https://github.com/hyperium/hyper/pull/3538"
+  }
+}

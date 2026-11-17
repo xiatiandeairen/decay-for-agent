@@ -1,0 +1,62 @@
+{
+  "candidate": {
+    "id": "hyperium-hyper-2746",
+    "repo": "hyperium/hyper",
+    "url": "https://github.com/hyperium/hyper/pull/2746"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "f1b89c117cffebed4b2b8eb2d221fd9b25c1d3d1",
+    "body": "We have reports of runtime panics (linkerd/linkerd2#7748) that sound a\r\nlot like rust-lang/rust#86470. We don't have any evidence that these\r\npanics originate in hyper, but #2385 reports a similar issue.\r\n\r\nEven though this is almost definitely a bug in Rust, it seems most\r\nprudent to actively avoid the uses of `Instant` that are prone to this\r\nbug.\r\n\r\nThis change replaces uses of `Instant::elapsed` and `Instant::sub` with\r\ncalls to `Instant::saturating_duration_since` to prevent this class of\r\npanic.\r\n\r\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 5,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "src/client/pool.rs"
+      }
+    ],
+    "headRefName": "ver/hyper-no-instant-panics",
+    "headRefOid": "f9ec8cdc7c6377fed442bb226686a41e89da11d6",
+    "labels": [],
+    "mergedAt": "2022-02-01T00:33:16Z",
+    "number": 2746,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviews": [
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "f9ec8cdc7c6377fed442bb226686a41e89da11d6"
+        },
+        "id": "PRR_kwDOAWaYQc4zxLrj",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2022-01-31T23:20:48Z"
+      },
+      {
+        "author": {
+          "login": "olix0r"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "f9ec8cdc7c6377fed442bb226686a41e89da11d6"
+        },
+        "id": "PRR_kwDOAWaYQc4zxOaE",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2022-01-31T23:37:38Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "Avoid panics in uses of `Instant`",
+    "url": "https://github.com/hyperium/hyper/pull/2746"
+  }
+}

@@ -1,0 +1,149 @@
+{
+  "case_id": "clap-rs-clap-4049",
+  "refs": [
+    {
+      "detail": {
+        "body": "### Please complete the following tasks\r\n\r\n- [X] I have searched the [discussions](https://github.com/clap-rs/clap/discussions)\r\n- [X] I have searched the [open](https://github.com/clap-rs/clap/issues) and [rejected](https://github.com/clap-rs/clap/issues?q=is%3Aissue+label%3AS-wont-fix+is%3Aclosed) issues\r\n\r\n### Rust Version\r\n\r\nrustc 1.60.0 (7737e0b5c 2022-04-04)\r\n\r\n### Clap Version\r\n\r\n3.1.18\r\n\r\n### Minimal reproducible code\r\n\r\n[playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=3823c43cec7e251150faf0af365e1e2b)\r\n```rust\r\n#[derive(clap::Parser)]\r\nstruct App {\r\n    #[clap(id = \"some-argument\", long = \"some-argument\")]\r\n    field: String,\r\n}\r\n\r\nfn main() {\r\n    let _parsed: App = clap::Parser::parse_from([\"app\", \"--some-argument\", \"123\"]);\r\n}\r\n```\r\n\r\n\r\n### Steps to reproduce the bug with the above code\r\n\r\ncargo run\r\n\r\n### Actual Behaviour\r\n\r\nPanics with a message:\r\n\r\n```\r\nthread 'main' panicked at '`field` is not a name of an argument or a group.\r\nMake sure you're using the name of the argument itself and not the name of short or long flags.', src/main.rs:5:5\r\n```\r\n\r\n### Expected Behaviour\r\n\r\nIn the code above, you can replace `id` with `name` and it will work just fine. [`Arg::id`] was introduced in 3.1.0, it's supposed to replace `Arg::name`. However, derive api doesn't work with `id` attribute, it keeps supporting `name` attribute that refers to deprecated method.\r\n\r\nI expect that `id` attribute will have the same behaviour as `name`. Moreover, to be aligned with changes in library API, derive API ideally should yield a warning that `name` attribute is deprecated.\r\n\r\n[`Arg::id`]: https://docs.rs/clap/latest/clap/struct.Arg.html#method.id\r\n\r\n### Additional Context\r\n\r\n_No response_\r\n\r\n### Debug Output\r\n\r\n_No response_",
+        "closedAt": "2022-08-09T19:31:46Z",
+        "comments": [
+          {
+            "author": {
+              "login": "danielparks"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "I wrote a quick fix for this, but I have a couple of questions before I submit a PR:\r\n\r\n1. Should the `name` and `id` attributes really do the same thing? I see that `Arg` and `Command` both have separate `name` and `id` fields, though I haven’t taken the time to figure out what exactly they do.\r\n2. Should this change only apply to fields? Given that `Command` has an `id` field as well I’m inclined to make it universal, which seems simpler.\r\n3. Would you prefer a separate PR to update documentation, or should I combine them into one?",
+            "createdAt": "2022-07-31T04:55:48Z",
+            "id": "IC_kwDOAd3Usc5Hi91u",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/clap-rs/clap/issues/3785#issuecomment-1200348526",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "epage"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "> Should the name and id attributes really do the same thing? I see that Arg and Command both have separate name and id fields, though I haven’t taken the time to figure out what exactly they do.\r\n\r\nWhile this is murkier in clap v3, clap v4 is working to make this more obvious (some deprecations move us in this direction): `name` and `id` are distinct.  a command's name is both an identifier and a user-visible value.  An argument's ID is mostly just an identifier though it might be used as a default for `Arg::value_name`. \r\n\r\nUs conflating the two has led to maintainer confusion in some of the design and user confusion in how they are used.\r\n\r\n> Should this change only apply to fields? Given that Command has an id field as well I’m inclined to make it universal, which seems simpler.\r\n\r\nCould you clarify what you mean?  Are you speaking in terms of should this apply to both Arg and Command?  Yes, we should respect explicit overrides in both\r\n\r\n> Would you prefer a separate PR to update documentation, or should I combine them into one?\r\n\r\nCommits should be atomic.  If the code is deviating from the documentation, the documentation should be updated at the same time.\r\n\r\nWhat documentation updates do you see being needed?",
+            "createdAt": "2022-08-01T17:11:35Z",
+            "id": "IC_kwDOAd3Usc5HnSsN",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/clap-rs/clap/issues/3785#issuecomment-1201482509",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "danielparks"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Thanks for the quick response. I‘m not very familiar with clap’s internals, so I appreciate your clarifications.\r\n\r\nIt sounds like the attribute behavior should be different for Command and Arg. Specifically:\r\n\r\n1. Command: set only the `id` field. This will probably involve adding a public `id()` method to the `Command` struct.\r\n2. Arg: set both `id` and `name`, much as the `name` attribute does now.\r\n\r\nThere are a few derive reference doc updates needed:\r\n\r\n1. Add `id` attribute for Args.\r\n2. Depreciate `name` attribute on Args.\r\n3. Add `id` attribute for Commands.",
+            "createdAt": "2022-08-03T03:31:58Z",
+            "id": "IC_kwDOAd3Usc5HuxTV",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/clap-rs/clap/issues/3785#issuecomment-1203442901",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "epage"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "> Command: set only the id field. This will probably involve adding a public id() method to the Command struct.\r\n\r\nFrom a users perspective, `Command` only has `name`.  Ignore the `id` field (it will likely go away in clap v4).\r\n\r\n> Arg: set both id and name, much as the name attribute does now.\r\n\r\nFrom a users perspective, `Arg` only has `id`.  Ignore the `name` field (it will likely go away in clap v4)\r\n\r\nSomething that confuses the matter further is `Arg` also has `value_name[s]`, e.g. https://github.com/clap-rs/clap/issues/3709",
+            "createdAt": "2022-08-03T13:11:54Z",
+            "id": "IC_kwDOAd3Usc5HwowR",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/clap-rs/clap/issues/3785#issuecomment-1203932177",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "danielparks"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Seems like we should disallow the `id` attribute on `Command`, then? Unfortunately, that’s going to be either messy or complicated.\r\n\r\n[Here is the solution](https://github.com/clap-rs/clap/compare/master...danielparks:clap:issue-3785-derive-id-attr) I have that effectively just recognizes the `id` attribute as an alias for `name`.",
+            "createdAt": "2022-08-04T03:25:46Z",
+            "id": "IC_kwDOAd3Usc5HznO8",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/clap-rs/clap/issues/3785#issuecomment-1204712380",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "epage"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "I'd say that solution is good enough for now.  Note that we would merge for master first which would has all deprecated functionality removed.  We'd want to add back in the `name` attribute in the docs if/when its backported to v3-master.\r\n\r\nIf we want to go for the error, short term, we could augment `push_attrs` with what type of attribute it is `Command`, `Arg`, etc) and do error checking in the case for `PushMethod`\r\n\r\nLonger term, I'm going to be splitting up the attributes like `#[command(name = \"foo\")]` and it'll be easier to do such checks",
+            "createdAt": "2022-08-09T15:57:57Z",
+            "id": "IC_kwDOAd3Usc5IGKFp",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/clap-rs/clap/issues/3785#issuecomment-1209573737",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "danielparks"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Thanks for all of your clarifications and help. I’ve submitted PR #4049; let me know if it needs updates.",
+            "createdAt": "2022-08-09T19:02:42Z",
+            "id": "IC_kwDOAd3Usc5IG5Ip",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/clap-rs/clap/issues/3785#issuecomment-1209766441",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2022-06-03T11:32:49Z",
+        "labels": [
+          {
+            "color": "f5f1fd",
+            "description": "Category: bug",
+            "id": "MDU6TGFiZWwxODA3NTkyNzk=",
+            "name": "C-bug"
+          },
+          {
+            "color": "02E10C",
+            "description": "Call for participation: Experience needed to fix: Easy / not much",
+            "id": "MDU6TGFiZWw3MTgzMTIxMzU=",
+            "name": "E-easy"
+          },
+          {
+            "color": "f7e101",
+            "description": "Area: #[derive]` macro API",
+            "id": "MDU6TGFiZWwxNjQ4Mjc3Mjcx",
+            "name": "A-derive"
+          }
+        ],
+        "number": 3785,
+        "state": "CLOSED",
+        "title": "Derive API doesn't respect `id` attribute",
+        "url": "https://github.com/clap-rs/clap/issues/3785"
+      },
+      "target": {
+        "number": 3785,
+        "reason": "derive id attribute report.",
+        "repo": "clap-rs/clap",
+        "type": "issue"
+      }
+    }
+  ]
+}

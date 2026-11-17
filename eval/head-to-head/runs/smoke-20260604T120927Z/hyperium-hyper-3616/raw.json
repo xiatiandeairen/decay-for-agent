@@ -1,0 +1,12 @@
+{
+  "case_id": "hyperium-hyper-3616",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"hyperium-hyper-3616\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"state_transition\",\"subject\":\"src/server/conn/http1.rs:graceful_shutdown\",\"evidence_refs\":[\"// Connection (`inner`) is `None` if it was upgraded (and `poll` is `Ready`).\\n        // In that case, we don't need to call `graceful_shutdown`.\\n        if let Some(conn) = self.inner.as_mut() {\\n            Pin::new(conn).graceful_shutdown()\\n        }\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"graceful_shutdown previously unwrapped self.inner; after upgrade inner is None which panicked. Now silently no-ops in upgraded state\u2014changes observable post-upgrade behavior.\"},{\"rank\":2,\"risk_signal\":\"lifecycle_ordering\",\"subject\":\"src/server/conn/http1.rs:UpgradeableConnection::poll\",\"evidence_refs\":[\"Ok(proto::Dispatched::Upgrade(pending)) => {\\n                let (io, buf, _) = self.inner.take().unwrap().conn.into_inner();\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"poll still calls self.inner.as_mut().unwrap() before take(); if graceful_shutdown is called after upgrade and conn re-polled, unwrap on None would panic. Only graceful_shutdown is hardened.\"},{\"rank\":3,\"risk_signal\":\"test_gap_for_risk_path\",\"subject\":\"tests/server.rs:http1_graceful_shutdown_after_upgrade\",\"evidence_refs\":[\"// graceful shutdown doesn't cause issues or panic. It should be ignored after upgrade\\n    conn.as_mut().graceful_shutdown();\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"Test covers graceful_shutdown post-upgrade but does not re-poll conn after shutdown, leaving the poll path's unwrap on None inner untested for the upgraded state.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

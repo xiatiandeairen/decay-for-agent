@@ -1,0 +1,56 @@
+{
+  "case_id": "serde-rs-json-384",
+  "refs": [
+    {
+      "detail": {
+        "baseRefName": "1.0",
+        "baseRefOid": "565e692cafafbf16a960de43d98f29d438fe461a",
+        "body": "Fixes #300.",
+        "comments": [],
+        "files": [
+          {
+            "additions": 9,
+            "changeType": "MODIFIED",
+            "deletions": 2,
+            "path": "json/src/de.rs"
+          },
+          {
+            "additions": 9,
+            "changeType": "MODIFIED",
+            "deletions": 2,
+            "path": "json/src/error.rs"
+          },
+          {
+            "additions": 13,
+            "changeType": "MODIFIED",
+            "deletions": 0,
+            "path": "json_tests/tests/test.rs"
+          }
+        ],
+        "headRefName": "stream",
+        "headRefOid": "bad0a48362c3a277212d531740c4f3066c4dc742",
+        "labels": [
+          {
+            "color": "e99695",
+            "description": "",
+            "id": "MDU6TGFiZWwzNzc1NTE5NzQ=",
+            "name": "breaking change"
+          }
+        ],
+        "mergedAt": "2017-04-11T23:37:51Z",
+        "number": 301,
+        "reviewDecision": "",
+        "reviews": [],
+        "state": "MERGED",
+        "title": "Require array or object in StreamDeserializer",
+        "url": "https://github.com/serde-rs/json/pull/301"
+      },
+      "target": {
+        "number": 301,
+        "reason": "Related StreamDeserializer top-level primitive behavior change.",
+        "repo": "serde-rs/json",
+        "type": "pr"
+      }
+    }
+  ]
+}

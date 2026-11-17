@@ -1,0 +1,151 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Enriched candidate; macro production files and tests changed.",
+    "id": "tokio-rs-tokio-7638",
+    "limitations": "Compile-time contract case, not runtime stability.",
+    "production_files": [
+      "tokio/src/macros/join.rs",
+      "tokio/src/macros/support.rs",
+      "tokio/src/macros/try_join.rs"
+    ],
+    "repo": "tokio-rs/tokio",
+    "risk_summary": "join! and try_join! macro hygiene issue was fixed.",
+    "signal_ids": [
+      "external_contract",
+      "assumption_boundary",
+      "risk_path_test_gap"
+    ],
+    "source_refs": [
+      "https://github.com/tokio-rs/tokio/pull/7638",
+      "eval/semantic-candidates/enriched.jsonl"
+    ],
+    "status": "candidate",
+    "test_files": [
+      "tokio/tests/macros_join.rs"
+    ],
+    "url": "https://github.com/tokio-rs/tokio/pull/7638",
+    "why_high_value": "Macro hygiene is an external compile-time contract.",
+    "why_not_noise": "Specific public macro behavior with tests."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "b9b532485bbb879042a1bd2ef40a50e6c1d15bb6",
+    "body": "Closes: #7637\r\n\r\n## Motivation\r\n\r\n#7307 added a `biased` mode to `join!` and `try_join!`. However, it did so in a way that leaked the `const COUNT: u32` into the outer scope of the macro expansion. This resulted in it shadowing any caller-specified `const COUNT`s in the futures passed into the macro call - which either caused a compiler failure in case of type mismatch, or the caller provided constant's value being discarded.\r\n\r\nThis change fixes this by refactoring to keep the macro expansion's declaration of `const COUNT` within its `poll_fn` body. This restores the original scoping prior to the `biased` feature.\r\n\r\n## Solution\r\nThis was a bit fiddly since we want to use a const generic with our `Rotator` helper to avoid increasing the memory footprint of the `*join` future, but the rotator is instantiated in the outer scope. At the same time, we don't want to just use an obscure variable name to reduce the chance of collision.\r\n\r\n@robinhundt [had a nice suggestion](https://github.com/tokio-rs/tokio/issues/7637#issuecomment-3315239456) to instead use a helper trait with an associated type, along with some marker structs per rotator type. This allows us to signal whether we are in biased mode or not in our tt muncher expansions, but defer directly naming the `const COUNT` generic due to the additional indirection layer. We thus can pass in the literal `$($total:tt)` expression as our generic in our terminal macro expansion and no longer need the `const COUNT` declaration in outer scope.\r\n\r\nThis preserves the reduced memory footprint while also sidestepping hygiene issues. It technically does result in us calculating the `0 + 1 + 2`... expression an additional time (at the rotator declaration and also at the `const COUNT` declaration inside `poll_fn` scope), though I would hope that the compiler will optimize that away. Anyway it's a cheap, one-time cost on initialization and less important than memory footprint.\r\n\r\nThe main tradeoff is that this is a bit more complicated that the original implementation. Though, I find that it is similarly readable compared to the macro impl code... none of this stuff is nearly as ugly as the tt muncher itself ^^. And then, this is not an implementation detail that concerns the end user anyway.\r\n\r\n## Testing\r\n\r\nI structured this PR as two atomic commits.\r\n\r\nThe first commit demonstrates the regression with tests that pass by asserting that the macro hygiene issue results in the macro expansion shadowing the user-provided generic.\r\n\r\nThe second commit implements the solution described above, and flips the tests over to asserting that the user-provided value is respected.",
+    "comments": [
+      {
+        "author": {
+          "login": "jlizen"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "cc @ADD-SP whenever you have a moment, thanks!",
+        "createdAt": "2025-09-20T22:43:37Z",
+        "id": "IC_kwDOBAsbdc7Fm4l3",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/7638#issuecomment-3315304823",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "jlizen"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Appreciate the eyes!",
+        "createdAt": "2025-09-21T11:05:21Z",
+        "id": "IC_kwDOBAsbdc7FpPUS",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/tokio-rs/tokio/pull/7638#issuecomment-3315922194",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 33,
+        "changeType": "MODIFIED",
+        "deletions": 9,
+        "path": "tokio/src/macros/join.rs"
+      },
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "tokio/src/macros/support.rs"
+      },
+      {
+        "additions": 9,
+        "changeType": "MODIFIED",
+        "deletions": 9,
+        "path": "tokio/src/macros/try_join.rs"
+      },
+      {
+        "additions": 20,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tokio/tests/macros_join.rs"
+      },
+      {
+        "additions": 20,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tokio/tests/macros_try_join.rs"
+      }
+    ],
+    "headRefName": "master",
+    "headRefOid": "196babc752b9f770cd4c77587da4d0360e8012e6",
+    "labels": [
+      {
+        "color": "f5f1fd",
+        "description": "Category: This is a bug.",
+        "id": "MDU6TGFiZWw0Mzk4OTcxODg=",
+        "name": "C-bug"
+      },
+      {
+        "color": "f7e101",
+        "description": "Area: The main tokio crate",
+        "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+        "name": "A-tokio"
+      },
+      {
+        "color": "f7b101",
+        "description": "Module: macros in the main Tokio crate",
+        "id": "MDU6TGFiZWwyMjE2ODgwNzU3",
+        "name": "M-macros"
+      }
+    ],
+    "mergedAt": "2025-09-21T05:47:22Z",
+    "number": 7638,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "ADD-SP"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Looks good to me.",
+        "commit": {
+          "oid": "196babc752b9f770cd4c77587da4d0360e8012e6"
+        },
+        "id": "PRR_kwDOBAsbdc7BrYoZ",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2025-09-21T03:45:32Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "macros: fix the hygiene issue of `join!` and `try_join!`",
+    "url": "https://github.com/tokio-rs/tokio/pull/7638"
+  }
+}

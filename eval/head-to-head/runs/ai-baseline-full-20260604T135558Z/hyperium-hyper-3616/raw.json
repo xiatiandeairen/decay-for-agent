@@ -1,0 +1,12 @@
+{
+  "case_id": "hyperium-hyper-3616",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"hyperium-hyper-3616\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"state_transition\",\"subject\":\"src/server/conn/http1.rs:UpgradeableConnection::poll\",\"evidence_refs\":[\"match ready!(Pin::new(&mut self.inner.as_mut().unwrap().conn).poll(cx)) {\",\"let (io, buf, _) = self.inner.take().unwrap().conn.into_inner();\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Fix acknowledges inner can be None after upgrade, but poll() still unwraps self.inner; polling again after Upgrade returned Ready would panic on the same invariant the comment describes.\"},{\"rank\":2,\"risk_signal\":\"assumption_boundary\",\"subject\":\"src/server/conn/http1.rs:UpgradeableConnection::graceful_shutdown\",\"evidence_refs\":[\"// Connection (`inner`) is `None` if it was upgraded (and `poll` is `Ready`).\",\"if let Some(conn) = self.inner.as_mut() {\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Only one method is guarded against inner=None; the invariant 'inner may be None post-upgrade' now exists across the type but is only enforced here, leaving other call sites unguarded.\"},{\"rank\":3,\"risk_signal\":\"test_gap_for_risk_path\",\"subject\":\"tests/server.rs:http1_graceful_shutdown_after_upgrade\",\"evidence_refs\":[\"// graceful shutdown doesn't cause issues or panic. It should be ignored after upgrade\",\"conn.as_mut().graceful_shutdown();\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"Test exercises graceful_shutdown post-upgrade but does not poll the connection again afterward, so the symmetric unwrap path in poll() after upgrade remains uncovered.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

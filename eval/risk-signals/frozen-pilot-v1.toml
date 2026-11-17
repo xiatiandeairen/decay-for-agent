@@ -1,0 +1,41 @@
+# M3.1 pilot eval set.
+#
+# This is intentionally a pilot, not the full frozen eval v1 target.
+# Cases may not be replaced to improve tool scores; additions require the
+# same ground-truth, risk-signal, and skeptic review process.
+
+version = "risk-signal-frozen-pilot-v1"
+target_cases = 20
+actual_cases = 26
+source = "eval/risk-signals/eval-candidates.toml"
+status = "pilot"
+limitations = "Pilot set is enough for M3.1 semantic-flow development and benchmark smoke, but not enough to claim v0.2.0 product value. Full frozen eval v1 still targets 40 real cases."
+
+case_ids = [
+  "tokio-rs-tokio-7991",
+  "tokio-rs-tokio-8001",
+  "hyperium-hyper-647",
+  "hyperium-hyper-3365",
+  "hyperium-hyper-228",
+  "hyperium-hyper-3261",
+  "hyperium-hyper-3616",
+  "tokio-rs-tokio-7922",
+  "BurntSushi-ripgrep-3182",
+  "serde-rs-json-757",
+  "hyper-4056",
+  "hyper-4061",
+  "hyper-3988",
+  "hyper-4043",
+  "hyper-4042",
+  "hyper-4038",
+  "hyper-3998",
+  "hyper-4011",
+  "hyper-3977",
+  "hyper-3185",
+  "ripgrep-3195",
+  "ripgrep-3189",
+  "ripgrep-3154",
+  "ripgrep-2885",
+  "hyperium-hyper-518",
+  "hyperium-hyper-3812",
+]

@@ -1,0 +1,62 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Previously accepted large-scale candidate; merged regression fix with changelog and tests.",
+    "id": "ripgrep-3195",
+    "limitations": "Exact files/tests need enrichment.",
+    "production_files": [
+      "crates/searcher/src/searcher/mod.rs"
+    ],
+    "repo": "BurntSushi/ripgrep",
+    "risk_summary": "Regression with --line-buffered flag changed searcher buffering behavior.",
+    "signal_ids": [
+      "external_contract",
+      "state_transition",
+      "risk_path_test_gap"
+    ],
+    "source_refs": [
+      "https://github.com/BurntSushi/ripgrep/pull/3195",
+      "eval/large-scale-50/candidates/open-source.toml"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3195",
+    "why_high_value": "CLI buffering flag behavior is externally visible.",
+    "why_not_noise": "Specific regression in documented command behavior."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "38d630261aded3a8e535fe85761e68af35bc462d",
+    "body": "In my fix for #3184, I actually had two fixes. One was a tweak to how we\nread data and the other was a tweak to how we determined how much of the\nbuffer we needed to keep around. It turns out that fixing #3184 only\nrequired the latter fix, found in commit\nd4b77a8d8967ce1bf701ec65ceb9a75e85e5f2e0. The former fix also helped the\nspecific case of #3184, but it ended up regressing `--line-buffered`.\n\nSpecifically, previous to 8c6595c215d1e24bed5b7b86e2b18f3c871439ef (the\nfirst fix), we would do one `read` syscall. This call might not fill our\ncaller provided buffer. And in particular, `stdin` seemed to fill fewer\nbytes than reading from a file. So the \"fix\" was to put `read` in a loop\nand keep calling it until the caller provided buffer was full or until\nthe stream was exhausted. This helped alleviate #3184 by amortizing\n`read` syscalls better.\n\nBut of course, in retrospect, this change is clearly contrary to how\n`--line-buffered` works. We specifically do _not_ want to wait around\nuntil the buffer is full. We want to read what we can, search it and\nmove on.\n\nSo this reverts the first fix but leaves the second, which still\nkeeps #3184 fixed and also fixes #3194 (the regression).\n\nThis reverts commit 8c6595c215d1e24bed5b7b86e2b18f3c871439ef.\n\nFixes #3194\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 7,
+        "changeType": "MODIFIED",
+        "deletions": 4,
+        "path": "CHANGELOG.md"
+      },
+      {
+        "additions": 8,
+        "changeType": "MODIFIED",
+        "deletions": 13,
+        "path": "crates/searcher/src/line_buffer.rs"
+      },
+      {
+        "additions": 2,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "crates/searcher/src/searcher/glue.rs"
+      }
+    ],
+    "headRefName": "ag/fix-line-buffering-regression",
+    "headRefOid": "eb60087486a01f573cae9186fcca8973ef602dfd",
+    "labels": [],
+    "mergedAt": "2025-10-19T15:06:40Z",
+    "number": 3195,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "searcher: fix regression with `--line-buffered` flag",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3195"
+  }
+}

@@ -1,0 +1,8 @@
+case_id = "serde-rs-json-757"
+repo = "serde-rs/json"
+pr = 757
+kind = "risk_signal"
+status = "freeze_ready"
+base_sha = "9bcb08fd926c1c727cb1343363d41c25f2e6025d"
+head_sha = "c64c1d7429d32eaef3a501c730906656a9606f5d"
+diff_exit = 0

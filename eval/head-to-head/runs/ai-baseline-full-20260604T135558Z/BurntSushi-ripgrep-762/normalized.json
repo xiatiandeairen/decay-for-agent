@@ -1,0 +1,44 @@
+{
+  "case_id": "BurntSushi-ripgrep-762",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "if is_absolute || line.chars().any(|c| c == '/') {",
+        "if !literal_separator {"
+      ],
+      "rank": 1,
+      "rationale": "Glob matching semantics for patterns containing a slash changed: now `literal_separator` gates the `**/` prefix, so non-absolute patterns with a mid-string slash (e.g. `src/*.rs`) no longer get `**/`\u2026",
+      "risk_signal": "external_contract",
+      "subject": "ignore/src/gitignore.rs:add_line",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "assert!(m(\"ROOT/parent_dir/dir_deep_02\", true).is_none());",
+        "assert!(m(\"ROOT/parent_dir/dir_deep_02/file\", false).is_none());",
+        "assert!(m(\"ROOT/parent_dir/dir_deep_03/file\", false).is_none());"
+      ],
+      "rank": 2,
+      "rationale": "Test expectations flipped from is_ignore() to is_none() for dir_deep_02/03 cases, indicating a behavior change where previously-ignored deep paths are no longer matched by gitignore patterns.",
+      "risk_signal": "state_transition",
+      "subject": "ignore/tests/gitignore_matched_path_or_any_parents_tests.rs:test_dirs_in_deep",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "assert!(ov.matched(\"bar/lib.rs\", false).is_whitelist());",
+        "assert!(ov.matched(\"wat/bar/lib.rs\", false).is_ignore());"
+      ],
+      "rank": 3,
+      "rationale": "Override semantics for `bar/*.rs` flipped: `wat/bar/lib.rs` went from whitelist to ignore (no longer matches across path prefixes), changing how non-absolute slash patterns are anchored.",
+      "risk_signal": "external_contract",
+      "subject": "ignore/src/overrides.rs:gitignore",
+      "value": "direct"
+    }
+  ]
+}

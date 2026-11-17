@@ -1,0 +1,6 @@
+ benches/client.rs  |  5 ++++-
+ src/client/mod.rs  | 43 ++++++++++++++++++++++++++++++++++++++-----
+ src/client/pool.rs | 23 +++++++++++++++++++++--
+ src/mock.rs        | 39 ++++++++++++++++++++++++++++++++++++++-
+ src/net.rs         | 16 +++++++++++++++-
+ 5 files changed, 116 insertions(+), 10 deletions(-)

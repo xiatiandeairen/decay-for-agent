@@ -1,0 +1,47 @@
+{
+  "candidate": {
+    "id": "serde-rs-json-770",
+    "repo": "serde-rs/json",
+    "url": "https://github.com/serde-rs/json/pull/770"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "d735585370d3d62502130051529410464e147224",
+    "body": "",
+    "comments": [],
+    "files": [
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "fuzz/Cargo.toml"
+      }
+    ],
+    "headRefName": "patch-1",
+    "headRefOid": "2cd354a8279719f46720daf185c528919b11630d",
+    "labels": [],
+    "mergedAt": "2021-04-08T14:40:37Z",
+    "number": 770,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks!",
+        "commit": {
+          "oid": "2cd354a8279719f46720daf185c528919b11630d"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3NjMxNDgxMjAz",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2021-04-08T14:40:20Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "Fix breaking OSS-Fuzz coverage build",
+    "url": "https://github.com/serde-rs/json/pull/770"
+  }
+}

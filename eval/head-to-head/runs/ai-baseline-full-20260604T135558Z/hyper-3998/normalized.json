@@ -1,0 +1,43 @@
+{
+  "case_id": "hyper-3998",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "Some(h2::Reason::NO_ERROR) | Some(h2::Reason::CANCEL) => {",
+        "if let Some(h2::Reason::NO_ERROR) = e.reason() {"
+      ],
+      "rank": 1,
+      "rationale": "H2 data error path narrows graceful-stop reasons: previously NO_ERROR and CANCEL both mapped to Poll::Ready(None); now only NO_ERROR does, so RST_STREAM(CANCEL) surfaces as an error to callers.",
+      "risk_signal": "error_propagation",
+      "subject": "src/body/incoming.rs:Incoming::poll_frame",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "Err(e) => Poll::Ready(Some(Err(crate::Error::new_h2(e)))),",
+        "Same as above, a RST_STREAM with NO_ERROR indicates an early"
+      ],
+      "rank": 2,
+      "rationale": "poll_trailers branch newly swallows h2 errors when reason is NO_ERROR by returning Poll::Ready(None); previously every trailers error was propagated, so trailer consumers lose a former failure signal.",
+      "risk_signal": "error_propagation",
+      "subject": "src/body/incoming.rs:Incoming::poll_frame",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "http2_responds_before_consuming_request_body_with_trailers",
+        "trailers.insert(\"grpc\", HeaderValue::from_static(\"0\"));"
+      ],
+      "rank": 3,
+      "rationale": "New tests exercise the NO_ERROR/trailers early-response path but do not cover the changed CANCEL branch, leaving the newly error-propagating CANCEL behavior unverified.",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tests/client.rs:http2_responds_before_consuming_request_body_with_trailers",
+      "value": "supporting"
+    }
+  ]
+}

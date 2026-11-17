@@ -1,0 +1,5 @@
+{
+  "case_id": "ripgrep-3195",
+  "reason": "top_risks[1].evidence_refs[0] not found verbatim in diff.patch",
+  "status": "ai-baseline-failed"
+}

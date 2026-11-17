@@ -1,0 +1,54 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Title identifies platform-specific performance regression in ignore traversal code.",
+    "id": "BurntSushi-ripgrep-827",
+    "limitations": "Performance ground truth needs benchmark or discussion context before frozen eval.",
+    "production_files": [
+      "ignore/src/walk.rs"
+    ],
+    "repo": "BurntSushi/ripgrep",
+    "risk_summary": "Windows ignore walking performance regression.",
+    "signal_ids": [
+      "non_happy_path",
+      "risk_path_test_gap"
+    ],
+    "source_refs": [
+      "https://github.com/BurntSushi/ripgrep/pull/827"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/BurntSushi/ripgrep/pull/827",
+    "why_high_value": "Platform-specific traversal regressions affect core search performance.",
+    "why_not_noise": "Specific platform, subsystem, and regression type are named."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "597bf04a56d43aa9c0eb0f8fbb90c9d51c53656c",
+    "body": "This commit fixes a performance regression in Windows that resulted from\r\nfallout from fixing #705. In particular, we introduced an additional\r\nstat call for every single directory entry, which can be quite\r\ndisastrous for performance.\r\n\r\nThere is a corresponding companion PR that fixes the same bug in\r\nwalkdir: https://github.com/BurntSushi/walkdir/pull/96\r\n\r\nFixes #820",
+    "comments": [],
+    "files": [
+      {
+        "additions": 3,
+        "changeType": "MODIFIED",
+        "deletions": 3,
+        "path": "Cargo.lock"
+      },
+      {
+        "additions": 39,
+        "changeType": "MODIFIED",
+        "deletions": 8,
+        "path": "ignore/src/walk.rs"
+      }
+    ],
+    "headRefName": "ag/fix-perf",
+    "headRefOid": "6c11d2f08d4982f23ccea2ac3810e513eeb88874",
+    "labels": [],
+    "mergedAt": "2018-02-21T00:50:53Z",
+    "number": 827,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "ignore: fix performance regression on Windows",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/827"
+  }
+}

@@ -122,6 +122,14 @@ pub fn detect_quality(files: &[QualityFileChange]) -> QualityReport {
                 "sensitive production change without tests",
             );
         }
+    } else if executable_prod_files_changed > 0 && report.test_files_changed > 0 {
+        let file = first_executable_prod_file.as_deref().unwrap_or("");
+        push_record(
+            &mut report,
+            "prod_change_with_tests",
+            file,
+            "production code changed with test changes",
+        );
     }
 
     if crates.len() > 1 || prod_domains.len() > 2 {

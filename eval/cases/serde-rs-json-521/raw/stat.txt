@@ -1,0 +1,6 @@
+ Cargo.toml                   |  1 +
+ src/number.rs                |  2 +-
+ tests/regression.rs          |  6 ++++++
+ tests/regression/issue520.rs | 18 ++++++++++++++++++
+ tests/regression/mod.rs      |  1 +
+ 5 files changed, 27 insertions(+), 1 deletion(-)

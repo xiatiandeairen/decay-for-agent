@@ -1,0 +1,60 @@
+Diff context:
+  repo_root=/private/tmp/decay-pr-eval/tokio-rs-tokio-7983/repo
+  mode=git_ref
+  base_input=95b9342da7009d068fea6c5d532e04934d46980c
+  base=95b9342da7009d068fea6c5d532e04934d46980c
+  head=5810afd7d5728fbedb869c8bdf80ef89a251a85a
+  changed_files=4
+
+Top risk findings:
+1. [high] tokio/src/runtime/io/driver/uring.rs
+   3 unsafe additions
+   action: review runtime failure and boundary-safety invariants
+2. [high] tokio/src/runtime/io/driver/uring.rs
+   semantic concurrency_ordering_changed Lifecycle::Completed(cqe) => {
+   action: review wakeup, shutdown, or completion ordering and require focused concurrency regression coverage
+3. [high] tokio/src/runtime/io/driver/uring.rs
+   semantic error_propagation_changed Some(Lifecycle::Cancelled(cancel_data)) => {
+   action: review caller-visible error propagation and require focused regression coverage
+4. [medium] tokio/src/runtime/io/driver/uring.rs
+   quality prod_change_with_tests
+   action: review changed behavior invariants and confirm regression tests cover the risky path
+
+Complexity impact:
+  changed_functions=3 evidence=0 partial=false diagnostics=0
+  value_note=direct for worsened/new_high_risk; touched_existing_risky is supporting context, not proof of current-diff risk
+
+Coverage impact:
+  evidence=0
+  value_note=scan coverage gaps limit decay confidence; this is tool coverage evidence, not proof of product code risk
+
+Stability impact:
+  evidence=3
+  value_note=direct for newly introduced unsafe/panic/public-api evidence; move/refactor diffs can weaken this signal
+- id=1 category=stability kind=unsafe_added subject=line 88 source=stability confidence=high value=direct
+  file=tokio/src/runtime/io/driver/uring.rs
+- id=2 category=stability kind=unsafe_added subject=line 165 source=stability confidence=high value=direct
+  file=tokio/src/runtime/io/driver/uring.rs
+- id=3 category=stability kind=unsafe_added subject=line 300 source=stability confidence=high value=direct
+  file=tokio/src/runtime/io/driver/uring.rs
+
+Quality impact:
+  evidence=1 prod_files_changed=1 test_files_changed=3 docs_files_changed=0
+  value_note=missing-test signals are supporting evidence; broad scope signals are weak unless paired with direct diff evidence
+- id=4 category=quality kind=prod_change_with_tests subject=production code changed with test changes source=quality confidence=low value=supporting
+  file=tokio/src/runtime/io/driver/uring.rs
+
+Semantic impact:
+  evidence=2
+  value_note=high confidence only for explicit scanned patterns; this is not general semantic understanding
+- id=5 category=semantic kind=concurrency_ordering_changed subject=Lifecycle::Completed(cqe) => { source=semantic_diff confidence=high value=direct
+  file=tokio/src/runtime/io/driver/uring.rs
+- id=6 category=semantic kind=error_propagation_changed subject=Some(Lifecycle::Cancelled(cancel_data)) => { source=semantic_diff confidence=medium value=direct
+  file=tokio/src/runtime/io/driver/uring.rs
+
+History impact:
+  evidence=1
+  value_note=context only; excluded from top risk unless direct diff evidence exists
+- id=7 category=history kind=churn_hotspot subject=0 commits in 90d, 298 lines changed in 180d source=git_history confidence=low value=context
+  file=tokio/src/runtime/io/driver/uring.rs
+recorded=true changeset=1 evidence_saved=7

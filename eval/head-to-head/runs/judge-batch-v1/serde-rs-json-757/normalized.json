@@ -1,0 +1,43 @@
+{
+  "case_id": "serde-rs-json-757",
+  "ground_truth_draft": {
+    "expected_behavior": "Deserializing a RawValue from a byte slice containing invalid UTF-8 inside a JSON string must now return an InvalidUnicodeCodePoint error instead of panicking via str::from_utf8(...).unwrap() in end_raw_buffering.",
+    "high_value": true,
+    "primary_signal_ids": [
+      "error_propagation",
+      "assumption_boundary"
+    ],
+    "rationale_from_pr_metadata": "PR title 'Fix panic deserializing RawValue from invalid utf-8 bytes' and body 'Fixes #755' explicitly identify the defect as a panic on invalid UTF-8 in RawValue. The diff replaces the .unwrap() in SliceRead::end_raw_buffering with a match that returns ErrorCode::InvalidUnicodeCodePoint, and a new regression test test_raw_invalid_utf8 asserts the error message for both Value and Box<RawValue> deserialization of bytes \\xCE\\xF8.",
+    "subject_files": [
+      "src/read.rs"
+    ]
+  },
+  "judgement_drafts": {
+    "ai_baseline": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "Rank1 nails error_propagation (panic\u2192Err), rank2 nails assumption_boundary on the UTF-8 slice precondition. Rank3 test_gap (IoRead path uncovered) is supporting but plausible.",
+      "top3_total": 3,
+      "top3_useful": 2,
+      "weak_only_top_risk_count": 0
+    },
+    "fact_only": {
+      "actionable": false,
+      "missed_high_risk_count": 2,
+      "notes": "Only surfaces quality prod_change_with_tests (supporting). No direct mechanism for the panic\u2192Err change; reviewer would not catch the UTF-8 assumption from this alone.",
+      "top3_total": 1,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 1
+    },
+    "semantic_filtered": {
+      "actionable": true,
+      "missed_high_risk_count": 1,
+      "notes": "Semantic panic_to_error_propagation_changed (direct, high) precisely identifies the error_propagation mechanism. Misses the assumption_boundary framing on the UTF-8 slice precondition.",
+      "top3_total": 2,
+      "top3_useful": 1,
+      "weak_only_top_risk_count": 0
+    }
+  },
+  "manifest_hash": "06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208",
+  "model": "claude-opus-4-7"
+}

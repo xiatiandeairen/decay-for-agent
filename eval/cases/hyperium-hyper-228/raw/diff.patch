@@ -1,0 +1,901 @@
+diff --git a/src/client/response.rs b/src/client/response.rs
+index f87dd936..49ab4ea2 100644
+--- a/src/client/response.rs
++++ b/src/client/response.rs
+@@ -23,105 +23,198 @@ pub struct Response<S = HttpStream> {
+     pub version: version::HttpVersion,
+     status_raw: RawStatus,
+     body: HttpReader<BufferedReader<Box<NetworkStream + Send>>>,
+ }
+ 
+ impl Response {
+ 
+     /// Creates a new response from a server.
+     pub fn new(stream: Box<NetworkStream + Send>) -> HttpResult<Response> {
+         let mut stream = BufferedReader::new(stream);
+         let (version, raw_status) = try!(read_status_line(&mut stream));
+         let status = match FromPrimitive::from_u16(raw_status.0) {
+             Some(status) => status,
+             None => return Err(HttpStatusError)
+         };
+         debug!("{} {}", version, status);
+ 
+         let headers = try!(header::Headers::from_raw(&mut stream));
+         debug!("Headers: [\n{}]", headers);
+ 
+         let body = if headers.has::<TransferEncoding>() {
+             match headers.get::<TransferEncoding>() {
+                 Some(&TransferEncoding(ref codings)) => {
+                     if codings.len() > 1 {
+                         debug!("TODO: #2 handle other codings: {}", codings);
+                     };
+ 
+                     if codings.contains(&Chunked) {
+                         ChunkedReader(stream, None)
+                     } else {
+                         debug!("not chuncked. read till eof");
+                         EofReader(stream)
+                     }
+                 }
+                 None => unreachable!()
+             }
+         } else if headers.has::<ContentLength>() {
+             match headers.get::<ContentLength>() {
+                 Some(&ContentLength(len)) => SizedReader(stream, len),
+                 None => unreachable!()
+             }
+         } else {
+             debug!("neither Transfer-Encoding nor Content-Length");
+             EofReader(stream)
+         };
+ 
+         Ok(Response {
+             status: status,
+             version: version,
+             headers: headers,
+             body: body,
+             status_raw: raw_status,
+         })
+     }
+ 
+     /// Get the raw status code and reason.
+     pub fn status_raw(&self) -> &RawStatus {
+         &self.status_raw
+     }
+ 
+     /// Consumes the Request to return the NetworkStream underneath.
+     pub fn into_inner(self) -> Box<NetworkStream + Send> {
+         self.body.unwrap().into_inner()
+     }
+ }
+ 
+ impl Reader for Response {
+     #[inline]
+     fn read(&mut self, buf: &mut [u8]) -> IoResult<uint> {
+         self.body.read(buf)
+     }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use std::borrow::Cow::Borrowed;
+     use std::boxed::BoxAny;
+     use std::io::BufferedReader;
+ 
+     use header::Headers;
++    use header::common::TransferEncoding;
++    use header::common::transfer_encoding::Encoding;
+     use http::HttpReader::EofReader;
+     use http::RawStatus;
+     use mock::MockStream;
+     use net::NetworkStream;
+     use status;
+     use version;
+ 
+     use super::Response;
+ 
+ 
+     #[test]
+     fn test_unwrap() {
+         let res = Response {
+             status: status::StatusCode::Ok,
+             headers: Headers::new(),
+             version: version::HttpVersion::Http11,
+             body: EofReader(BufferedReader::new(box MockStream::new() as Box<NetworkStream + Send>)),
+             status_raw: RawStatus(200, Borrowed("OK"))
+         };
+ 
+         let b = res.into_inner().downcast::<MockStream>().ok().unwrap();
+         assert_eq!(b, box MockStream::new());
+ 
+     }
++
++    #[test]
++    fn test_parse_chunked_response() {
++        let stream = MockStream::with_input(b"\
++            HTTP/1.1 200 OK\r\n\
++            Transfer-Encoding: chunked\r\n\
++            \r\n\
++            1\r\n\
++            q\r\n\
++            2\r\n\
++            we\r\n\
++            2\r\n\
++            rt\r\n\
++            0\r\n\
++            \r\n"
++        );
++
++        let mut res = Response::new(box stream).unwrap();
++
++        // The status line is correct?
++        assert_eq!(res.status, status::StatusCode::Ok);
++        assert_eq!(res.version, version::HttpVersion::Http11);
++        // The header is correct?
++        match res.headers.get::<TransferEncoding>() {
++            Some(encodings) => {
++                assert_eq!(1, encodings.len());
++                assert_eq!(Encoding::Chunked, encodings[0]);
++            },
++            None => panic!("Transfer-Encoding: chunked expected!"),
++        };
++        // The body is correct?
++        let body = res.read_to_string().unwrap();
++        assert_eq!("qwert", body);
++    }
++
++    /// Tests that when a chunk size is not a valid radix-16 number, an error
++    /// is returned.
++    #[test]
++    fn test_invalid_chunk_size_not_hex_digit() {
++        let stream = MockStream::with_input(b"\
++            HTTP/1.1 200 OK\r\n\
++            Transfer-Encoding: chunked\r\n\
++            \r\n\
++            X\r\n\
++            1\r\n\
++            0\r\n\
++            \r\n"
++        );
++
++        let mut res = Response::new(box stream).unwrap();
++
++        assert!(res.read_to_string().is_err());
++    }
++
++    /// Tests that when a chunk size contains an invalid extension, an error is
++    /// returned.
++    #[test]
++    fn test_invalid_chunk_size_extension() {
++        let stream = MockStream::with_input(b"\
++            HTTP/1.1 200 OK\r\n\
++            Transfer-Encoding: chunked\r\n\
++            \r\n\
++            1 this is an invalid extension\r\n\
++            1\r\n\
++            0\r\n\
++            \r\n"
++        );
++
++        let mut res = Response::new(box stream).unwrap();
++
++        assert!(res.read_to_string().is_err());
++    }
++
++    /// Tests that when a valid extension that contains a digit is appended to
++    /// the chunk size, the chunk is correctly read.
++    #[test]
++    fn test_chunk_size_with_extension() {
++        let stream = MockStream::with_input(b"\
++            HTTP/1.1 200 OK\r\n\
++            Transfer-Encoding: chunked\r\n\
++            \r\n\
++            1;this is an extension with a digit 1\r\n\
++            1\r\n\
++            0\r\n\
++            \r\n"
++        );
++
++        let mut res = Response::new(box stream).unwrap();
++
++        assert_eq!("1", res.read_to_string().unwrap())
++    }
+ }
+diff --git a/src/http.rs b/src/http.rs
+index d0c63e3a..fb1cf0f7 100644
+--- a/src/http.rs
++++ b/src/http.rs
+@@ -60,183 +60,203 @@ impl<R: Reader> HttpReader<R> {
+     pub fn unwrap(self) -> R {
+         match self {
+             SizedReader(r, _) => r,
+             ChunkedReader(r, _) => r,
+             EofReader(r) => r,
+             EmptyReader(r) => r,
+         }
+     }
+ }
+ 
+ impl<R: Reader> Reader for HttpReader<R> {
+     fn read(&mut self, buf: &mut [u8]) -> IoResult<uint> {
+         match *self {
+             SizedReader(ref mut body, ref mut remaining) => {
+                 debug!("Sized read, remaining={}", remaining);
+                 if *remaining == 0 {
+                     Err(io::standard_error(io::EndOfFile))
+                 } else {
+                     let num = try!(body.read(buf));
+                     if num > *remaining {
+                         *remaining = 0;
+                     } else {
+                         *remaining -= num;
+                     }
+                     Ok(num)
+                 }
+             },
+             ChunkedReader(ref mut body, ref mut opt_remaining) => {
+                 let mut rem = match *opt_remaining {
+                     Some(ref rem) => *rem,
+                     // None means we don't know the size of the next chunk
+                     None => try!(read_chunk_size(body))
+                 };
+                 debug!("Chunked read, remaining={}", rem);
+ 
+                 if rem == 0 {
+                     *opt_remaining = Some(0);
+ 
+                     // chunk of size 0 signals the end of the chunked stream
+                     // if the 0 digit was missing from the stream, it would
+                     // be an InvalidInput error instead.
+                     debug!("end of chunked");
+                     return Err(io::standard_error(io::EndOfFile));
+                 }
+ 
+                 let to_read = min(rem, buf.len());
+                 let count = try!(body.read(buf.slice_to_mut(to_read)));
+ 
+                 rem -= count;
+                 *opt_remaining = if rem > 0 {
+                     Some(rem)
+                 } else {
+                     try!(eat(body, LINE_ENDING.as_bytes()));
+                     None
+                 };
+                 Ok(count)
+             },
+             EofReader(ref mut body) => {
+                 body.read(buf)
+             },
+             EmptyReader(_) => Err(io::standard_error(io::EndOfFile))
+         }
+     }
+ }
+ 
+ fn eat<R: Reader>(rdr: &mut R, bytes: &[u8]) -> IoResult<()> {
+     for &b in bytes.iter() {
+         match try!(rdr.read_byte()) {
+             byte if byte == b => (),
+             _ => return Err(io::standard_error(io::InvalidInput))
+         }
+     }
+     Ok(())
+ }
+ 
+ /// Chunked chunks start with 1*HEXDIGIT, indicating the size of the chunk.
+ fn read_chunk_size<R: Reader>(rdr: &mut R) -> IoResult<uint> {
+     let mut size = 0u;
+     let radix = 16;
+     let mut in_ext = false;
++    let mut in_chunk_size = true;
+     loop {
+         match try!(rdr.read_byte()) {
+-            b@b'0'...b'9' if !in_ext => {
++            b@b'0'...b'9' if in_chunk_size => {
+                 size *= radix;
+                 size += (b - b'0') as uint;
+             },
+-            b@b'a'...b'f' if !in_ext => {
++            b@b'a'...b'f' if in_chunk_size => {
+                 size *= radix;
+                 size += (b + 10 - b'a') as uint;
+             },
+-            b@b'A'...b'F' if !in_ext => {
++            b@b'A'...b'F' if in_chunk_size => {
+                 size *= radix;
+                 size += (b + 10 - b'A') as uint;
+             },
+             CR => {
+                 match try!(rdr.read_byte()) {
+                     LF => break,
+                     _ => return Err(io::standard_error(io::InvalidInput))
+                 }
+             },
+-            ext => {
++            // If we weren't in the extension yet, the ";" signals its start
++            b';' if !in_ext => {
+                 in_ext = true;
++                in_chunk_size = false;
++            },
++            // "Linear white space" is ignored between the chunk size and the
++            // extension separator token (";") due to the "implied *LWS rule".
++            b'\t' | b' ' if !in_ext & !in_chunk_size => {},
++            // LWS can follow the chunk size, but no more digits can come
++            b'\t' | b' ' if in_chunk_size => in_chunk_size = false,
++            // We allow any arbitrary octet once we are in the extension, since
++            // they all get ignored anyway. According to the HTTP spec, valid
++            // extensions would have a more strict syntax:
++            //     (token ["=" (token | quoted-string)])
++            // but we gain nothing by rejecting an otherwise valid chunk size.
++            ext if in_ext => {
+                 todo!("chunk extension byte={}", ext);
++            },
++            // Finally, if we aren't in the extension and we're reading any
++            // other octet, the chunk size line is invalid!
++            _ => {
++                return Err(io::standard_error(io::InvalidInput));
+             }
+         }
+     }
+     debug!("chunk size={}", size);
+     Ok(size)
+ }
+ 
+ /// Writers to handle different Transfer-Encodings.
+ pub enum HttpWriter<W: Writer> {
+     /// A no-op Writer, used initially before Transfer-Encoding is determined.
+     ThroughWriter(W),
+     /// A Writer for when Transfer-Encoding includes `chunked`.
+     ChunkedWriter(W),
+     /// A Writer for when Content-Length is set.
+     ///
+     /// Enforces that the body is not longer than the Content-Length header.
+     SizedWriter(W, uint),
+     /// A writer that should not write any body.
+     EmptyWriter(W),
+ }
+ 
+ impl<W: Writer> HttpWriter<W> {
+     /// Unwraps the HttpWriter and returns the underlying Writer.
+     #[inline]
+     pub fn unwrap(self) -> W {
+         match self {
+             ThroughWriter(w) => w,
+             ChunkedWriter(w) => w,
+             SizedWriter(w, _) => w,
+             EmptyWriter(w) => w,
+         }
+     }
+ 
+     /// Access the inner Writer.
+     #[inline]
+     pub fn get_ref<'a>(&'a self) -> &'a W {
+         match *self {
+             ThroughWriter(ref w) => w,
+             ChunkedWriter(ref w) => w,
+             SizedWriter(ref w, _) => w,
+             EmptyWriter(ref w) => w,
+         }
+     }
+ 
+     /// Access the inner Writer mutably.
+     ///
+     /// Warning: You should not write to this directly, as you can corrupt
+     /// the state.
+     #[inline]
+     pub fn get_mut<'a>(&'a mut self) -> &'a mut W {
+         match *self {
+             ThroughWriter(ref mut w) => w,
+             ChunkedWriter(ref mut w) => w,
+             SizedWriter(ref mut w, _) => w,
+             EmptyWriter(ref mut w) => w,
+         }
+     }
+ 
+     /// Ends the HttpWriter, and returns the underlying Writer.
+     ///
+     /// A final `write()` is called with an empty message, and then flushed.
+     /// The ChunkedWriter variant will use this to write the 0-sized last-chunk.
+     #[inline]
+     pub fn end(mut self) -> IoResult<W> {
+         try!(self.write(&[]));
+         try!(self.flush());
+         Ok(self.unwrap())
+     }
+ }
+ 
+ impl<W: Writer> Writer for HttpWriter<W> {
+     #[inline]
+     fn write(&mut self, msg: &[u8]) -> IoResult<()> {
+         match *self {
+             ThroughWriter(ref mut w) => w.write(msg),
+             ChunkedWriter(ref mut w) => {
+                 let chunk_size = msg.len();
+                 debug!("chunked write, size = {}", chunk_size);
+                 try!(write!(w, "{:X}{}", chunk_size, LINE_ENDING));
+                 try!(w.write(msg));
+@@ -612,215 +632,252 @@ pub fn read_status_line<R: Reader>(stream: &mut R) -> HttpResult<StatusLine> {
+ /// Read the StatusCode from a stream.
+ pub fn read_status<R: Reader>(stream: &mut R) -> HttpResult<RawStatus> {
+     let code = [
+         try!(stream.read_byte()),
+         try!(stream.read_byte()),
+         try!(stream.read_byte()),
+     ];
+ 
+     let code = match str::from_utf8(code.as_slice()).ok().and_then(FromStr::from_str) {
+         Some(num) => num,
+         None => return Err(HttpStatusError)
+     };
+ 
+     match try!(stream.read_byte()) {
+         b' ' => (),
+         _ => return Err(HttpStatusError)
+     }
+ 
+     let mut buf = [b' '; 32];
+ 
+     {
+         let mut bufwrt = BufWriter::new(&mut buf);
+         'read: loop {
+             match try!(stream.read_byte()) {
+                 CR => match try!(stream.read_byte()) {
+                     LF => break,
+                     _ => return Err(HttpStatusError)
+                 },
+                 b => match bufwrt.write_u8(b) {
+                     Ok(_) => (),
+                     Err(_) => {
+                         for _ in range(0u, 128) {
+                             match try!(stream.read_byte()) {
+                                 CR => match try!(stream.read_byte()) {
+                                     LF => break 'read,
+                                     _ => return Err(HttpStatusError)
+                                 },
+                                 _ => { /* ignore */ }
+                             }
+                         }
+                         return Err(HttpStatusError)
+                     }
+                 }
+             }
+         }
+     }
+ 
+     let reason = match str::from_utf8(buf[]) {
+         Ok(s) => s.trim(),
+         Err(_) => return Err(HttpStatusError)
+     };
+ 
+     let reason = match from_u16::<StatusCode>(code) {
+         Some(status) => match status.canonical_reason() {
+             Some(phrase) => {
+                 if phrase == reason {
+                     Borrowed(phrase)
+                 } else {
+                     Owned(reason.to_string())
+                 }
+             }
+             _ => Owned(reason.to_string())
+         },
+         None => return Err(HttpStatusError)
+     };
+ 
+     Ok(RawStatus(code, reason))
+ }
+ 
+ #[inline]
+ fn expect(r: IoResult<u8>, expected: u8) -> HttpResult<()> {
+     match r {
+         Ok(b) if b == expected => Ok(()),
+         Ok(_) => Err(HttpVersionError),
+         Err(e) => Err(HttpIoError(e))
+     }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+-    use std::io::{self, MemReader, MemWriter};
++    use std::io::{self, MemReader, MemWriter, IoResult};
+     use std::borrow::Cow::{Borrowed, Owned};
+     use test::Bencher;
+     use uri::RequestUri;
+     use uri::RequestUri::{Star, AbsoluteUri, AbsolutePath, Authority};
+     use method;
+     use version::HttpVersion;
+     use version::HttpVersion::{Http10, Http11, Http20};
+     use HttpError::{HttpVersionError, HttpMethodError};
+     use HttpResult;
+     use url::Url;
+ 
+     use super::{read_method, read_uri, read_http_version, read_header,
+-                RawHeaderLine, read_status, RawStatus};
++                RawHeaderLine, read_status, RawStatus, read_chunk_size};
+ 
+     fn mem(s: &str) -> MemReader {
+         MemReader::new(s.as_bytes().to_vec())
+     }
+ 
+     #[test]
+     fn test_read_method() {
+         fn read(s: &str, result: HttpResult<method::Method>) {
+             assert_eq!(read_method(&mut mem(s)), result);
+         }
+ 
+         read("GET /", Ok(method::Method::Get));
+         read("POST /", Ok(method::Method::Post));
+         read("PUT /", Ok(method::Method::Put));
+         read("HEAD /", Ok(method::Method::Head));
+         read("OPTIONS /", Ok(method::Method::Options));
+         read("CONNECT /", Ok(method::Method::Connect));
+         read("TRACE /", Ok(method::Method::Trace));
+         read("PATCH /", Ok(method::Method::Patch));
+         read("FOO /", Ok(method::Method::Extension("FOO".to_string())));
+         read("akemi!~#HOMURA /", Ok(method::Method::Extension("akemi!~#HOMURA".to_string())));
+         read(" ", Err(HttpMethodError));
+     }
+ 
+     #[test]
+     fn test_read_uri() {
+         fn read(s: &str, result: HttpResult<RequestUri>) {
+             assert_eq!(read_uri(&mut mem(s)), result);
+         }
+ 
+         read("* ", Ok(Star));
+         read("http://hyper.rs/ ", Ok(AbsoluteUri(Url::parse("http://hyper.rs/").unwrap())));
+         read("hyper.rs ", Ok(Authority("hyper.rs".to_string())));
+         read("/ ", Ok(AbsolutePath("/".to_string())));
+     }
+ 
+     #[test]
+     fn test_read_http_version() {
+         fn read(s: &str, result: HttpResult<HttpVersion>) {
+             assert_eq!(read_http_version(&mut mem(s)), result);
+         }
+ 
+         read("HTTP/1.0", Ok(Http10));
+         read("HTTP/1.1", Ok(Http11));
+         read("HTTP/2.0", Ok(Http20));
+         read("HTP/2.0", Err(HttpVersionError));
+         read("HTTP.2.0", Err(HttpVersionError));
+         read("HTTP 2.0", Err(HttpVersionError));
+         read("TTP 2.0", Err(HttpVersionError));
+     }
+ 
+     #[test]
+     fn test_read_status() {
+         fn read(s: &str, result: HttpResult<RawStatus>) {
+             assert_eq!(read_status(&mut mem(s)), result);
+         }
+ 
+         fn read_ignore_string(s: &str, result: HttpResult<RawStatus>) {
+             match (read_status(&mut mem(s)), result) {
+                 (Ok(RawStatus(ref c1, _)), Ok(RawStatus(ref c2, _))) => {
+                     assert_eq!(c1, c2);
+                 },
+                 (r1, r2) => assert_eq!(r1, r2)
+             }
+         }
+ 
+         read("200 OK\r\n", Ok(RawStatus(200, Borrowed("OK"))));
+         read("404 Not Found\r\n", Ok(RawStatus(404, Borrowed("Not Found"))));
+         read("200 crazy pants\r\n", Ok(RawStatus(200, Owned("crazy pants".to_string()))));
+         read("301 Moved Permanently\r\n", Ok(RawStatus(301, Owned("Moved Permanently".to_string()))));
+         read_ignore_string("301 Unreasonably long header that should not happen, \
+                            but some men just want to watch the world burn\r\n",
+              Ok(RawStatus(301, Owned("Ignored".to_string()))));
+     }
+ 
+     #[test]
+     fn test_read_header() {
+         fn read(s: &str, result: HttpResult<Option<RawHeaderLine>>) {
+             assert_eq!(read_header(&mut mem(s)), result);
+         }
+ 
+         read("Host: rust-lang.org\r\n", Ok(Some(("Host".to_string(),
+                                                  b"rust-lang.org".to_vec()))));
+     }
+ 
+     #[test]
+     fn test_write_chunked() {
+         use std::str::from_utf8;
+         let mut w = super::HttpWriter::ChunkedWriter(MemWriter::new());
+         w.write(b"foo bar").unwrap();
+         w.write(b"baz quux herp").unwrap();
+         let buf = w.end().unwrap().into_inner();
+         let s = from_utf8(buf.as_slice()).unwrap();
+         assert_eq!(s, "7\r\nfoo bar\r\nD\r\nbaz quux herp\r\n0\r\n\r\n");
+     }
+ 
+     #[test]
+     fn test_write_sized() {
+         use std::str::from_utf8;
+         let mut w = super::HttpWriter::SizedWriter(MemWriter::new(), 8);
+         w.write(b"foo bar").unwrap();
+         assert_eq!(w.write(b"baz"), Err(io::standard_error(io::ShortWrite(1))));
+ 
+         let buf = w.end().unwrap().into_inner();
+         let s = from_utf8(buf.as_slice()).unwrap();
+         assert_eq!(s, "foo barb");
+     }
+ 
++    #[test]
++    fn test_read_chunk_size() {
++        fn read(s: &str, result: IoResult<uint>) {
++            assert_eq!(read_chunk_size(&mut mem(s)), result);
++        }
++
++        read("1\r\n", Ok(1));
++        read("01\r\n", Ok(1));
++        read("0\r\n", Ok(0));
++        read("00\r\n", Ok(0));
++        read("A\r\n", Ok(10));
++        read("a\r\n", Ok(10));
++        read("Ff\r\n", Ok(255));
++        read("Ff   \r\n", Ok(255));
++        // Missing LF or CRLF
++        read("F\rF", Err(io::standard_error(io::InvalidInput)));
++        read("F", Err(io::standard_error(io::EndOfFile)));
++        // Invalid hex digit
++        read("X\r\n", Err(io::standard_error(io::InvalidInput)));
++        read("1X\r\n", Err(io::standard_error(io::InvalidInput)));
++        read("-\r\n", Err(io::standard_error(io::InvalidInput)));
++        read("-1\r\n", Err(io::standard_error(io::InvalidInput)));
++        // Acceptable (if not fully valid) extensions do not influence the size
++        read("1;extension\r\n", Ok(1));
++        read("a;ext name=value\r\n", Ok(10));
++        read("1;extension;extension2\r\n", Ok(1));
++        read("1;;;  ;\r\n", Ok(1));
++        read("2; extension...\r\n", Ok(2));
++        read("3   ; extension=123\r\n", Ok(3));
++        read("3   ;\r\n", Ok(3));
++        read("3   ;   \r\n", Ok(3));
++        // Invalid extensions cause an error
++        read("1 invalid extension\r\n", Err(io::standard_error(io::InvalidInput)));
++        read("1 A\r\n", Err(io::standard_error(io::InvalidInput)));
++        read("1;no CRLF", Err(io::standard_error(io::EndOfFile)));
++    }
++
+     #[bench]
+     fn bench_read_method(b: &mut Bencher) {
+         b.bytes = b"CONNECT ".len() as u64;
+         b.iter(|| assert_eq!(read_method(&mut mem("CONNECT ")), Ok(method::Method::Connect)));
+     }
+ 
+     #[bench]
+     fn bench_read_status(b: &mut Bencher) {
+         b.bytes = b"404 Not Found\r\n".len() as u64;
+         b.iter(|| assert_eq!(read_status(&mut mem("404 Not Found\r\n")), Ok(RawStatus(404, Borrowed("Not Found")))));
+     }
+ 
+ }
+diff --git a/src/server/request.rs b/src/server/request.rs
+index 5c808441..b434ce1b 100644
+--- a/src/server/request.rs
++++ b/src/server/request.rs
+@@ -1,125 +1,226 @@
+ //! Server Requests
+ //!
+ //! These are requests that a `hyper::Server` receives, and include its method,
+ //! target URI, headers, and message body.
+ use std::io::IoResult;
+ use std::io::net::ip::SocketAddr;
+ 
+ use {HttpResult};
+ use version::{HttpVersion};
+ use method::Method::{self, Get, Head};
+ use header::Headers;
+ use header::common::{ContentLength, TransferEncoding};
+ use http::{read_request_line};
+ use http::HttpReader;
+ use http::HttpReader::{SizedReader, ChunkedReader, EmptyReader};
+ use uri::RequestUri;
+ 
+ /// A request bundles several parts of an incoming `NetworkStream`, given to a `Handler`.
+ pub struct Request<'a> {
+     /// The IP address of the remote connection.
+     pub remote_addr: SocketAddr,
+     /// The `Method`, such as `Get`, `Post`, etc.
+     pub method: Method,
+     /// The headers of the incoming request.
+     pub headers: Headers,
+     /// The target request-uri for this request.
+     pub uri: RequestUri,
+     /// The version of HTTP for this request.
+     pub version: HttpVersion,
+     body: HttpReader<&'a mut (Reader + 'a)>
+ }
+ 
+ 
+ impl<'a> Request<'a> {
+ 
+     /// Create a new Request, reading the StartLine and Headers so they are
+     /// immediately useful.
+     pub fn new(mut stream: &'a mut (Reader + 'a), addr: SocketAddr) -> HttpResult<Request<'a>> {
+         let (method, uri, version) = try!(read_request_line(&mut stream));
+         debug!("Request Line: {} {} {}", method, uri, version);
+         let headers = try!(Headers::from_raw(&mut stream));
+         debug!("Headers: [\n{}]", headers);
+ 
+ 
+         let body = if method == Get || method == Head {
+             EmptyReader(stream)
+         } else if headers.has::<ContentLength>() {
+             match headers.get::<ContentLength>() {
+                 Some(&ContentLength(len)) => SizedReader(stream, len),
+                 None => unreachable!()
+             }
+         } else if headers.has::<TransferEncoding>() {
+             todo!("check for Transfer-Encoding: chunked");
+             ChunkedReader(stream, None)
+         } else {
+             EmptyReader(stream)
+         };
+ 
+         Ok(Request {
+             remote_addr: addr,
+             method: method,
+             uri: uri,
+             headers: headers,
+             version: version,
+             body: body
+         })
+     }
+ }
+ 
+ impl<'a> Reader for Request<'a> {
+     fn read(&mut self, buf: &mut [u8]) -> IoResult<uint> {
+         self.body.read(buf)
+     }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
++    use header::common::{Host, TransferEncoding};
++    use header::common::transfer_encoding::Encoding;
+     use mock::MockStream;
+     use super::Request;
+ 
+     use std::io::net::ip::SocketAddr;
+ 
+     fn sock(s: &str) -> SocketAddr {
+         s.parse().unwrap()
+     }
+ 
+     #[test]
+     fn test_get_empty_body() {
+         let mut stream = MockStream::with_input(b"\
+             GET / HTTP/1.1\r\n\
+             Host: example.domain\r\n\
+             \r\n\
+             I'm a bad request.\r\n\
+         ");
+ 
+         let mut req = Request::new(&mut stream, sock("127.0.0.1:80")).unwrap();
+         assert_eq!(req.read_to_string(), Ok("".to_string()));
+     }
+ 
+     #[test]
+     fn test_head_empty_body() {
+         let mut stream = MockStream::with_input(b"\
+             HEAD / HTTP/1.1\r\n\
+             Host: example.domain\r\n\
+             \r\n\
+             I'm a bad request.\r\n\
+         ");
+ 
+         let mut req = Request::new(&mut stream, sock("127.0.0.1:80")).unwrap();
+         assert_eq!(req.read_to_string(), Ok("".to_string()));
+     }
+ 
+     #[test]
+     fn test_post_empty_body() {
+         let mut stream = MockStream::with_input(b"\
+             POST / HTTP/1.1\r\n\
+             Host: example.domain\r\n\
+             \r\n\
+             I'm a bad request.\r\n\
+         ");
+ 
+         let mut req = Request::new(&mut stream, sock("127.0.0.1:80")).unwrap();
+         assert_eq!(req.read_to_string(), Ok("".to_string()));
+     }
++
++    #[test]
++    fn test_parse_chunked_request() {
++        let mut stream = MockStream::with_input(b"\
++            POST / HTTP/1.1\r\n\
++            Host: example.domain\r\n\
++            Transfer-Encoding: chunked\r\n\
++            \r\n\
++            1\r\n\
++            q\r\n\
++            2\r\n\
++            we\r\n\
++            2\r\n\
++            rt\r\n\
++            0\r\n\
++            \r\n"
++        );
++
++        let mut req = Request::new(&mut stream, sock("127.0.0.1:80")).unwrap();
++
++        // The headers are correct?
++        match req.headers.get::<Host>() {
++            Some(host) => {
++                assert_eq!("example.domain", host.hostname);
++            },
++            None => panic!("Host header expected!"),
++        };
++        match req.headers.get::<TransferEncoding>() {
++            Some(encodings) => {
++                assert_eq!(1, encodings.len());
++                assert_eq!(Encoding::Chunked, encodings[0]);
++            }
++            None => panic!("Transfer-Encoding: chunked expected!"),
++        };
++        // The content is correctly read?
++        let body = req.read_to_string().unwrap();
++        assert_eq!("qwert", body);
++    }
++
++    /// Tests that when a chunk size is not a valid radix-16 number, an error
++    /// is returned.
++    #[test]
++    fn test_invalid_chunk_size_not_hex_digit() {
++        let mut stream = MockStream::with_input(b"\
++            POST / HTTP/1.1\r\n\
++            Host: example.domain\r\n\
++            Transfer-Encoding: chunked\r\n\
++            \r\n\
++            X\r\n\
++            1\r\n\
++            0\r\n\
++            \r\n"
++        );
++
++        let mut req = Request::new(&mut stream, sock("127.0.0.1:80")).unwrap();
++
++        assert!(req.read_to_string().is_err());
++    }
++
++    /// Tests that when a chunk size contains an invalid extension, an error is
++    /// returned.
++    #[test]
++    fn test_invalid_chunk_size_extension() {
++        let mut stream = MockStream::with_input(b"\
++            POST / HTTP/1.1\r\n\
++            Host: example.domain\r\n\
++            Transfer-Encoding: chunked\r\n\
++            \r\n\
++            1 this is an invalid extension\r\n\
++            1\r\n\
++            0\r\n\
++            \r\n"
++        );
++
++        let mut req = Request::new(&mut stream, sock("127.0.0.1:80")).unwrap();
++
++        assert!(req.read_to_string().is_err());
++    }
++
++    /// Tests that when a valid extension that contains a digit is appended to
++    /// the chunk size, the chunk is correctly read.
++    #[test]
++    fn test_chunk_size_with_extension() {
++        let mut stream = MockStream::with_input(b"\
++            POST / HTTP/1.1\r\n\
++            Host: example.domain\r\n\
++            Transfer-Encoding: chunked\r\n\
++            \r\n\
++            1;this is an extension with a digit 1\r\n\
++            1\r\n\
++            0\r\n\
++            \r\n"
++        );
++
++        let mut req = Request::new(&mut stream, sock("127.0.0.1:80")).unwrap();
++
++        assert_eq!("1", req.read_to_string().unwrap())
++    }
++
+ }

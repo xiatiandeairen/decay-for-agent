@@ -1,0 +1,41 @@
+{
+  "case_id": "hyperium-hyper-3242",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "            #[cfg(feature = \"http2\")]\n            if req.extensions().get::<Protocol>().is_none() {\n                authority_form(req.uri_mut());\n            }"
+      ],
+      "rank": 1,
+      "rationale": "For HTTP/2 CONNECT, when a Protocol extension is present (RFC 8441 extended CONNECT), URI is no longer rewritten to authority-form; scheme/path are preserved on the wire, changing outgoing request co\u2026",
+      "risk_signal": "external_contract",
+      "subject": "src/client/client.rs:send_request",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "        } else if req.method() == Method::CONNECT {",
+        "            #[cfg(not(feature = \"http2\"))]\n            authority_form(req.uri_mut());"
+      ],
+      "rank": 2,
+      "rationale": "CONNECT branch behavior now diverges by cargo feature: with http2 disabled, authority_form is always applied; with http2 enabled, it depends on Protocol extension. Same method, different uri transfor\u2026",
+      "risk_signal": "state_transition",
+      "subject": "src/client/client.rs:send_request",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "        .http2_enable_connect_protocol()"
+      ],
+      "rank": 3,
+      "rationale": "Server side unconditionally enables connect protocol in the harness; there is no negative test for the path where client sends extended CONNECT but server has not negotiated SETTINGS_ENABLE_CONNECT_P\u2026",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tests/support/mod.rs",
+      "value": "supporting"
+    }
+  ]
+}

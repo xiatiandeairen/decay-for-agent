@@ -1,0 +1,816 @@
+# Real PR candidates for M3.1 semantic validation.
+# These are not a frozen eval set yet. Frozen eval v1 target: 40 real cases.
+
+version = "risk-signal-eval-candidates.v1"
+target_frozen_eval_v1 = 40
+target_closeout_eval_v2 = 60
+
+[[cases]]
+id = "tokio-rs-tokio-7991"
+status = "freeze_ready"
+repo = "tokio-rs/tokio"
+url = "https://github.com/tokio-rs/tokio/pull/7991"
+signal_ids = ["assumption_boundary", "non_happy_path", "risk_path_test_gap"]
+risk_summary = "Chan::recv_many could panic because the closed-channel path asserted buffer emptiness instead of no consumed slots."
+ground_truth_summary = "PR body explains the incorrect assumption, links issue #7990, and adds regression coverage."
+source_refs = ["https://github.com/tokio-rs/tokio/pull/7991", "https://github.com/tokio-rs/tokio/issues/7990"]
+production_files = ["tokio/src/sync/mpsc/chan.rs"]
+test_files = ["tokio/tests/sync_mpsc.rs"]
+why_high_value = "Runtime panic in a synchronization primitive on a closed-channel edge path."
+why_not_noise = "Specific production code and regression test are tied to the described failure mode."
+limitations = "This candidate is a fix PR; extra follow-up tracing is still needed before frozen eval."
+
+[[cases]]
+id = "tokio-rs-tokio-8001"
+status = "freeze_ready"
+repo = "tokio-rs/tokio"
+url = "https://github.com/tokio-rs/tokio/pull/8001"
+signal_ids = ["non_happy_path", "state_transition", "error_propagation"]
+risk_summary = "UDP recv did not wait on error readiness, so SO_ERROR could fail to surface correctly."
+ground_truth_summary = "PR body links issue #8000, explains READABLE versus ERROR readiness, and adds tests."
+source_refs = ["https://github.com/tokio-rs/tokio/pull/8001", "https://github.com/tokio-rs/tokio/issues/8000"]
+production_files = ["tokio/src/net/udp.rs"]
+test_files = ["tokio/tests/udp.rs"]
+why_high_value = "Caller-visible socket error behavior changed on an OS-specific error path."
+why_not_noise = "The diff, issue, PR explanation, and tests all point to the same failure mode."
+limitations = "Linux-specific behavior needs source context when replayed."
+
+[[cases]]
+id = "hyperium-hyper-647"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/647"
+signal_ids = ["non_happy_path", "state_transition"]
+risk_summary = "HTTP/1 invalid content-length handling could lose the stream."
+ground_truth_summary = "Title and code location identify an invalid input protocol recovery problem."
+source_refs = ["https://github.com/hyperium/hyper/pull/647"]
+production_files = ["src/http/h1.rs"]
+test_files = []
+why_high_value = "HTTP parser recovery can affect connection correctness and data handling."
+why_not_noise = "Single core protocol file with explicit invalid content-length failure mode."
+limitations = "Needs linked issue or follow-up context to harden ground truth."
+
+[[cases]]
+id = "hyperium-hyper-3365"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3365"
+signal_ids = ["assumption_boundary", "non_happy_path", "external_contract"]
+risk_summary = "Client pool idle timeout set to zero could panic."
+ground_truth_summary = "Follow-up B reviewed; issue #2997 provides version/platform/repro context for pool_idle_timeout(Duration::ZERO) causing a tokio interval panic."
+source_refs = ["https://github.com/hyperium/hyper/pull/3365", "https://github.com/hyperium/hyper/issues/2997"]
+production_files = ["src/client/pool.rs"]
+test_files = []
+why_high_value = "Boundary config value can crash client connection pooling."
+why_not_noise = "The failure mode is explicit and maps to one production file."
+limitations = "No regression test captured, but issue reproduction anchors the boundary panic."
+
+[[cases]]
+id = "clap-rs-clap-1439"
+status = "rejected"
+repo = "clap-rs/clap"
+url = "https://github.com/clap-rs/clap/pull/1439"
+signal_ids = ["external_contract"]
+risk_summary = "Reverted yaml-rust upgrade because public API expectations changed enough to require a major release."
+ground_truth_summary = "Revert body explains the API break and security trade-off."
+source_refs = ["https://github.com/clap-rs/clap/pull/1439", "https://github.com/clap-rs/clap/pull/1415"]
+production_files = ["Cargo.toml", "src/args/arg.rs", "src/args/group.rs", "src/lib.rs"]
+test_files = []
+why_high_value = "Dependency behavior changed a public API contract."
+why_not_noise = "This is not a generic dependency bump; maintainers reverted it for compatibility."
+limitations = "Good contract-risk seed, but not a runtime stability example."
+
+[[cases]]
+id = "hyperium-hyper-228"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/228"
+signal_ids = ["non_happy_path", "state_transition"]
+risk_summary = "Invalid HTTP chunk size parsing behavior was incorrect."
+ground_truth_summary = "Title and changed files identify malformed input parsing across client/server paths."
+source_refs = ["https://github.com/hyperium/hyper/pull/228"]
+production_files = ["src/client/response.rs", "src/http.rs", "src/server/request.rs"]
+test_files = []
+why_high_value = "Malformed protocol input affects parser correctness."
+why_not_noise = "Specific invalid chunk parsing failure, not general parser churn."
+limitations = "Needs more external context before frozen eval."
+
+[[cases]]
+id = "hyperium-hyper-3261"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3261"
+signal_ids = ["lifecycle_ordering", "state_transition", "non_happy_path", "external_contract"]
+risk_summary = "HTTP/1 graceful shutdown behavior was incorrect."
+ground_truth_summary = "Follow-up B reviewed; issue #2730 and prior PR #3233 show graceful_shutdown before the first request could hang, with server test coverage."
+source_refs = ["https://github.com/hyperium/hyper/pull/3261", "https://github.com/hyperium/hyper/pull/3233", "https://github.com/hyperium/hyper/issues/2730"]
+production_files = ["src/proto/h1/conn.rs", "src/proto/h1/dispatch.rs"]
+test_files = ["tests/server.rs"]
+why_high_value = "Shutdown behavior is a low-frequency high-impact lifecycle path."
+why_not_noise = "Production shutdown code and tests changed together."
+limitations = "Freeze as shutdown lifecycle semantics; do not overstate as a pure bug because compatibility concerns were discussed."
+
+[[cases]]
+id = "hyperium-hyper-3616"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3616"
+signal_ids = ["lifecycle_ordering", "state_transition", "assumption_boundary"]
+risk_summary = "Calling graceful_shutdown after an HTTP/1 connection upgrade could panic."
+ground_truth_summary = "Title states the panic and upgrade condition; production and test files changed."
+source_refs = ["https://github.com/hyperium/hyper/pull/3616"]
+production_files = ["src/server/conn/http1.rs"]
+test_files = ["tests/server.rs"]
+why_high_value = "Upgrade changes lifecycle state and can crash shutdown handling."
+why_not_noise = "Specific panic condition in production connection lifecycle."
+limitations = "Needs full diff context before frozen eval."
+
+[[cases]]
+id = "tokio-rs-tokio-7922"
+status = "freeze_ready"
+repo = "tokio-rs/tokio"
+url = "https://github.com/tokio-rs/tokio/pull/7922"
+signal_ids = ["concurrency_ordering", "lifecycle_ordering", "risk_path_test_gap"]
+risk_summary = "Race condition during blocking pool shutdown."
+ground_truth_summary = "Title names race condition; production blocking pool and loom test files changed."
+source_refs = ["https://github.com/tokio-rs/tokio/pull/7922"]
+production_files = ["tokio/src/runtime/blocking/pool.rs"]
+test_files = ["tokio/src/runtime/tests/loom_blocking.rs"]
+why_high_value = "Runtime shutdown races can cause rare but serious stability failures."
+why_not_noise = "Concurrency-specific production file and loom test context are present."
+limitations = "Needs detailed happens-before analysis for final ground truth."
+
+[[cases]]
+id = "BurntSushi-ripgrep-827"
+status = "rejected"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/827"
+signal_ids = ["risk_path_test_gap", "external_contract"]
+risk_summary = "Windows ignore walking performance regression."
+ground_truth_summary = "Follow-up B reviewed; issue #820 and walkdir #96 confirm a Windows stat-call performance regression, but current M3 has no performance/platform signal."
+source_refs = ["https://github.com/BurntSushi/ripgrep/pull/827", "https://github.com/BurntSushi/ripgrep/issues/820", "https://github.com/BurntSushi/ripgrep/issues/705", "https://github.com/BurntSushi/walkdir/pull/96"]
+production_files = ["ignore/src/walk.rs"]
+test_files = []
+why_high_value = "Platform-specific traversal regressions affect core search performance."
+why_not_noise = "Specific platform, subsystem, and regression type are named."
+limitations = "Rejected for current frozen eval; keep as future performance/platform regression evidence."
+
+[[cases]]
+id = "BurntSushi-ripgrep-3182"
+status = "freeze_ready"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/3182"
+signal_ids = ["assumption_boundary", "non_happy_path", "risk_path_test_gap"]
+risk_summary = "Replacement handling could panic in a look-around corner case."
+ground_truth_summary = "Title names panic and corner case; production utility and regression test changed."
+source_refs = ["https://github.com/BurntSushi/ripgrep/pull/3182"]
+production_files = ["crates/printer/src/util.rs"]
+test_files = ["tests/regression.rs"]
+why_high_value = "User input pattern replacement can crash output handling."
+why_not_noise = "Specific panic path with production and regression test evidence."
+limitations = "Needs full regex/replacement semantic context."
+
+[[cases]]
+id = "serde-rs-json-757"
+status = "freeze_ready"
+repo = "serde-rs/json"
+url = "https://github.com/serde-rs/json/pull/757"
+signal_ids = ["assumption_boundary", "non_happy_path", "error_propagation"]
+risk_summary = "RawValue deserialization could panic on invalid UTF-8 bytes."
+ground_truth_summary = "Follow-up B reviewed; issue #755 gives a minimal invalid UTF-8 RawValue panic repro and stacktrace, with production code and tests changed."
+source_refs = ["https://github.com/serde-rs/json/pull/757", "https://github.com/serde-rs/json/issues/755"]
+production_files = ["src/read.rs"]
+test_files = ["tests/test.rs"]
+why_high_value = "Malformed input should not crash deserialization."
+why_not_noise = "Specific invalid input and panic failure mode with tests."
+limitations = "Freeze as malformed-input panic boundary; not a general UTF-8 policy case."
+
+[[cases]]
+id = "hyper-4056"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/4056"
+signal_ids = ["assumption_boundary", "non_happy_path", "error_propagation"]
+risk_summary = "HTTP/1 decoder large-body arithmetic on 32-bit systems needed a boundary fix."
+ground_truth_summary = "Follow-up B reviewed; issue #4055 identifies a 32-bit u64-to-usize truncation boundary in HTTP/1 body decoding, fixed with saturating cast behavior."
+source_refs = ["https://github.com/hyperium/hyper/pull/4056", "https://github.com/hyperium/hyper/issues/4055", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["src/proto/h1/decode.rs"]
+test_files = []
+why_high_value = "Platform integer boundary can break HTTP body reading."
+why_not_noise = "Specific platform and arithmetic boundary in production decoder."
+limitations = "Lower-confidence freeze: platform boundary is clear, but no regression test or live user reproduction is stored."
+
+[[cases]]
+id = "hyper-4061"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/4061"
+signal_ids = ["concurrency_ordering", "state_transition", "lifecycle_ordering"]
+risk_summary = "HTTP/2 body capacity was reserved before body data was available."
+ground_truth_summary = "Follow-up B reviewed; issue #4003 and PR #4051 show HTTP/2 flow-control capacity reservation before body data could deadlock streaming paths."
+source_refs = ["https://github.com/hyperium/hyper/pull/4061", "https://github.com/hyperium/hyper/issues/4003", "https://github.com/hyperium/hyper/pull/4051", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["src/proto/h2/mod.rs"]
+test_files = ["tests/client.rs"]
+why_high_value = "Capacity reservation timing can alter memory behavior on streaming body paths."
+why_not_noise = "Specific HTTP/2 buffering behavior and merged fix."
+limitations = "Freeze as capacity-reservation ordering/deadlock risk; do not reduce to generic memory behavior."
+
+[[cases]]
+id = "hyper-3988"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3988"
+signal_ids = ["concurrency_ordering", "state_transition", "risk_path_test_gap"]
+risk_summary = "Rare missed write wakeup on HTTP/1 connections."
+ground_truth_summary = "Follow-up B reviewed; PR #3988 is the v2 fix after #3952 was reverted by #3977 due to #3976 CPU hot-loop reports."
+source_refs = ["https://github.com/hyperium/hyper/pull/3988", "https://github.com/hyperium/hyper/pull/3977", "https://github.com/hyperium/hyper/issues/3976", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["src/proto/h1/dispatch.rs"]
+test_files = []
+why_high_value = "Waker readiness bugs can stall connection progress."
+why_not_noise = "Specific rare wakeup failure in production HTTP/1 dispatch."
+limitations = "Freeze only with chain context: evaluate v2 readiness coordination and hot-loop avoidance, not the reverted #3952 fix."
+
+[[cases]]
+id = "hyper-4043"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/4043"
+signal_ids = ["state_transition", "external_contract", "non_happy_path"]
+risk_summary = "HTTP/1 keep-alive behavior with chunked requests and trailers was fixed."
+ground_truth_summary = "Previously accepted large-scale candidate; merged protocol behavior fix with maintainer approval and test."
+source_refs = ["https://github.com/hyperium/hyper/pull/4043", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["src/proto/h1/conn.rs"]
+test_files = []
+why_high_value = "Trailer parsing can change connection persistence semantics."
+why_not_noise = "Specific HTTP protocol state transition, not broad churn."
+limitations = "Needs PR enrichment for exact changed files and test refs."
+
+[[cases]]
+id = "hyper-4042"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/4042"
+signal_ids = ["lifecycle_ordering", "state_transition", "error_propagation"]
+risk_summary = "Dropping an HTTP/2 response future needed to cancel pipe_task and send RST_STREAM."
+ground_truth_summary = "Previously accepted large-scale candidate; maintainer context called this tracking down critical cancellation behavior."
+source_refs = ["https://github.com/hyperium/hyper/pull/4042", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["src/proto/h2/client.rs"]
+test_files = []
+why_high_value = "Cancellation and stream reset behavior affects task lifetime and peer-visible protocol state."
+why_not_noise = "Concrete drop/cancel/RST_STREAM lifecycle risk."
+limitations = "Needs full lifecycle analysis before frozen eval."
+
+[[cases]]
+id = "hyper-4038"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/4038"
+signal_ids = ["assumption_boundary", "non_happy_path", "external_contract"]
+risk_summary = "FFI request/response paths needed null pointer validation before dereference."
+ground_truth_summary = "Previously accepted large-scale candidate; merged fix at FFI safety boundary."
+source_refs = ["https://github.com/hyperium/hyper/pull/4038", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["src/ffi/mod.rs"]
+test_files = []
+why_high_value = "FFI pointer validation is a crash/safety boundary for external callers."
+why_not_noise = "Specific null-deref boundary, not generic unsafe churn."
+limitations = "Exact FFI files should be confirmed by enrichment."
+
+[[cases]]
+id = "hyper-3998"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3998"
+signal_ids = ["error_propagation", "state_transition", "non_happy_path"]
+risk_summary = "Reading trailers should not propagate NO_ERROR from an early response."
+ground_truth_summary = "Previously accepted large-scale candidate; HTTP client trailer/error propagation fix."
+source_refs = ["https://github.com/hyperium/hyper/pull/3998", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["src/body/incoming.rs"]
+test_files = []
+why_high_value = "Incorrect error propagation changes caller-visible HTTP body/trailer behavior."
+why_not_noise = "Specific NO_ERROR propagation problem on early response path."
+limitations = "Needs exact body state context."
+
+[[cases]]
+id = "hyper-4019"
+status = "rejected"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/4019"
+signal_ids = ["assumption_boundary", "non_happy_path"]
+risk_summary = "Non-UTF8 character could cause panic when calling to_str."
+ground_truth_summary = "Previously accepted large-scale candidate; merged panic avoidance for invalid input."
+source_refs = ["https://github.com/hyperium/hyper/pull/4019", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["src/header/mod.rs"]
+test_files = []
+why_high_value = "Malformed/non-UTF8 input should not panic."
+why_not_noise = "Concrete invalid input panic failure mode."
+limitations = "Needs exact header/value code path."
+
+[[cases]]
+id = "hyper-4011"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/4011"
+signal_ids = ["external_contract", "non_happy_path"]
+risk_summary = "HTTP/1 trailer field matching needed case-insensitive semantics."
+ground_truth_summary = "Round-5 reviewed; PR body describes trailer field casing bug, review requested integration tests, and client/server tests were added."
+source_refs = ["https://github.com/hyperium/hyper/pull/4011", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["src/proto/h1/encode.rs", "src/proto/h1/role.rs"]
+test_files = ["tests/client.rs", "tests/server.rs"]
+why_high_value = "HTTP header/trailer casing is an external protocol contract."
+why_not_noise = "Specific protocol semantic mismatch with test discussion."
+limitations = "Raw still lacks linked issue #4010/#4012 full text; semantic correctness depends on protocol context."
+
+[[cases]]
+id = "hyper-3952"
+status = "rejected"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3952"
+signal_ids = ["concurrency_ordering", "state_transition"]
+risk_summary = "HTTP/1 poll loop needed to write when ready without losing waker/fairness behavior."
+ground_truth_summary = "Follow-up A reviewed; ground truth is strong, but this original fix was reverted for CPU regression, so it is not a clean frozen positive for current M3."
+source_refs = ["https://github.com/hyperium/hyper/pull/3952", "https://github.com/hyperium/hyper/pull/3977", "https://github.com/hyperium/hyper/issues/3976", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["src/proto/h1/dispatch.rs"]
+test_files = ["tests/ready_stream.rs"]
+why_high_value = "Poll/waker loop changes can stall or starve connection progress."
+why_not_noise = "Specific readiness and waker invariant discussion."
+limitations = "Rejected for current frozen eval because it is a double-edged fix that introduced hot-polling risk; keep only as a cautionary follow-up/revert case."
+
+[[cases]]
+id = "hyper-3977"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3977"
+signal_ids = ["concurrency_ordering", "state_transition"]
+risk_summary = "Reverted a rare missed write wakeup fix."
+ground_truth_summary = "Previously accepted large-scale candidate; revert of PR #3952 indicates the original fix introduced unacceptable behavior or risk."
+source_refs = ["https://github.com/hyperium/hyper/pull/3977", "https://github.com/hyperium/hyper/pull/3952", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["src/proto/h1/dispatch.rs"]
+test_files = []
+why_high_value = "Reverts provide strong evidence of real integration risk in concurrency/state changes."
+why_not_noise = "Direct revert relationship, not generic review concern."
+limitations = "Needs compare against original fix to identify exact mechanism."
+
+[[cases]]
+id = "hyper-3185"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3185"
+signal_ids = ["lifecycle_ordering", "external_contract", "non_happy_path"]
+risk_summary = "HTTP/1 header read timeout needed to start immediately."
+ground_truth_summary = "Previously accepted large-scale candidate; discussion covered DoS/idle timeout semantics and user report."
+source_refs = ["https://github.com/hyperium/hyper/pull/3185", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["src/proto/h1/conn.rs"]
+test_files = []
+why_high_value = "Timeout start point affects idle connection and DoS behavior."
+why_not_noise = "Specific timeout semantic boundary with user/review context."
+limitations = "Needs full discussion/source capture."
+
+[[cases]]
+id = "ripgrep-3195"
+status = "freeze_ready"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/3195"
+signal_ids = ["external_contract", "state_transition", "risk_path_test_gap"]
+risk_summary = "Regression with --line-buffered flag changed searcher buffering behavior."
+ground_truth_summary = "Previously accepted large-scale candidate; merged regression fix with changelog and tests."
+source_refs = ["https://github.com/BurntSushi/ripgrep/pull/3195", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["crates/searcher/src/searcher/mod.rs"]
+test_files = []
+why_high_value = "CLI buffering flag behavior is externally visible."
+why_not_noise = "Specific regression in documented command behavior."
+limitations = "Exact files/tests need enrichment."
+
+[[cases]]
+id = "ripgrep-3189"
+status = "freeze_ready"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/3189"
+signal_ids = ["external_contract", "non_happy_path", "risk_path_test_gap"]
+risk_summary = "Global gitignore handling was wrong for absolute paths."
+ground_truth_summary = "Round-5 reviewed; PR body explains absolute-path/global-gitignore semantics and includes changelog plus regression test."
+source_refs = ["https://github.com/BurntSushi/ripgrep/pull/3189", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["crates/core/flags/hiargs.rs", "crates/ignore/src/dir.rs", "crates/ignore/src/gitignore.rs", "crates/ignore/src/walk.rs"]
+test_files = ["tests/regression.rs"]
+why_high_value = "Path normalization and ignore matching directly affect search correctness."
+why_not_noise = "Specific absolute-path bug in production ignore logic."
+limitations = "decay can flag path/root handling risk, but cannot prove CWD/root semantics without semantic review."
+
+[[cases]]
+id = "ripgrep-3185"
+status = "rejected"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/3185"
+signal_ids = ["state_transition", "risk_path_test_gap"]
+risk_summary = "Searching stdin with large --after-context values was slow."
+ground_truth_summary = "Round-6 reviewed; performance risk is plausible but lacks benchmark/repro evidence and is outside what current decay can verify reliably."
+source_refs = ["https://github.com/BurntSushi/ripgrep/pull/3185", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["crates/searcher/src/line_buffer.rs", "crates/searcher/src/searcher/core.rs", "crates/searcher/src/searcher/glue.rs"]
+test_files = []
+why_high_value = "Buffering behavior affects CLI performance for common input mode."
+why_not_noise = "Specific stdin and after-context behavior, but not enough measured evidence for frozen eval."
+limitations = "Rejected for this eval pack until issue #3184, benchmark/repro command, and before/after measurements are available."
+
+[[cases]]
+id = "ripgrep-3154"
+status = "freeze_ready"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/3154"
+signal_ids = ["external_contract", "non_happy_path", "state_transition"]
+risk_summary = "PCRE2 multiline look-around with --files-with-matches needed a correctness fix."
+ground_truth_summary = "Follow-up A reviewed; issue #3139 provides a concrete --files-with-matches + PCRE2 multiline look-around repro, with underlying #2528 context and regression-test evidence."
+source_refs = ["https://github.com/BurntSushi/ripgrep/pull/3154", "https://github.com/BurntSushi/ripgrep/issues/3139", "https://github.com/BurntSushi/ripgrep/issues/2528", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["crates/printer/src/summary.rs"]
+test_files = ["tests/regression.rs"]
+why_high_value = "Search output mode correctness is externally visible."
+why_not_noise = "Specific option combination and regression test."
+limitations = "Frozen scope is limited to files-with-matches output correctness; underlying PCRE2 multiline look-around issue is broader and not fully solved here."
+
+[[cases]]
+id = "ripgrep-2885"
+status = "freeze_ready"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/2885"
+signal_ids = ["external_contract", "state_transition", "assumption_boundary"]
+risk_summary = "Regex inner literal extraction caused false negatives."
+ground_truth_summary = "Follow-up A reviewed; issue #2884 provides a minimal false-negative repro, bisect context, and maintainer diagnosis of literal extraction."
+source_refs = ["https://github.com/BurntSushi/ripgrep/pull/2885", "https://github.com/BurntSushi/ripgrep/issues/2884", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["crates/regex/src/literal.rs"]
+test_files = ["tests/util.rs"]
+why_high_value = "False negatives violate core search correctness."
+why_not_noise = "Specific optimizer correctness failure."
+limitations = "Optimizer-specific; use as a semantic state/invariant case, not as a generic regex-change signal."
+
+[[cases]]
+id = "ripgrep-2692"
+status = "rejected"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/2692"
+signal_ids = ["lifecycle_ordering", "assumption_boundary"]
+risk_summary = "Compiled ignore matchers had a reference cycle bug."
+ground_truth_summary = "Follow-up A reviewed; issue #2690 supports a memory-growth/reference-cycle problem, but the case is primarily memory/performance-shaped and outside current M3 frozen scope."
+source_refs = ["https://github.com/BurntSushi/ripgrep/pull/2692", "https://github.com/BurntSushi/ripgrep/issues/2690", "eval/large-scale-50/candidates/open-source.toml"]
+production_files = ["crates/ignore/src/dir.rs"]
+test_files = []
+why_high_value = "Cycle handling can affect ignore matcher compilation correctness."
+why_not_noise = "Specific reference cycle bug in production matcher code."
+limitations = "Rejected for current frozen eval; may return in a future resource-lifecycle/performance evidence track with profiler artifacts."
+
+[[cases]]
+id = "hyperium-hyper-820"
+status = "rejected"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/820"
+signal_ids = ["external_contract", "risk_path_test_gap"]
+risk_summary = "Build with no-default-features and security-framework needed compatibility fix."
+ground_truth_summary = "Round-6 reviewed; PR body only links issue #819 and raw evidence lacks build command, error output, CI, or test proof."
+source_refs = ["https://github.com/hyperium/hyper/pull/820", "eval/semantic-candidates/enriched.jsonl"]
+production_files = ["src/client/proxy.rs", "src/net.rs"]
+test_files = []
+why_high_value = "Feature/default compatibility affects downstream build contract."
+why_not_noise = "Specific feature combination, but current raw context is too thin."
+limitations = "Rejected for this eval pack until issue #819 and executable build-matrix evidence are captured."
+
+[[cases]]
+id = "hyperium-hyper-3394"
+status = "rejected"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3394"
+signal_ids = ["assumption_boundary", "external_contract", "risk_path_test_gap"]
+risk_summary = "Missing Timer would warn or panic."
+ground_truth_summary = "Follow-up A reviewed; linked issue #3393 contains no useful reproduction or user failure context, and the PR is feature/design-shaped."
+source_refs = ["https://github.com/hyperium/hyper/pull/3394", "https://github.com/hyperium/hyper/issues/3393", "eval/semantic-candidates/enriched.jsonl"]
+production_files = ["src/common/time.rs", "src/server/conn/http1.rs"]
+test_files = []
+why_high_value = "Runtime timer availability is a configuration/assumption boundary."
+why_not_noise = "Specific missing runtime dependency failure mode."
+limitations = "Rejected for current frozen eval because evidence is too thin and the risk is a contract-design decision, not a validated regression."
+
+[[cases]]
+id = "hyperium-hyper-310"
+status = "rejected"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/310"
+signal_ids = ["lifecycle_ordering", "non_happy_path", "assumption_boundary"]
+risk_summary = "Server requests needed to drain on drop."
+ground_truth_summary = "Follow-up A reviewed; issues #197/#309 show a real unread-body/keep-alive bug, but the PR direction was challenged for resource-exhaustion risk and later reverted."
+source_refs = ["https://github.com/hyperium/hyper/pull/310", "https://github.com/hyperium/hyper/issues/197", "https://github.com/hyperium/hyper/issues/309", "eval/semantic-candidates/enriched.jsonl"]
+production_files = ["src/http.rs", "src/lib.rs", "src/server/request.rs"]
+test_files = []
+why_high_value = "Drop/drain behavior can affect connection reuse and cleanup."
+why_not_noise = "Specific lifecycle behavior in production server request handling."
+limitations = "Rejected for current frozen eval because it would reward a disputed/reverted fix direction rather than a stable ground-truth resolution."
+
+[[cases]]
+id = "hyperium-hyper-518"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/518"
+signal_ids = ["lifecycle_ordering", "external_contract"]
+risk_summary = "Setting an SSL verifier needed to keep the underlying connector."
+ground_truth_summary = "Follow-up A reviewed; issue #495 clearly reports set_ssl_verifier discarding connector state/pool configuration, and PR states regression coverage."
+source_refs = ["https://github.com/hyperium/hyper/pull/518", "https://github.com/hyperium/hyper/issues/495", "eval/semantic-candidates/enriched.jsonl"]
+production_files = ["src/client/mod.rs", "src/client/pool.rs", "src/mock.rs", "src/net.rs"]
+test_files = ["benches/client.rs"]
+why_high_value = "TLS connector/verifier configuration affects client behavior and compatibility."
+why_not_noise = "Specific connector preservation bug."
+limitations = "Old PR with sparse raw test details; freeze as external API/connector lifecycle contract, not as benchmark evidence."
+
+[[cases]]
+id = "hyperium-hyper-3967"
+status = "rejected"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3967"
+signal_ids = ["state_transition", "lifecycle_ordering", "external_contract", "concurrency_ordering", "risk_path_test_gap"]
+risk_summary = "HTTP/2 CONNECT upgrade internals needed fixing."
+ground_truth_summary = "Follow-up A reviewed; issue #3966 is primarily compiler/type-representation soundness and API migration context, not a validated runtime regression for current M3."
+source_refs = ["https://github.com/hyperium/hyper/pull/3967", "https://github.com/hyperium/hyper/issues/3966", "eval/semantic-candidates/enriched.jsonl"]
+production_files = ["src/client/conn/http2.rs", "src/client/dispatch.rs", "src/proto/h2/client.rs", "src/proto/h2/mod.rs", "src/proto/h2/server.rs", "src/proto/h2/upgrade.rs", "src/rt/bounds.rs"]
+test_files = []
+why_high_value = "CONNECT upgrade affects protocol state and external behavior."
+why_not_noise = "Specific HTTP/2 upgrade internals, not broad refactor."
+limitations = "Rejected for current frozen eval because it risks teaching large refactor/type-soundness noise rather than diff risk evidence decay can validate."
+
+[[cases]]
+id = "tokio-rs-tokio-7638"
+status = "rejected"
+repo = "tokio-rs/tokio"
+url = "https://github.com/tokio-rs/tokio/pull/7638"
+signal_ids = ["external_contract", "assumption_boundary"]
+risk_summary = "join! and try_join! macro hygiene issue was fixed."
+ground_truth_summary = "Follow-up A reviewed; issue #7637 provides strong macro hygiene evidence, but macro compile-time scope is outside current function-level M3 frozen eval."
+source_refs = ["https://github.com/tokio-rs/tokio/pull/7638", "https://github.com/tokio-rs/tokio/issues/7637", "eval/semantic-candidates/enriched.jsonl"]
+production_files = ["tokio/src/macros/join.rs", "tokio/src/macros/support.rs", "tokio/src/macros/try_join.rs"]
+test_files = ["tokio/tests/macros_join.rs", "tokio/tests/macros_try_join.rs"]
+why_high_value = "Macro hygiene is an external compile-time contract."
+why_not_noise = "Specific public macro behavior with tests."
+limitations = "Rejected for current frozen eval; keep as a future macro/compile-time semantic evidence case."
+
+[[cases]]
+id = "tokio-rs-tokio-8057"
+status = "rejected"
+repo = "tokio-rs/tokio"
+url = "https://github.com/tokio-rs/tokio/pull/8057"
+signal_ids = ["concurrency_ordering", "lifecycle_ordering", "risk_path_test_gap"]
+risk_summary = "Reverted #7757 to fix regression in spawn_blocking."
+ground_truth_summary = "Follow-up A reviewed; issue #8056 and PR #7757 show a real spawn_blocking hang regression, but #8057 is revert-only and should not be the frozen diff target."
+source_refs = ["https://github.com/tokio-rs/tokio/pull/8057", "https://github.com/tokio-rs/tokio/pull/7757", "https://github.com/tokio-rs/tokio/issues/8056", "eval/semantic-candidates/enriched.jsonl"]
+production_files = ["tokio/src/runtime/blocking/mod.rs", "tokio/src/runtime/blocking/pool.rs", "tokio/src/runtime/blocking/sharded_queue.rs"]
+test_files = []
+why_high_value = "Revert of runtime concurrency behavior is strong risk evidence."
+why_not_noise = "Specific regression fix in spawn_blocking."
+limitations = "Rejected as a revert-only frozen case; collect original PR #7757 as the candidate if this scenario is used."
+
+[[cases]]
+id = "hyperium-hyper-3290"
+status = "needs_more_context"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3290"
+signal_ids = ["concurrency_ordering", "state_transition", "risk_path_test_gap"]
+risk_summary = "HTTP/2 client needed to avoid double-polling a Select future."
+ground_truth_summary = "Follow-up B reviewed; issue #3289 has a real Deno panic stack, but no reliable repro/test and review questioned whether the fix addressed root cause."
+source_refs = ["https://github.com/hyperium/hyper/pull/3290", "https://github.com/hyperium/hyper/issues/3289", "eval/semantic-candidates/enriched.jsonl"]
+production_files = ["src/proto/h2/client.rs"]
+test_files = []
+why_high_value = "Double-polling future can violate async state machine invariants."
+why_not_noise = "Specific async/concurrency failure mode."
+limitations = "Needs stable repro, regression test, or follow-up confirmation before frozen eval."
+
+[[cases]]
+id = "hyperium-hyper-3812"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3812"
+signal_ids = ["assumption_boundary", "non_happy_path", "state_transition"]
+risk_summary = "HTTP/1 partial header parsing could intermittently panic."
+ground_truth_summary = "Follow-up A reviewed; issue #3811 gives a concrete partial 1xx HTTP/1 response panic, with regression-test path and patch-release context."
+source_refs = ["https://github.com/hyperium/hyper/pull/3812", "https://github.com/hyperium/hyper/issues/3811", "eval/semantic-candidates/enriched.jsonl"]
+production_files = ["src/proto/h1/io.rs"]
+test_files = ["tests/client.rs"]
+why_high_value = "Partial/malformed header parsing is a non-happy protocol path and panic boundary."
+why_not_noise = "Specific intermittent panic and regression test path."
+limitations = "PR body is thin; freeze relies on linked issue and test-path context."
+
+[[cases]]
+id = "serde-rs-json-265"
+status = "needs_more_context"
+repo = "serde-rs/json"
+url = "https://github.com/serde-rs/json/pull/265"
+signal_ids = ["non_happy_path", "risk_path_test_gap", "state_transition"]
+risk_summary = "Fixed regressions introduced by a previous fix."
+ground_truth_summary = "Follow-up B reviewed; PR names regressions introduced by #256, but stored follow-up only captures the original feature request, not enough diff/benchmark ground truth."
+source_refs = ["https://github.com/serde-rs/json/pull/265", "https://github.com/serde-rs/json/pull/256", "eval/semantic-candidates/enriched.jsonl"]
+production_files = ["json/src/de.rs"]
+test_files = ["json_tests/tests/test.rs"]
+why_high_value = "Follow-up regression fixes are strong evidence that the original behavior boundary was risky."
+why_not_noise = "Specific regression relationship with production deserialization code and tests."
+limitations = "Needs #256 implementation diff, concrete incorrect-parse input, and separate performance evidence before frozen eval."
+
+[[cases]]
+id = "BurntSushi-ripgrep-454"
+status = "freeze_ready"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/454"
+signal_ids = ["state_transition", "external_contract", "risk_path_test_gap"]
+risk_summary = "Only-matching output could repeat the first found match because match iteration state advanced incorrectly."
+ground_truth_summary = "Frozen fill A reviewed; issue #451 gives a minimal repro and wrong output, while the PR changes printer state handling and includes regression tests."
+source_refs = ["https://github.com/BurntSushi/ripgrep/pull/454", "https://github.com/BurntSushi/ripgrep/issues/451", "eval/risk-signals/agent-reviews/frozen-v1-fill-a/aggregate.toml"]
+production_files = ["src/printer.rs"]
+test_files = ["tests/tests.rs"]
+why_high_value = "Repeated or missed match output violates core search result correctness."
+why_not_noise = "The issue, PR, production file, and regression tests all point to the same match iteration failure."
+limitations = "Freeze as match cursor/state risk, not as generic output formatting."
+
+[[cases]]
+id = "BurntSushi-ripgrep-620"
+status = "freeze_ready"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/620"
+signal_ids = ["non_happy_path", "state_transition", "external_contract"]
+risk_summary = "A max-count early return could skip pending after-context output."
+ground_truth_summary = "Frozen fill A reviewed; issue #402 provides command-level repro and maintainer bug confirmation for missing context after early return."
+source_refs = ["https://github.com/BurntSushi/ripgrep/pull/620", "https://github.com/BurntSushi/ripgrep/issues/402", "eval/risk-signals/agent-reviews/frozen-v1-fill-a/aggregate.toml"]
+production_files = ["src/search_stream.rs"]
+test_files = []
+why_high_value = "Early-return handling can silently omit user-visible search context."
+why_not_noise = "The failure is tied to one search state path and a concrete repro."
+limitations = "Freeze as early-return state flush risk; do not overfit to the exact CLI flag combination."
+
+[[cases]]
+id = "BurntSushi-ripgrep-762"
+status = "freeze_ready"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/762"
+signal_ids = ["external_contract", "state_transition", "risk_path_test_gap"]
+risk_summary = "Slash-containing gitignore patterns did not match actual git behavior."
+ground_truth_summary = "Frozen fill A reviewed; issue #761 reports a VS Code/ripgrep behavior gap and the PR adds matcher tests while aligning behavior with git."
+source_refs = ["https://github.com/BurntSushi/ripgrep/pull/762", "https://github.com/BurntSushi/ripgrep/issues/761", "eval/risk-signals/agent-reviews/frozen-v1-fill-a/aggregate.toml"]
+production_files = ["ignore/src/gitignore.rs", "ignore/src/overrides.rs"]
+test_files = ["ignore/tests/gitignore_matched_path_or_any_parents_tests.rs"]
+why_high_value = "Ignore matching controls which files are searched and must follow external gitignore semantics."
+why_not_noise = "The report, production matcher files, and tests all bind to the same external contract."
+limitations = "Freeze as external spec/matcher state risk, not specific gitignore syntax memorization."
+
+[[cases]]
+id = "hyperium-hyper-2544"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/2544"
+signal_ids = ["assumption_boundary", "non_happy_path", "error_propagation"]
+risk_summary = "Illegal HTTP header name/value input could panic instead of surfacing a parse error."
+ground_truth_summary = "Frozen fill A reviewed; issue #2534 has a panic stack and malformed header context, and the PR routes the failure through parse/internal error handling."
+source_refs = ["https://github.com/hyperium/hyper/pull/2544", "https://github.com/hyperium/hyper/issues/2534", "eval/risk-signals/agent-reviews/frozen-v1-fill-a/aggregate.toml"]
+production_files = ["src/error.rs", "src/proto/h1/role.rs"]
+test_files = []
+why_high_value = "Malformed network input must not crash HTTP parsing."
+why_not_noise = "The issue and diff identify the same malformed-input defensive boundary."
+limitations = "Freeze as hyper malformed-input boundary; do not claim dependency-only root cause."
+
+[[cases]]
+id = "hyperium-hyper-3275"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3275"
+signal_ids = ["error_propagation", "state_transition", "external_contract"]
+risk_summary = "An early HTTP/2 server response could incorrectly propagate RST_STREAM(NO_ERROR)."
+ground_truth_summary = "Frozen fill A reviewed; issue #2872, PR tests, review, and backport #3274 support the protocol error-propagation failure."
+source_refs = ["https://github.com/hyperium/hyper/pull/3275", "https://github.com/hyperium/hyper/issues/2872", "https://github.com/hyperium/hyper/pull/3274", "eval/risk-signals/agent-reviews/frozen-v1-fill-a/aggregate.toml"]
+production_files = ["src/body/incoming.rs", "src/proto/mod.rs"]
+test_files = ["tests/client.rs"]
+why_high_value = "Protocol error propagation affects interoperability and caller-visible response behavior."
+why_not_noise = "Issue, tests, backport, and production state handling point to one protocol state bug."
+limitations = "Freeze as HTTP/2 protocol state/error propagation."
+
+[[cases]]
+id = "serde-rs-json-521"
+status = "freeze_ready"
+repo = "serde-rs/json"
+url = "https://github.com/serde-rs/json/pull/521"
+signal_ids = ["external_contract", "state_transition", "risk_path_test_gap"]
+risk_summary = "Adjacently tagged f32 values could fail JSON roundtrip after a version regression."
+ground_truth_summary = "Frozen fill A reviewed; issue #520 provides a concrete regression repro and the PR adds regression coverage before a release fix."
+source_refs = ["https://github.com/serde-rs/json/pull/521", "https://github.com/serde-rs/json/issues/520", "eval/risk-signals/agent-reviews/frozen-v1-fill-a/aggregate.toml"]
+production_files = ["src/number.rs"]
+test_files = ["tests/regression.rs", "tests/regression/issue520.rs", "tests/regression/mod.rs"]
+why_high_value = "Roundtrip regressions break serialization contracts in user data paths."
+why_not_noise = "The issue identifies a version regression with reproduction, tests, and release confirmation."
+limitations = "Freeze as serialization roundtrip contract regression."
+
+[[cases]]
+id = "tokio-rs-tokio-8021"
+status = "freeze_ready"
+repo = "tokio-rs/tokio"
+url = "https://github.com/tokio-rs/tokio/pull/8021"
+signal_ids = ["state_transition", "concurrency_ordering", "assumption_boundary"]
+risk_summary = "A closed semaphore could be reopened by forget_permits because the closed bit was not preserved."
+ground_truth_summary = "Frozen fill A reviewed; issue #8020 includes a reproducing test and duplicate PR #8022 supplied additional test context."
+source_refs = ["https://github.com/tokio-rs/tokio/pull/8021", "https://github.com/tokio-rs/tokio/issues/8020", "https://github.com/tokio-rs/tokio/pull/8022", "eval/risk-signals/agent-reviews/frozen-v1-fill-a/aggregate.toml"]
+production_files = ["tokio/src/sync/batch_semaphore.rs"]
+test_files = ["tokio/tests/sync_semaphore.rs"]
+why_high_value = "Concurrent primitive terminal-state violations can reopen closed synchronization paths."
+why_not_noise = "The issue, duplicate fix, production state bit, and tests all target the same invariant."
+limitations = "Freeze as concurrent primitive terminal-state preservation."
+
+[[cases]]
+id = "tokio-rs-tokio-7983"
+status = "freeze_ready"
+repo = "tokio-rs/tokio"
+url = "https://github.com/tokio-rs/tokio/pull/7983"
+signal_ids = ["lifecycle_ordering", "non_happy_path", "concurrency_ordering", "risk_path_test_gap"]
+risk_summary = "Cancelling an io_uring open future could leak a file descriptor."
+ground_truth_summary = "Frozen fill A reviewed; issue #7979 is a public fd leak report and the PR adds cancellation/completion/shutdown tests after review."
+source_refs = ["https://github.com/tokio-rs/tokio/pull/7983", "https://github.com/tokio-rs/tokio/issues/7979", "eval/risk-signals/agent-reviews/frozen-v1-fill-a/aggregate.toml"]
+production_files = ["tokio/src/runtime/io/driver/uring.rs"]
+test_files = ["tokio/tests/fs_uring_cancel_open.rs", "tokio/tests/fs_uring_completed_then_dropped_before_repoll.rs", "tokio/tests/fs_uring_runtime_shutdown.rs"]
+why_high_value = "Cancellation and completion races can leak OS resources and create stability or DoS risk."
+why_not_noise = "The issue, review, production lifecycle code, and tests all bind to fd cleanup."
+limitations = "Linux/io_uring specific, but frozen as transferable cancel/drop resource lifecycle risk."
+
+[[cases]]
+id = "hyperium-hyper-4069"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/4069"
+signal_ids = ["error_propagation", "lifecycle_ordering", "non_happy_path"]
+risk_summary = "Dropping the HTTP/1 dispatcher mid-body could return partial data instead of an error."
+ground_truth_summary = "Frozen fill A reviewed; issue #3995 reports user-visible partial bytes and issue #4016 provides continuation context for the error-on-drop fix."
+source_refs = ["https://github.com/hyperium/hyper/pull/4069", "https://github.com/hyperium/hyper/issues/3995", "https://github.com/hyperium/hyper/issues/4016", "eval/risk-signals/agent-reviews/frozen-v1-fill-a/aggregate.toml"]
+production_files = ["src/proto/h1/dispatch.rs"]
+test_files = ["tests/client.rs"]
+why_high_value = "Silent truncation is a high-impact error propagation failure."
+why_not_noise = "The issue and test path focus on the same mid-body drop condition."
+limitations = "Review signal is weak; freeze relies on issue and test context."
+
+[[cases]]
+id = "BurntSushi-ripgrep-3174"
+status = "freeze_ready"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/3174"
+signal_ids = ["external_contract", "state_transition", "risk_path_test_gap"]
+risk_summary = "Ancestor .ignore whitelist handling could skip hidden files when searching an explicit directory."
+ground_truth_summary = "Frozen fill B reviewed; issue #3173 provides CLI repro, expected versus actual output, external Emacs consult impact, maintainer confirmation, and regression coverage."
+source_refs = ["https://github.com/BurntSushi/ripgrep/pull/3174", "https://github.com/BurntSushi/ripgrep/issues/3173", "eval/risk-signals/agent-reviews/frozen-v1-fill-b/aggregate.toml"]
+production_files = ["crates/ignore/src/dir.rs"]
+test_files = ["tests/regression.rs"]
+why_high_value = "Ignore matching decides which files are searched, so path normalization errors can create silent false negatives."
+why_not_noise = "Issue, production matcher code, external user impact, and regression test all bind to the same failure."
+limitations = "Freeze as parent ignore/path normalization contract risk, not concrete .ignore syntax memorization."
+
+[[cases]]
+id = "BurntSushi-ripgrep-801"
+status = "freeze_ready"
+repo = "BurntSushi/ripgrep"
+url = "https://github.com/BurntSushi/ripgrep/pull/801"
+signal_ids = ["external_contract", "state_transition", "assumption_boundary"]
+risk_summary = "Custom ignore files could not be used when other ignore rule families were disabled."
+ground_truth_summary = "Frozen fill B reviewed; issue #800 includes a failing Rust unit test and maintainer confirmation for the custom ignore API contract."
+source_refs = ["https://github.com/BurntSushi/ripgrep/pull/801", "https://github.com/BurntSushi/ripgrep/issues/800", "eval/risk-signals/agent-reviews/frozen-v1-fill-b/aggregate.toml"]
+production_files = ["ignore/src/dir.rs", "ignore/src/walk.rs"]
+test_files = []
+why_high_value = "Configuration switches should not silently disable explicitly supplied ignore rules."
+why_not_noise = "The issue provides a minimal failing API test and the PR changes the ignore builder path."
+limitations = "Library-level ignore crate API contract; do not describe as ripgrep CLI risk."
+
+[[cases]]
+id = "hyperium-hyper-3952"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3952"
+signal_ids = ["concurrency_ordering", "state_transition", "lifecycle_ordering", "non_happy_path"]
+risk_summary = "HTTP/1 poll_loop could stall when write readiness was available but progress/waker handling was wrong."
+ground_truth_summary = "Frozen fill B reviewed; PR body describes real lockups, includes a pathological test, and maintainer review explains the waker/select logic."
+source_refs = ["https://github.com/hyperium/hyper/pull/3952", "eval/risk-signals/agent-reviews/frozen-v1-fill-b/aggregate.toml"]
+production_files = ["src/proto/h1/dispatch.rs"]
+test_files = ["tests/ready_stream.rs"]
+why_high_value = "Async readiness bugs can hang HTTP progress without an explicit error."
+why_not_noise = "The production poll loop, pathological test, and review all identify the same readiness progression failure."
+limitations = "Freeze as async readiness/waker progress risk, not performance optimization."
+
+[[cases]]
+id = "hyperium-hyper-3242"
+status = "freeze_ready"
+repo = "hyperium/hyper"
+url = "https://github.com/hyperium/hyper/pull/3242"
+signal_ids = ["external_contract", "state_transition", "risk_path_test_gap"]
+risk_summary = "HTTP/2 Extended CONNECT requests stripped required :scheme and :path pseudo-headers."
+ground_truth_summary = "Frozen fill B reviewed; PR cites RFC 8441, describes HAProxy rejecting the request, and includes integration tests plus maintainer approval."
+source_refs = ["https://github.com/hyperium/hyper/pull/3242", "eval/risk-signals/agent-reviews/frozen-v1-fill-b/aggregate.toml"]
+production_files = ["src/client/client.rs"]
+test_files = ["tests/integration.rs", "tests/support/mod.rs"]
+why_high_value = "Protocol construction that omits required fields breaks interoperability."
+why_not_noise = "RFC requirement, real proxy failure, production request construction, and tests align."
+limitations = "Freeze as protocol required-field construction risk, not WebSocket-specific logic."
+
+[[cases]]
+id = "tokio-rs-tokio-8076"
+status = "freeze_ready"
+repo = "tokio-rs/tokio"
+url = "https://github.com/tokio-rs/tokio/pull/8076"
+signal_ids = ["assumption_boundary", "concurrency_ordering", "state_transition"]
+risk_summary = "RwLock with max_readers=0 broke write-lock mutual exclusion and could trigger UB."
+ground_truth_summary = "Frozen fill B reviewed; PR body has a minimal UAF PoC, reviewer reproduced with Miri, and the PR adds production validation plus tests."
+source_refs = ["https://github.com/tokio-rs/tokio/pull/8076", "eval/risk-signals/agent-reviews/frozen-v1-fill-b/aggregate.toml"]
+production_files = ["tokio/src/sync/rwlock.rs"]
+test_files = ["tokio/tests/sync_rwlock.rs"]
+why_high_value = "Zero-value boundary can break a synchronization primitive's core safety invariant."
+why_not_noise = "PoC, reviewer Miri confirmation, production guard, and tests all support the same invariant failure."
+limitations = "Freeze as zero-value parameter breaking concurrent primitive invariant."

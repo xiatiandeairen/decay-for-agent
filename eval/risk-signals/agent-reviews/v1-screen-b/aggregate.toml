@@ -1,0 +1,146 @@
+round = "frozen-v1-screen-b"
+reviewed_at = "2026-05-14"
+input_pool = "eval/risk-signals/v1-candidate-pool-b.toml"
+raw_dir = "eval/risk-signals/v1-candidate-b-raw"
+follow_up_dir = "eval/risk-signals/v1-candidate-b-follow-up-raw"
+policy = "preliminary screen; promote only strong risk-shaped cases to formal review"
+
+[[cases]]
+id = "tokio-rs-tokio-7983"
+screen_status = "strong_follow_up_candidate"
+suggested_signal_ids = ["lifecycle_ordering", "non_happy_path", "risk_path_test_gap"]
+decision = "Cancelled io_uring open futures leaked file descriptors; issue is bug-labeled and PR has tests/review."
+review_focus = "Validate as resource lifecycle leak, not platform-only noise."
+
+[[cases]]
+id = "hyperium-hyper-4043"
+screen_status = "strong_follow_up_candidate"
+suggested_signal_ids = ["state_transition", "lifecycle_ordering", "external_contract"]
+decision = "Chunked requests with trailers incorrectly transitioned to closed instead of keep-alive; PR has test coverage."
+review_focus = "Validate HTTP/1 body-completion state transition."
+
+[[cases]]
+id = "hyperium-hyper-4069"
+screen_status = "strong_follow_up_candidate"
+suggested_signal_ids = ["error_propagation", "lifecycle_ordering", "non_happy_path"]
+decision = "Dispatcher drop mid-body could produce partial data instead of an error; issue provides user-visible failure context."
+review_focus = "Validate silent truncation/error propagation risk."
+
+[[cases]]
+id = "BurntSushi-ripgrep-3189"
+screen_status = "strong_follow_up_candidate"
+suggested_signal_ids = ["external_contract", "state_transition", "risk_path_test_gap"]
+decision = "Global gitignore with absolute/rooted paths behaved incorrectly; issue links a real Helix report and PR includes regression coverage."
+review_focus = "Validate ignore matching contract without overfitting to path syntax."
+
+[[cases]]
+id = "BurntSushi-ripgrep-1065"
+screen_status = "strong_follow_up_candidate"
+suggested_signal_ids = ["non_happy_path", "state_transition", "risk_path_test_gap"]
+decision = "Rollup includes a Ruby checkout panic and a regex false-negative issue, both with issue reports."
+review_focus = "Split sub-issues in formal review; reject if the rollup diff cannot provide one clean judgement."
+
+[[cases]]
+id = "hyperium-hyper-3813"
+screen_status = "needs_strict_review"
+suggested_signal_ids = ["assumption_boundary", "non_happy_path", "error_propagation"]
+decision = "Backport of partial-header parser panic fix; original fix PR is captured but original issue is still missing."
+review_focus = "Collect issue #3811 before freeze."
+
+[[cases]]
+id = "hyperium-hyper-4019"
+screen_status = "needs_strict_review"
+suggested_signal_ids = ["assumption_boundary", "non_happy_path"]
+decision = "Title claims non-UTF8 can panic in to_str, but body is empty and no issue is captured."
+review_focus = "Require repro/test evidence."
+
+[[cases]]
+id = "tokio-rs-tokio-8010"
+screen_status = "needs_strict_review"
+suggested_signal_ids = ["concurrency_ordering", "lifecycle_ordering", "external_contract"]
+decision = "Runtime eager handoff addresses executor starvation but is broad and feature-shaped."
+review_focus = "Decide whether broad scheduler mitigation belongs in frozen v1."
+
+[[cases]]
+id = "hyperium-hyper-2746"
+screen_status = "needs_strict_review"
+suggested_signal_ids = ["assumption_boundary", "non_happy_path"]
+decision = "Defensive Instant panic avoidance references runtime panics, but root cause may be Rust/linkerd rather than hyper."
+review_focus = "Require clear target responsibility."
+
+[[cases]]
+id = "tokio-rs-tokio-8068"
+screen_status = "likely_reject"
+suggested_signal_ids = ["risk_path_test_gap"]
+decision = "Regression-test-only PR for another change; not enough standalone diff value."
+review_focus = "Use only with the underlying fix/revert context."
+
+[[cases]]
+id = "hyperium-hyper-2792"
+screen_status = "likely_reject"
+suggested_signal_ids = ["external_contract"]
+decision = "Non-canonical reason phrase support is feature/API extension, not a proven risk fix."
+review_focus = "Reject unless linked to concrete breakage."
+
+[[cases]]
+id = "hyperium-hyper-4002"
+screen_status = "likely_reject"
+suggested_signal_ids = ["external_contract"]
+decision = "Parser config enablement is feature-shaped; issue is a feature request."
+review_focus = "Reject for current frozen v1."
+
+[[cases]]
+id = "BurntSushi-ripgrep-3181"
+screen_status = "likely_reject"
+suggested_signal_ids = ["lifecycle_ordering"]
+decision = "Avoids building a decompression reader early; resource-shaped but lacks direct failure evidence in collected context."
+review_focus = "Reject unless executable resource evidence is added."
+
+[[cases]]
+id = "clap-rs-clap-4668"
+screen_status = "likely_reject"
+suggested_signal_ids = ["external_contract"]
+decision = "Suggestion ranking bug is real but low stability risk for product-effect validation."
+review_focus = "Reject unless current scope expands to UX correctness."
+
+[[cases]]
+id = "clap-rs-clap-6068"
+screen_status = "likely_reject"
+suggested_signal_ids = ["external_contract"]
+decision = "Help text alias visibility bug is low risk for current eval."
+review_focus = "Reject."
+
+[[cases]]
+id = "clap-rs-clap-6205"
+screen_status = "likely_reject"
+suggested_signal_ids = ["external_contract"]
+decision = "Default value help UI formatting is low risk."
+review_focus = "Reject."
+
+[[cases]]
+id = "clap-rs-clap-6368"
+screen_status = "likely_reject"
+suggested_signal_ids = ["external_contract", "non_happy_path"]
+decision = "Fish completion escaping is plausible but shell-completion UX is outside current frozen-v1 risk scope."
+review_focus = "Reject for current scope unless scoped as generated-script correctness later."
+
+[[cases]]
+id = "serde-rs-json-257"
+screen_status = "likely_reject"
+suggested_signal_ids = ["external_contract"]
+decision = "Arbitrary bytes in strings is an enhancement/use-case request, not a stability regression."
+review_focus = "Reject for frozen v1."
+
+[[cases]]
+id = "serde-rs-json-1030"
+screen_status = "likely_reject"
+suggested_signal_ids = ["external_contract", "error_propagation"]
+decision = "MapKeySerializer serialize_some support is API behavior expansion without issue/repro context."
+review_focus = "Reject unless follow-up proves existing behavior was a bug."
+
+[[cases]]
+id = "serde-rs-json-1205"
+screen_status = "likely_reject"
+suggested_signal_ids = []
+decision = "Compile-time/performance refactor; outside current scanner value proof."
+review_focus = "Reject."

@@ -1,0 +1,37 @@
+{
+  "case_id": "hyperium-hyper-3394",
+  "refs": [
+    {
+      "detail": {
+        "body": "",
+        "closedAt": "2023-11-08T21:07:52Z",
+        "comments": [],
+        "createdAt": "2023-11-06T15:50:46Z",
+        "labels": [
+          {
+            "color": "f9d0c4",
+            "description": "Category: feature. This is adding a new feature.",
+            "id": "MDU6TGFiZWw2OTQ0OTY1OTg=",
+            "name": "C-feature"
+          },
+          {
+            "color": "FBCA04",
+            "description": "Area: runtime traits/utils",
+            "id": "LA_kwDOAWaYQc8AAAABHLr8TQ",
+            "name": "A-rt"
+          }
+        ],
+        "number": 3393,
+        "state": "CLOSED",
+        "title": "Decide what to do about a missing `Timer`",
+        "url": "https://github.com/hyperium/hyper/issues/3393"
+      },
+      "target": {
+        "number": 3393,
+        "reason": "Missing Timer runtime configuration report.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    }
+  ]
+}

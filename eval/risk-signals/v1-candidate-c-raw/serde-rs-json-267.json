@@ -1,0 +1,186 @@
+{
+  "candidate": {
+    "id": "serde-rs-json-267",
+    "repo": "serde-rs/json",
+    "url": "https://github.com/serde-rs/json/pull/267"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "419cd59e45d837ddb808c83ec408b2825446a436",
+    "body": "",
+    "comments": [
+      {
+        "author": {
+          "login": "nox"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Related to https://github.com/serde-rs/serde/pull/789, do not merge yet.",
+        "createdAt": "2017-02-27T00:43:27Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI4MjYwMzAxOQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/267#issuecomment-282603019",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "nox"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "I also added a commit to optimise serialising a single `char`.",
+        "createdAt": "2017-02-27T09:58:23Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI4MjY3NjI3OQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/267#issuecomment-282676279",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "This is a breaking change for rq which overrides write_string_fragment: [rq/value/json.rs](https://github.com/dflemstr/rq/blob/v0.9.2/src/value/json.rs)\r\n\r\nPlease do not make any changes to Formatter in this PR. The loop for calling write_string_fragment / write_char_escape should live outside of Formatter.\r\n\r\nI filed #268 to follow up on the argument type in the next major release.",
+        "createdAt": "2017-02-28T04:32:54Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI4MjkzOTQ4MQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/267#issuecomment-282939481",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "nox"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Note that if the `Formatter` methods produced `io::Error` errors, or at least if the portion that handles strings did, we wouldn't need to implement `fmt::Write` and store a `serde_json::Error` out of band, instead we could use `write!` directly and use the returned `io::Error`.",
+        "createdAt": "2017-02-28T11:27:19Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI4MzAxNDg0MQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/267#issuecomment-283014841",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "json/Cargo.toml"
+      },
+      {
+        "additions": 69,
+        "changeType": "MODIFIED",
+        "deletions": 8,
+        "path": "json/src/ser.rs"
+      },
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "json_tests/Cargo.toml"
+      },
+      {
+        "additions": 42,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "json_tests/tests/test.rs"
+      }
+    ],
+    "headRefName": "display",
+    "headRefOid": "1d6a1c665a8fa51feb094d4efb25e21c90d6a354",
+    "labels": [],
+    "mergedAt": "2017-03-06T01:37:45Z",
+    "number": 267,
+    "reviewDecision": "",
+    "reviews": [
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "8501aef2f9187b6b0916bc55e7983f2ab4bf60eb"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MjM5MDAxODk=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2017-02-27T00:57:51Z"
+      },
+      {
+        "author": {
+          "login": "nox"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "8501aef2f9187b6b0916bc55e7983f2ab4bf60eb"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MjM5NDc2MjU=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2017-02-27T09:58:06Z"
+      },
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "46ea73682f0e23182600671f99dec401be053558"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MjQxNTk2NTQ=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2017-02-28T04:56:52Z"
+      },
+      {
+        "author": {
+          "login": "nox"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "46ea73682f0e23182600671f99dec401be053558"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MjQyMTY4MjQ=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2017-02-28T11:26:04Z"
+      },
+      {
+        "author": {
+          "login": "nox"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "46ea73682f0e23182600671f99dec401be053558"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MjQyMTY4NDA=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2017-02-28T11:26:11Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "Redefine Serializer::collect_str",
+    "url": "https://github.com/serde-rs/json/pull/267"
+  }
+}

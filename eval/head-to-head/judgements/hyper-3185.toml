@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyper-3185"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "http1_header_read_timeout now starts immediately when the connection is established (in poll_read_head before parsing), instead of only after the first header bytes arrive in parse_headers. A client that opens a TCP connection and sends nothing is now closed after the configured timeout."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Top-1 nails lifecycle_ordering exactly — 'timer arming moved... deadline now starts before any IO/leading-line consumption'. Top-2 raises a plausible error-path cleanup concern (stale armed timer on Err return). Top-3 supporting test-gap. Baseline saw the real mechanism from the diff alone. [mechanical-flag: ai_baseline: ai=2, mechanical=1]"

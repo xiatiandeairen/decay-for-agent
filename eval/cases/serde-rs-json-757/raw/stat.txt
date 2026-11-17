@@ -1,0 +1,3 @@
+ src/read.rs   |  5 ++++-
+ tests/test.rs | 19 +++++++++++++++++++
+ 2 files changed, 23 insertions(+), 1 deletion(-)

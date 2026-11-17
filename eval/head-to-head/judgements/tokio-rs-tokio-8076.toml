@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "tokio-rs-tokio-8076"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "with_max_readers and const_with_max_readers now panic when max_reads==0; write/write_owned/try_write/try_write_owned add debug_assert_ne!(self.mr, 0). Previously max_readers=0 made write() acquire 0 permits, defeating mutual exclusion and enabling UAF/UB."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank 1 nails assumption_boundary on with_max_readers with correct UAF mechanism rationale (write acquires self.mr permits → 0 breaks exclusion). Rank 2 covers const_with_max_readers as external_contract. Rank 3 is supporting. [mechanical-flag: ai_baseline: ai=2, mechanical=1]"

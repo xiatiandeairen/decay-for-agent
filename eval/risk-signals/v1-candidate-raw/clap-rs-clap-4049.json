@@ -1,0 +1,135 @@
+{
+  "candidate": {
+    "id": "clap-rs-clap-4049",
+    "repo": "clap-rs/clap",
+    "url": "https://github.com/clap-rs/clap/pull/4049"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "6aa4f90609e59035fb72924678c1b6ffbc0c5abb",
+    "body": "Previously the Arg id was set with the \"name\" attribute. This allows use of an \"id\" attribute to match the underlying struct.\r\n\r\nA side effect of this is that the \"id\" attribute may also be used on Commands. This isn't desired, but given the current architecture of the attribute parser, it's hard to avoid.\r\n\r\nFixes: #3785\r\n",
+    "comments": [
+      {
+        "author": {
+          "login": "danielparks"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "I think the lint check failure is unrelated to my changes. The commit subject is slightly longer than 50 characters, though. I can fix that if you like.",
+        "createdAt": "2022-08-09T18:57:53Z",
+        "id": "IC_kwDOAd3Usc5IG4Ds",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/4049#issuecomment-1209762028",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> I think the lint check failure is unrelated to my changes. The commit subject is slightly longer than 50 characters, though. I can fix that if you like.\r\n\r\nThe lint failure is\r\n\r\n>  96c57b0: error Subject should be capitalized but found `allow`\r\n\r\nI need to go back and do some fixes to committed since its still not all working with the git security fix *sigh*",
+        "createdAt": "2022-08-09T19:06:05Z",
+        "id": "IC_kwDOAd3Usc5IG52E",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/4049#issuecomment-1209769348",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Note: it also says to not fuss too much over the commit messages.  Its preferred but not required to have them be clean but there isn't a good way to do that with github actions",
+        "createdAt": "2022-08-09T19:06:44Z",
+        "id": "IC_kwDOAd3Usc5IG5_K",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/4049#issuecomment-1209769930",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "danielparks"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Thanks. It was easy to fix, so I went ahead.",
+        "createdAt": "2022-08-09T19:15:42Z",
+        "id": "IC_kwDOAd3Usc5IG76D",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/4049#issuecomment-1209777795",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "clap_derive/src/attrs.rs"
+      },
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/_derive/mod.rs"
+      },
+      {
+        "additions": 56,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/derive/naming.rs"
+      }
+    ],
+    "headRefName": "issue-3785-derive-id-attr",
+    "headRefOid": "1a2ae767388a452d99173c4d3043eb2d0e8a5b41",
+    "labels": [],
+    "mergedAt": "2022-08-09T19:31:45Z",
+    "number": 4049,
+    "reviewDecision": "",
+    "reviews": [
+      {
+        "author": {
+          "login": "danielparks"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "96c57b0afef161da4f3211493a9d14aaf82d8c3e"
+        },
+        "id": "PRR_kwDOAd3Usc4_nLSf",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2022-08-09T18:51:33Z"
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "96c57b0afef161da4f3211493a9d14aaf82d8c3e"
+        },
+        "id": "PRR_kwDOAd3Usc4_nO_L",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2022-08-09T19:04:35Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix(derive): Add \"id\" attribute",
+    "url": "https://github.com/clap-rs/clap/pull/4049"
+  }
+}

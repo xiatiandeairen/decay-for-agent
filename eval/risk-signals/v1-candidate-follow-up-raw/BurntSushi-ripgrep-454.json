@@ -1,0 +1,85 @@
+{
+  "case_id": "BurntSushi-ripgrep-454",
+  "refs": [
+    {
+      "detail": {
+        "body": "Take [this](https://gist.githubusercontent.com/s3rb31/3eea5bb61414f37968ac1d79a554e137/raw/d8768ae3147520581cc84fb23e892fae5795804f/ripgrep%2520test%2520file) file as test data. If I do the following with good old `grep`:\r\n\r\n`grep -Po \"\\/get\\/v\\/\\d*\" fgi.txt`\r\n\r\nI get the following result:\r\n\r\n```\r\n/get/v/19670\r\n/get/v/19637\r\n/get/v/19632\r\n/get/v/19600\r\n/get/v/19598\r\n/get/v/19574\r\n/get/v/19523\r\n/get/v/19521\r\n/get/v/19463\r\n/get/v/19457\r\n/get/v/19433\r\n/get/v/19425\r\n/get/v/19392\r\n/get/v/19390\r\n/get/v/19363\r\n/get/v/19358\r\n/get/v/19337\r\n/get/v/19317\r\n/get/v/19295\r\n/get/v/19278\r\n/get/v/19243\r\n/get/v/19241\r\n/get/v/19208\r\n/get/v/19186\r\n/get/v/19128\r\n/get/v/19126\r\n```\r\n\r\nBut if I try to achive the same result with rg:\r\n\r\n`rg -o \"/get/v/\\d*\" fgi.txt -N`\r\n\r\n```\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n/get/v/19670\r\n```\r\n\r\nI think that behaviour ist really odd and cannot be intended. If I am not mistaken this also violates the documentation (manpage):\r\n\r\n```\r\n-o, --only-matching\r\n    Print only the matched (non-empty) parts of a matching line, with each such part on a separate output line.\r\n```\r\n\r\nBut it does not print all the parts. It just prints the first match N times, where N _is_ actually the correct number of matched parts. \r\n\r\nI hope this can get fixed. I may create a PR myself if it is not too complicated and someone can lead me the right direction.\r\n\r\nGreetings",
+        "closedAt": "2017-04-20T20:47:24Z",
+        "comments": [
+          {
+            "author": {
+              "login": "bmalehorn"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Here's a much simpler example:\r\n\r\n    $ cat example.txt\r\n    1 2 3\r\n\r\n    $ grep -Po \"[0-9]+\" example.txt\r\n    1\r\n    2\r\n    3\r\n\r\n    $ rg -o \"[0-9]+\" example.txt -N\r\n    1\r\n    1\r\n    1\r\n\r\n@s3rb31 if you want to take a stab it, I believe the bug is here: https://github.com/BurntSushi/ripgrep/blob/master/src/printer.rs#L311 Instead of running the regex again, it should use the original match data to get the start & end.",
+            "createdAt": "2017-04-18T20:37:00Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI5NDk3Mzg2OA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/451#issuecomment-294973868",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "kpp"
+            },
+            "authorAssociation": "NONE",
+            "body": "The column is ok, while data is not:\r\n\r\n```\r\n~/ripgrep$ cat tests/digits.txt \r\n1 2 3\r\n~/ripgrep$ cargo run -- \"\\d\" tests/digits.txt -o -n --column\r\n    Finished dev [unoptimized + debuginfo] target(s) in 0.0 secs\r\n     Running `target/debug/rg '\\d' tests/digits.txt -o -n --column`\r\n1:1:1\r\n1:3:1\r\n1:5:1\r\n```",
+            "createdAt": "2017-04-20T14:22:32Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI5NTc1NTkzNA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/451#issuecomment-295755934",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "kpp"
+            },
+            "authorAssociation": "NONE",
+            "body": "Sorry for the bug :sob: ",
+            "createdAt": "2017-04-20T15:11:13Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI5NTc3MjQ2Mw==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/451#issuecomment-295772463",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "s3rb31"
+            },
+            "authorAssociation": "NONE",
+            "body": "Oh, this was really quick. Thanks for the fix!\r\n\r\nI compiled it and it performs well and solid until now. Will report back if I encounter more bugs.\r\n\r\nThanks again!",
+            "createdAt": "2017-04-20T20:47:22Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI5NTkwNTEzNg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/451#issuecomment-295905136",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2017-04-17T16:27:05Z",
+        "labels": [],
+        "number": 451,
+        "state": "CLOSED",
+        "title": "`--only-matching` only prints first match of matched line N times",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/451"
+      },
+      "target": {
+        "number": 451,
+        "reason": "Only-matching column/reiteration report.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    }
+  ]
+}

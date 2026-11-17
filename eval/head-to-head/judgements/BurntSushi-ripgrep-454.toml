@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "BurntSushi-ripgrep-454"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "With --only-matching, write_match was calling re.find on buf[start..end] once per iteration of find_iter, repeatedly returning the FIRST match instead of the current one. Fix passes the per-iteration column offset so the slice starts at the actual match position, yielding one output per match."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank1 directly names the start+column slice + unwrap assumption (the actual fix mechanism). Rank2 catches the Option→usize contract change. Rank3 supporting test-gap. Matches both primary signals. [recovered-from-raw: judge response exceeded schema free-text caps; metrics unaffected]"

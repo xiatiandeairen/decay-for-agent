@@ -88,6 +88,7 @@ fn detect_public_api_changes(
     let before_functions = public_function_signatures(before);
     let before_items = public_item_names(before);
     let can_classify_item_additions = !before.trim().is_empty();
+    let can_classify_function_additions = !before.trim().is_empty();
 
     for (line_no, line) in after.lines().enumerate() {
         let line_no = line_no as u32 + 1;
@@ -107,6 +108,16 @@ fn detect_public_api_changes(
         let Some((name, signature)) = public_function_signature(line) else {
             continue;
         };
+
+        if can_classify_function_additions && !before_functions.contains_key(&name) {
+            records.push(EvidenceRecord::new(
+                "public_api_function_added",
+                path,
+                name,
+                SOURCE,
+            ));
+            continue;
+        }
 
         if before_functions
             .get(&name)

@@ -1,0 +1,47 @@
+{
+  "case_id": "hyperium-hyper-3290",
+  "refs": [
+    {
+      "detail": {
+        "body": "**Version**\r\n\r\nhyper 1.0.0-rc4\r\n\r\n**Platform**\r\n\r\nLinux 5.15.109+ SMP x86_64 GNU/Linux\r\n\r\n**Description**\r\n\r\nDeno is currently using the RC versions of hyper 1.0 and it recently upgraded from `-rc3` to `-rc4`: https://github.com/denoland/deno/pull/19987.\r\n\r\nAfter that we started seeing occasional but frequent panics due to a double poll on a Select future:\r\n```\r\nthread 'main' panicked at 'cannot poll Select twice', ~/.cargo/registry/src/index.crates.io-6f17d22bba15001f/futures-util-0.3.28/src/future/select.rs:112:42\r\nstack backtrace:\r\n   0: rust_begin_unwind\r\n             at ./rustc/8ede3aae28fe6e4d52b38157d7bfe0d3bceef225/library/std/src/panicking.rs:593:5\r\n   1: core::panicking::panic_fmt\r\n             at ./rustc/8ede3aae28fe6e4d52b38157d7bfe0d3bceef225/library/core/src/panicking.rs:67:14\r\n   2: core::panicking::panic_display\r\n             at ./rustc/8ede3aae28fe6e4d52b38157d7bfe0d3bceef225/library/core/src/panicking.rs:150:5\r\n   3: core::panicking::panic_str\r\n             at ./rustc/8ede3aae28fe6e4d52b38157d7bfe0d3bceef225/library/core/src/panicking.rs:134:5\r\n   4: core::option::expect_failed\r\n             at ./rustc/8ede3aae28fe6e4d52b38157d7bfe0d3bceef225/library/core/src/option.rs:1932:5\r\n   5: <futures_util::future::select::Select<A,B> as core::future::future::Future>::poll\r\n   6: <hyper::proto::h2::client::H2ClientFuture<B,T> as core::future::future::Future>::poll\r\n   7: tokio::runtime::task::harness::Harness<T,S>::poll\r\n   8: tokio::runtime::scheduler::current_thread::Context::run_task\r\n   9: tokio::macros::scoped_tls::ScopedKey<T>::set\r\n  10: tokio::runtime::scheduler::current_thread::CurrentThread::block_on\r\n  11: tokio::runtime::runtime::Runtime::block_on\r\n  12: <omitted>::main\r\nnote: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.\r\n```\r\n\r\nI don't have a reproducer or a test for this, which I think is the result of a race.\r\n",
+        "closedAt": "2023-08-21T17:55:01Z",
+        "comments": [
+          {
+            "author": {
+              "login": "lucab"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "I can't bisect this, but looking through the git-log I think this is a regression introduced in https://github.com/hyperium/hyper/pull/3184.\r\n\r\nI put together https://github.com/hyperium/hyper/pull/3290 to hopefully fix this.",
+            "createdAt": "2023-08-18T17:19:00Z",
+            "id": "IC_kwDOAWaYQc5kYwc9",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3289#issuecomment-1684211517",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2023-08-18T17:07:58Z",
+        "labels": [
+          {
+            "color": "d93f0b",
+            "description": "Category: bug. Something is wrong. This is bad!",
+            "id": "MDU6TGFiZWwxMjU3MTAxOTc=",
+            "name": "C-bug"
+          }
+        ],
+        "number": 3289,
+        "state": "CLOSED",
+        "title": "h2/client(1.0.0-rc4): panic on a double poll on Select",
+        "url": "https://github.com/hyperium/hyper/issues/3289"
+      },
+      "target": {
+        "number": 3289,
+        "reason": "Double-poll Select panic report.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    }
+  ]
+}

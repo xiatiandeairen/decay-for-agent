@@ -1,0 +1,31 @@
+{
+  "candidate": {
+    "id": "hyperium-hyper-3557",
+    "repo": "hyperium/hyper",
+    "url": "https://github.com/hyperium/hyper/pull/3557"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "90eb95f62a32981cb662b0f750027231d8a2586b",
+    "body": "This lifetime extension was a mistake.\r\n\r\nCloses #3556\r\n\r\nBREAKING CHANGE: The returned lifetime from `Sleep::downcast_mut_pin()`\r\n  is no longer `'static`. This shouldn't affect most usage. This sort of\r\n  breaking change is needed because it is _wrong_.\r\n\r\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/rt/timer.rs"
+      }
+    ],
+    "headRefName": "sleep-downcast-lifetime-mistake",
+    "headRefOid": "f160a4006e65f093f0d6241ad146a8a449b7e572",
+    "labels": [],
+    "mergedAt": "2024-02-05T15:17:12Z",
+    "number": 3557,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "fix(rt): `Sleep::downcast_mut_pin()` no longer extend lifetime",
+    "url": "https://github.com/hyperium/hyper/pull/3557"
+  }
+}

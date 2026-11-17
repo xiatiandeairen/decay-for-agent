@@ -1,0 +1,215 @@
+{
+  "candidate": {
+    "id": "tokio-rs-tokio-8010",
+    "repo": "tokio-rs/tokio",
+    "url": "https://github.com/tokio-rs/tokio/pull/8010"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "95b9342da7009d068fea6c5d532e04934d46980c",
+    "body": "## Motivation\r\n\r\nAs discussed in #4730, #6315, seanmonstar/reqwest#1907,\r\nprivate-attribution/ipa#1120, oxidecomputer/omicron#9619, and many other\r\nissues, it is possible for the runtime to end up in a situation where\r\nthe only unparked worker thread to begin executing a long-running or\r\npermanently blocking task, preventing the time and I/O drivers from\r\nmaking progress and waking other tasks, since no other worker is\r\nunparked to steal the driver(s). This can result in increased latency\r\nfor I/O and timer notifications, or in some cases, can permanently\r\ndeadlock the runtime.\r\n\r\n## Solution\r\n\r\nThis branch implements the solution I proposed four years ago in [this\r\ncomment][1]: if a worker has just returned from parking on the timer or\r\nI/O driver and is about to poll a task from its run queue, it will\r\nnotify another parked worker to attempt to steal the driver. This should\r\nreduce latency for dispatching I/O and timer notifications and reduce\r\nthe risk of deadlock. This is very similar to the approach taken in a\r\nprevious PR, #6251. The main difference here is that I've hidden this\r\nbehavior behind a runtime builder option,\r\n`enable_eager_driver_handoff()`. I chose to do this because the\r\nincreased amount of cross-thread synchronization due to additional\r\nworker thread wakeups has made an approach like this somewhat\r\ncontroversial, and some users may prefer to avoid it despite the\r\npotential benefits. Putting this behavior behind an unstable runtime\r\nbuilder option allows those who want it to experiment with it, while not\r\ncommitting to this approach as our permanent and canonical solution to\r\n#6315. This was suggested by @carllerche in [this comment][2] on #6251.\r\nI've also consolidated the wakeup triggered by a worker which had\r\npreviously parked on the timer or I/O driver with the wakeup from being\r\nthe last worker to `transition_from_searching`, so we only trigger a\r\nsingle unpark, rather than a second potentially spurious wakeup if both\r\nconditions are true.\r\n\r\nFinally, I've added a test which reproduces a (slightly contrived)\r\ndeadlock, which is prevented by eager driver handoff.\r\n\r\n[1]: https://github.com/tokio-rs/tokio/issues/4730#issuecomment-1147975074\r\n[2]: https://github.com/tokio-rs/tokio/pull/6251#issuecomment-1917713257",
+    "comments": [
+      {
+        "author": {
+          "login": "hawkw"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Oh I _really_ do not love that [my reproducer apparently cannot make the runtime deadlock on ARM](https://github.com/tokio-rs/tokio/actions/runs/23961933972/job/69893686870?pr=8010) --- that suggests some difference of behavior there which is _also_ disconcerting.",
+        "createdAt": "2026-04-03T21:12:39Z",
+        "id": "IC_kwDOBAsbdc75dWtF",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8010#issuecomment-4185221957",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "hawkw"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> Oh I _really_ do not love that [my reproducer apparently cannot make the runtime deadlock on ARM](https://github.com/tokio-rs/tokio/actions/runs/23961933972/job/69893686870?pr=8010) --- that suggests some difference of behavior there which is _also_ disconcerting.\r\n\r\nI suspect this was due to the test's previous reliance on timers; if the test was running in a sufficiently slow environment (such as a QEMU VM on a GitHub Acions runner), the two timers could conceivably complete in the same poll of the timer wheel, resulting in it \"not deadlocking\". I've rewritten the test to use Unix pipes instead which should hopefully be less flaky.",
+        "createdAt": "2026-04-03T22:36:05Z",
+        "id": "IC_kwDOBAsbdc75eUFQ",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8010#issuecomment-4185473360",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "ongardie-atomix"
+        },
+        "authorAssociation": "NONE",
+        "body": "FWIW as a random user, thank you! I ran into the problem this fixes when testing a transaction system. My test got stuck with one task hogging one thread, even though many idle threads were available. I knew I had an unyielding retry loop (which I should fix), but I continued to dig in to explain how one task could wedge the entire runtime. The scenario was a single task in an unyielding retry loop, but a timer was set that should have unblocked another task that would get this one unstuck.\r\n\r\nAt least in my case, this PR solves the problem:\r\n\r\n- When I ran without `enable_eager_driver_handoff`, I saw a test failure on the 3rd attempt (and this was typical). \r\n- When I ran it with `enable_eager_driver_handoff`, I saw 100 successful test runs.\r\n\r\nI think the PR makes sense conceptually and should make the runtime behavior more predictable for users. I can't speak to how it affects normal performance, however. I hope this can make its way to becoming easily enabled (without `tokio_unstable`) over time, and it seems like it might make a good default.\r\n",
+        "createdAt": "2026-04-08T20:09:47Z",
+        "id": "IC_kwDOBAsbdc765G7T",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "HEART",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/tokio-rs/tokio/pull/8010#issuecomment-4209274579",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "hawkw"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> I think the PR makes sense conceptually and should make the runtime behavior more predictable for users. I can't speak to how it affects normal performance, however. I hope this can make its way to becoming easily enabled (without `tokio_unstable`) over time, and it seems like it might make a good default.\r\n\r\nI would certainly like to expose this behavior without the unstable flag, and possibly as a default eventually: personally, I also feel that this behavior is probably correct for a majority of applications, and I expect it will probably result in better overall performance in most cases. However, I wanted to be a bit conservative when introducing a change to the runtime's behavior --- even if we confirm this to be an improvement in most cases, we may want to change the interface for enabling it, for example. I'm also hoping there's a path to dropping the unstable flag after it's been out for a couple releases.",
+        "createdAt": "2026-04-08T20:31:22Z",
+        "id": "IC_kwDOBAsbdc765sfp",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/tokio-rs/tokio/pull/8010#issuecomment-4209428457",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "I think if people try it out and confirm no serious perf regressions, we can just make this the default. It won't break any workflows.\r\n\r\nIt's a bit awkward taking into account that io-uring wants us to introduce per-thread IO contexts, which would bring back #6315 unless we make sure that threads have a way to check the ring owned by *other threads* for completions to avoid starvation. But probably this means that per-thread rings must be [guarded behind a new runtime flavor](https://github.com/tokio-rs/tokio/issues/7995) and the default Tokio configuration will just have a single shared ring.",
+        "createdAt": "2026-04-08T20:37:21Z",
+        "id": "IC_kwDOBAsbdc7652dN",
+        "includesCreatedEdit": true,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 2
+            }
+          }
+        ],
+        "url": "https://github.com/tokio-rs/tokio/pull/8010#issuecomment-4209469261",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "hawkw"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> I think if people try it out and confirm no serious perf regressions, we can just make this the default. It won't break any workflows.\r\n\r\nThat sounds great, we could always end up changing the builder option to be `disable_eager_driver_handoff` for anyone who believes that this causes a performance regression for what they're doing, when we stabilize it. \r\n\r\n",
+        "createdAt": "2026-04-08T20:42:08Z",
+        "id": "IC_kwDOBAsbdc766DIm",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/tokio-rs/tokio/pull/8010#issuecomment-4209521190",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 51,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "tokio/src/runtime/builder.rs"
+      },
+      {
+        "additions": 5,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tokio/src/runtime/config.rs"
+      },
+      {
+        "additions": 26,
+        "changeType": "MODIFIED",
+        "deletions": 10,
+        "path": "tokio/src/runtime/scheduler/multi_thread/park.rs"
+      },
+      {
+        "additions": 57,
+        "changeType": "MODIFIED",
+        "deletions": 12,
+        "path": "tokio/src/runtime/scheduler/multi_thread/worker.rs"
+      },
+      {
+        "additions": 149,
+        "changeType": "ADDED",
+        "deletions": 0,
+        "path": "tokio/tests/rt_unstable_eager_driver_handoff.rs"
+      }
+    ],
+    "headRefName": "eliza/io-driver-heresy-mode",
+    "headRefOid": "e2772119b40f54f0733597272ddceaeced28f8b6",
+    "labels": [
+      {
+        "color": "f5f1fd",
+        "description": "Category: A PR with an enhancement or bugfix.",
+        "id": "MDU6TGFiZWw0Mzk4OTcxOTA=",
+        "name": "C-enhancement"
+      },
+      {
+        "color": "f7e101",
+        "description": "Area: The main tokio crate",
+        "id": "MDU6TGFiZWwxOTkzNTAxMjg2",
+        "name": "A-tokio"
+      },
+      {
+        "color": "f7b101",
+        "description": "Module: tokio/runtime",
+        "id": "MDU6TGFiZWwxOTkzNTEwODc4",
+        "name": "M-runtime"
+      },
+      {
+        "color": "D9C0F1",
+        "description": "Run loom multi-thread tests on this PR",
+        "id": "LA_kwDOBAsbdc8AAAABUo1Jhg",
+        "name": "R-loom-multi-thread"
+      }
+    ],
+    "mergedAt": "2026-04-08T20:46:28Z",
+    "number": 8010,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "Darksonn"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Implementation looks pretty clean to me, thanks!\n\nI'll leave this for a few days in case anyone else wants to review it, but otherwise I'll merge this soon.",
+        "commit": {
+          "oid": "e2772119b40f54f0733597272ddceaeced28f8b6"
+        },
+        "id": "PRR_kwDOBAsbdc7x5My-",
+        "includesCreatedEdit": false,
+        "reactionGroups": [
+          {
+            "content": "HEART",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "state": "APPROVED",
+        "submittedAt": "2026-04-04T07:47:30Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "runtime: optional eager I/O driver/timer handoff when polling tasks",
+    "url": "https://github.com/tokio-rs/tokio/pull/8010"
+  }
+}

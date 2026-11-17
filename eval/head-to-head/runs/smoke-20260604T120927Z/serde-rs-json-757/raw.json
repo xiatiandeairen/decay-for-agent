@@ -1,0 +1,12 @@
+{
+  "case_id": "serde-rs-json-757",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"serde-rs-json-757\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"assumption_boundary\",\"subject\":\"src/read.rs:end_raw_buffering\",\"evidence_refs\":[\"-        let raw = str::from_utf8(raw).unwrap();\\n+        let raw = match str::from_utf8(raw) {\\n+            Ok(raw) => raw,\\n+            Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint),\\n+        };\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Replaces an unconditional unwrap on str::from_utf8 over the raw-buffered slice with a fallible match; prior code panicked when the buffered raw JSON span contained invalid UTF-8 bytes.\"},{\"rank\":2,\"risk_signal\":\"error_propagation\",\"subject\":\"src/read.rs:end_raw_buffering\",\"evidence_refs\":[\"Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint),\"],\"confidence\":\"medium\",\"value\":\"direct\",\"rationale\":\"Maps a UTF-8 decoding failure of the raw buffer to ErrorCode::InvalidUnicodeCodePoint; reviewers should verify this variant's semantics match a bytes-level UTF-8 failure (not just a \\\\u escape failure) and that position reporting is correct.\"},{\"rank\":3,\"risk_signal\":\"test_gap_for_risk_path\",\"subject\":\"tests/test.rs:test_raw_invalid_utf8\",\"evidence_refs\":[\"    let raw_value_err = serde_json::from_slice::<Box<RawValue>>(j).unwrap_err();\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"New test exercises only from_slice<Box<RawValue>>; borrowed &'a RawValue and from_reader paths for the invalid-UTF-8 raw buffer are not asserted, leaving adjacent SliceRead/IoRead variants of the fixed path uncovered.\"}]\n",
+      "stderr_tail": ""
+    }
+  ]
+}

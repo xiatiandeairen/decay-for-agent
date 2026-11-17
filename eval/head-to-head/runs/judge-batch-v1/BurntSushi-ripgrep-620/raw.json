@@ -1,0 +1,12 @@
+{
+  "case_id": "BurntSushi-ripgrep-620",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"BurntSushi-ripgrep-620\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208\",\"ground_truth_draft\":{\"high_value\":true,\"primary_signal_ids\":[\"non_happy_path\",\"state_transition\"],\"subject_files\":[\"src/search_stream.rs\"],\"expected_behavior\":\"When the main search loop terminates early (e.g. max_count reached) with after_context_remaining > 0, run a post-loop cleanup that refills the buffer if needed and flushes the remaining after-context lines so context output matches grep behavior on early termination.\",\"rationale_from_pr_metadata\":\"PR title 'Fix printing context after an early return from a search' and body 'Print the context if there's a context left to be printed after returning early from a search (because of --max-count). Fixes #402.' Comment notes the added regression tests 'work the same way as grep does'. Reviewer (BurntSushi) approves as a fix with regression tests.\"},\"judgement_drafts\":{\"fact_only\":{\"top3_total\":2,\"top3_useful\":0,\"actionable\":false,\"missed_high_risk_count\":2,\"weak_only_top_risk_count\":1,\"notes\":\"Only surfaces parse_coverage_gap (tool blind spot due to parse error) and prod_change_with_tests (meta signal). Neither identifies the missing-context-flush mechanism; a reviewer gets no actionable mechanism from these top items.\"},\"semantic_filtered\":{\"top3_total\":2,\"top3_useful\":0,\"actionable\":false,\"missed_high_risk_count\":2,\"weak_only_top_risk_count\":1,\"notes\":\"Same two evidences restated as semantic claims; explicitly limits to 'tool coverage' and 'production+test change', not behavior. Does not name early-termination cleanup mechanism.\"},\"ai_baseline\":{\"top3_total\":3,\"top3_useful\":2,\"actionable\":true,\"missed_high_risk_count\":1,\"weak_only_top_risk_count\":0,\"notes\":\"Rank1 and Rank2 point at the new post-loop block in run() and the new fill() call \u2014 exactly the diff that fixes the bug. Signal labels (state_transition, lifecycle_ordering) overlap ground truth; non_happy_path label missing but mechanism captured.\"}}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

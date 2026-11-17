@@ -1,0 +1,37 @@
+{
+  "candidate": {
+    "id": "hyperium-hyper-3813",
+    "repo": "hyperium/hyper",
+    "url": "https://github.com/hyperium/hyper/pull/3813"
+  },
+  "pr": {
+    "baseRefName": "0.14.x",
+    "baseRefOid": "a24f0c0af8e1f4c6b7cc3a47c83eb6e4af88aca6",
+    "body": "Backports #3812 to 0.14.x.\r\n\r\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 4,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "src/proto/h1/io.rs"
+      },
+      {
+        "additions": 57,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/client.rs"
+      }
+    ],
+    "headRefName": "0.14.x-backport-is-complete-fast-fix",
+    "headRefOid": "4c619f39432dbea743ff252c676c6fb8aaa45ff5",
+    "labels": [],
+    "mergedAt": "2024-12-16T15:53:59Z",
+    "number": 3813,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "Backport 0.14: fix intermitent panic parsing partial headers",
+    "url": "https://github.com/hyperium/hyper/pull/3813"
+  }
+}

@@ -1,0 +1,124 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Previously accepted large-scale candidate; HTTP client trailer/error propagation fix.",
+    "id": "hyper-3998",
+    "limitations": "Needs exact body state context.",
+    "production_files": [
+      "src/body/incoming.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "Reading trailers should not propagate NO_ERROR from an early response.",
+    "signal_ids": [
+      "error_propagation",
+      "state_transition",
+      "non_happy_path"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/3998",
+      "eval/large-scale-50/candidates/open-source.toml"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/hyperium/hyper/pull/3998",
+    "why_high_value": "Incorrect error propagation changes caller-visible HTTP body/trailer behavior.",
+    "why_not_noise": "Specific NO_ERROR propagation problem on early response path."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "743a3ba0706fde95e2095ad42ffefe219d807117",
+    "body": "This is the trailers variant of the fix for reading the body in #3275, so that it is possible to both attempt to read the body and the trailers when the server has sent a `RST_STREAM` with `NO_ERROR` after its response to indicate that the client should stop attempting to send it the body.\r\n\r\nI have added a trailers-only variant of `http2_responds_before_consuming_request_body` that fails without the fix, and also updated `http2_responds_before_consuming_request_body` to verify that it can check whether there are any trailers.",
+    "comments": [],
+    "files": [
+      {
+        "additions": 18,
+        "changeType": "MODIFIED",
+        "deletions": 9,
+        "path": "src/body/incoming.rs"
+      },
+      {
+        "additions": 89,
+        "changeType": "MODIFIED",
+        "deletions": 8,
+        "path": "tests/client.rs"
+      }
+    ],
+    "headRefName": "early-response-trailers-1.x",
+    "headRefOid": "4d4e0dfc099d7177721a8dce70fedbea1e6c98e6",
+    "labels": [],
+    "mergedAt": "2026-04-22T21:40:56Z",
+    "number": 3998,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "f25a96a8c2ef23ce66b32b0cd06838c4bf88a2ac"
+        },
+        "id": "PRR_kwDOAWaYQc7XEvu-",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-12-23T14:54:58Z"
+      },
+      {
+        "author": {
+          "login": "ulyssa"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "f25a96a8c2ef23ce66b32b0cd06838c4bf88a2ac"
+        },
+        "id": "PRR_kwDOAWaYQc7YNx8T",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-01-05T16:12:01Z"
+      },
+      {
+        "author": {
+          "login": "ulyssa"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "f25a96a8c2ef23ce66b32b0cd06838c4bf88a2ac"
+        },
+        "id": "PRR_kwDOAWaYQc7YOA42",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2026-01-05T16:27:24Z"
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks so much for the fix!",
+        "commit": {
+          "oid": "4d4e0dfc099d7177721a8dce70fedbea1e6c98e6"
+        },
+        "id": "PRR_kwDOAWaYQc7313BQ",
+        "includesCreatedEdit": false,
+        "reactionGroups": [
+          {
+            "content": "HEART",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "state": "APPROVED",
+        "submittedAt": "2026-04-22T21:39:42Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix(client): reading trailers shouldn't propagate `NO_ERROR` from early response",
+    "url": "https://github.com/hyperium/hyper/pull/3998"
+  }
+}

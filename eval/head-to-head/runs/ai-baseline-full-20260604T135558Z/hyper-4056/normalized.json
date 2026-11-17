@@ -1,0 +1,40 @@
+{
+  "case_id": "hyper-4056",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "let to_read = usize::try_from(*remaining).unwrap_or(usize::MAX);"
+      ],
+      "rank": 1,
+      "rationale": "Replaces truncating `as usize` cast with saturating conversion for 32-bit targets where u64 remaining may exceed usize::MAX; downstream `*remaining -= num` still tracks full u64.",
+      "risk_signal": "assumption_boundary",
+      "subject": "src/proto/h1/decode.rs:decode",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "let to_read = usize::try_from(*rem).unwrap_or(usize::MAX);"
+      ],
+      "rank": 2,
+      "rationale": "Same u64\u2192usize saturation pattern in chunked body read path; on 32-bit, large chunk sizes now cap at usize::MAX instead of silently truncating via `as usize`.",
+      "risk_signal": "assumption_boundary",
+      "subject": "src/proto/h1/decode.rs:read_body",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "let to_read = usize::try_from(*rem).unwrap_or(usize::MAX);"
+      ],
+      "rank": 3,
+      "rationale": "Diff modifies a 32-bit platform boundary (u64\u2192usize conversion) in two decode paths but adds no tests exercising the saturation behavior or remaining-byte bookkeeping on capped reads.",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "src/proto/h1/decode.rs",
+      "value": "supporting"
+    }
+  ]
+}

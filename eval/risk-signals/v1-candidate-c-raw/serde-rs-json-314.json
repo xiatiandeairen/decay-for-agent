@@ -1,0 +1,107 @@
+{
+  "candidate": {
+    "id": "serde-rs-json-314",
+    "repo": "serde-rs/json",
+    "url": "https://github.com/serde-rs/json/pull/314"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "8202c68c0a1d6162f3766e072ad154eee78bfde2",
+    "body": "All these functions end up calling `visit_f64` so rewriting these functions to avoid dependence on the visitor type `V` is a no-brainer:\r\n\r\n  - `parse_long_integer`\r\n  - `parse_decimal`\r\n  - `parse_exponent`\r\n  - `parse_exponent_overflow`\r\n  - `visit_f64_from_parts`\r\n\r\nSlightly alleviates #313.\r\n\r\n---\r\n\r\nBenchmarks on the [minimal Pandoc example](https://github.com/serde-rs/json/issues/313#issuecomment-298806623) show a 10% reduction in both build time and memory usage:\r\n\r\n- 14.4 s → 13.0 s\r\n- 451 M → 407 M\r\n",
+    "comments": [
+      {
+        "author": {
+          "login": "Rufflewind"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Some new stats for each commit:\r\n\r\n- 8202c68c0a1d6162f3766e072ad154eee78bfde2 12.4 s 448 M\r\n- 476e753db863c7f9059f82c5ae8c6a2220b2fc5c 11.2 s 411 M (Δt = −10%)\r\n- 2b68532e9d3ad68df07c3b4cf221dc9dbaa40f6e 10.4 s 387 M (Δt = −7%)\r\n- 7b9ad82c9562e2805ff40d406b1998ae69200f14 9.6 s 366 M (Δt = −8%)\r\n\r\n(I just upgraded Rust nightly, so these stats are a little lower than what I had in the initial post.)",
+        "createdAt": "2017-05-03T09:32:07Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5ODg2Mzc1Mw==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/314#issuecomment-298863753",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks! 23% compile time improvement from this is impressive and there is a lot more we can do to improve it further. We definitely need to evaluate the runtime performance impact too though. I don't have time this week to put into benchmarking but I expect to get to it this weekend.",
+        "createdAt": "2017-05-03T16:34:29Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5ODk2NTIzNw==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/314#issuecomment-298965237",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Benchmark results are in! The first two commits show no performance regression and a consistent 15% improvement in compile time on the [json-benchmark](https://github.com/serde-rs/json-benchmark) repo. The third commit runs about 30% slower across the board and confusingly also compiles 20-30% slower for me than the other commits. So I am merging 476e753db863c7f9059f82c5ae8c6a2220b2fc5c and 2b68532e9d3ad68df07c3b4cf221dc9dbaa40f6e but not 7b9ad82c9562e2805ff40d406b1998ae69200f14. We will need to figure out what went wrong there. Possibly a missing `#[inline]` on one of the functions.",
+        "createdAt": "2017-05-08T23:02:26Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDMwMDAxNDgxOA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/314#issuecomment-300014818",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "alexbool"
+        },
+        "authorAssociation": "NONE",
+        "body": "Great! Do we also need to patch other formats, YAML in particular?",
+        "createdAt": "2017-05-09T10:53:14Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDMwMDEyOTE5OA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/314#issuecomment-300129198",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Yes, serde_yaml certainly has spots where non-Visitor-depenent functionality could be factored out.",
+        "createdAt": "2017-05-09T14:14:40Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDMwMDE3ODIzOQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/314#issuecomment-300178239",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 53,
+        "changeType": "MODIFIED",
+        "deletions": 61,
+        "path": "src/de.rs"
+      }
+    ],
+    "headRefName": "t313",
+    "headRefOid": "2b68532e9d3ad68df07c3b4cf221dc9dbaa40f6e",
+    "labels": [],
+    "mergedAt": "2017-05-08T23:07:58Z",
+    "number": 314,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "Reduce visitor-dependence in number parsers",
+    "url": "https://github.com/serde-rs/json/pull/314"
+  }
+}

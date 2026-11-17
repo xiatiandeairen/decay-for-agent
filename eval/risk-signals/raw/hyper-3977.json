@@ -1,0 +1,62 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Previously accepted large-scale candidate; revert of PR #3952 indicates the original fix introduced unacceptable behavior or risk.",
+    "id": "hyper-3977",
+    "limitations": "Needs compare against original fix to identify exact mechanism.",
+    "production_files": [
+      "src/proto/h1/dispatch.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "Reverted a rare missed write wakeup fix.",
+    "signal_ids": [
+      "concurrency_ordering",
+      "state_transition"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/3977",
+      "https://github.com/hyperium/hyper/pull/3952",
+      "eval/large-scale-50/candidates/open-source.toml"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/hyperium/hyper/pull/3977",
+    "why_high_value": "Reverts provide strong evidence of real integration risk in concurrency/state changes.",
+    "why_not_noise": "Direct revert relationship, not generic review concern."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "dbe6f25ba2933b883bd8ea1eddc9662c9c816978",
+    "body": "This reverts commit 2377b893f6e64ca9878e4f25d1472b96baa7e3ea.\r\n\r\nReports in #3976 suggest this is consuming a lot of CPU.",
+    "comments": [],
+    "files": [
+      {
+        "additions": 0,
+        "changeType": "MODIFIED",
+        "deletions": 5,
+        "path": "Cargo.toml"
+      },
+      {
+        "additions": 2,
+        "changeType": "MODIFIED",
+        "deletions": 15,
+        "path": "src/proto/h1/dispatch.rs"
+      },
+      {
+        "additions": 0,
+        "changeType": "DELETED",
+        "deletions": 234,
+        "path": "tests/ready_stream.rs"
+      }
+    ],
+    "headRefName": "push-znprolwpnptt",
+    "headRefOid": "4068487539c155c5c6ea7ced7c2969ce29b5e8e7",
+    "labels": [],
+    "mergedAt": "2025-11-13T21:11:36Z",
+    "number": 3977,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "Revert \"fix(http1): fix rare missed write wakeup on connections (#3952)\"",
+    "url": "https://github.com/hyperium/hyper/pull/3977"
+  }
+}

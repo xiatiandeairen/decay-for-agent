@@ -1,0 +1,12 @@
+{
+  "case_id": "ripgrep-3195",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"ripgrep-3195\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"external_contract\",\"subject\":\"crates/printer/src/hyperlink/aliases.rs:HYPERLINK_PATTERN_ALIASES\",\"evidence_refs\":[\"-    alias(\\n-        \\\"cursor\\\",\\n-        \\\"Cursor scheme (cursor://)\\\",\\n-        \\\"cursor://file{path}:{line}:{column}\\\",\\n-    ),\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Removes the built-in \\\"cursor\\\" hyperlink alias from the public alias registry; any user invoking --hyperlink-format=cursor will no longer resolve this name.\"},{\"rank\":2,\"risk_signal\":\"state_transition\",\"subject\":\"crates/searcher/src/line_buffer.rs:fill\",\"evidence_refs\":[\"-            let oldend = self.end;\\n-            while !self.free_buffer().is_empty() {\\n-                let readlen = rdr.read(self.free_buffer())?;\\n-                if readlen == 0 {\\n-                    break;\\n-                }\\n-                self.end += readlen;\\n-            }\",\"+            let readlen = rdr.read(self.free_buffer().as_bytes_mut())?;\\n+            if readlen == 0 {\\n+                // We're only done reading for good once the caller has\\n+                // consumed everything.\\n+                self.last_lineterm = self.end;\\n+                return Ok(!self.buffer().is_empty());\\n+            }\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Inner read-until-full loop replaced by a single rdr.read per iteration; binary-detection and last_lineterm scan now operate on per-read chunks, changing how many bytes are processed before each scan.\"},{\"rank\":3,\"risk_signal\":\"test_gap_for_risk_path\",\"subject\":\"crates/searcher/src/searcher/glue.rs:binary3\",\"evidence_refs\":[\"-        let exp = \\\"0:a\\\\n\\\\nbyte count:262142\\\\nbinary offset:262153\\\\n\\\";\",\"+        let exp = \\\"0:a\\\\n\\\\nbyte count:262146\\\\nbinary offset:262153\\\\n\\\";\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"Observable byte-count delta (262142\u2192262146) in binary-detection tests confirms the fill() restructure shifts the boundary between scanned and unscanned bytes; no new test added for the --line-buffered regression path the fix targets.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

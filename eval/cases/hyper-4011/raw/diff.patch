@@ -1,0 +1,1639 @@
+diff --git a/src/proto/h1/encode.rs b/src/proto/h1/encode.rs
+index 2df0c396..ff8f21fd 100644
+--- a/src/proto/h1/encode.rs
++++ b/src/proto/h1/encode.rs
+@@ -1,377 +1,361 @@
+-use std::collections::HashMap;
++use std::collections::HashSet;
+ use std::fmt;
+ use std::io::IoSlice;
+ 
+ use bytes::buf::{Chain, Take};
+ use bytes::{Buf, Bytes};
+ use http::{
+     header::{
+         AUTHORIZATION, CACHE_CONTROL, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_RANGE,
+         CONTENT_TYPE, HOST, MAX_FORWARDS, SET_COOKIE, TE, TRAILER, TRANSFER_ENCODING,
+     },
+-    HeaderMap, HeaderName, HeaderValue,
++    HeaderMap, HeaderName,
+ };
+ 
+ use super::io::WriteBuf;
+ use super::role::{write_headers, write_headers_title_case};
+ 
+ type StaticBuf = &'static [u8];
+ 
+ /// Encoders to handle different Transfer-Encodings.
+ #[derive(Debug, Clone, PartialEq)]
+ pub(crate) struct Encoder {
+     kind: Kind,
+     is_last: bool,
+ }
+ 
+ #[derive(Debug)]
+ pub(crate) struct EncodedBuf<B> {
+     kind: BufKind<B>,
+ }
+ 
+ #[derive(Debug)]
+ pub(crate) struct NotEof(u64);
+ 
+ #[derive(Debug, PartialEq, Clone)]
+ enum Kind {
+     /// An Encoder for when Transfer-Encoding includes `chunked`.
+-    Chunked(Option<Vec<HeaderValue>>),
++    Chunked(Option<Vec<HeaderName>>),
+     /// An Encoder for when Content-Length is set.
+     ///
+     /// Enforces that the body is not longer than the Content-Length header.
+     Length(u64),
+     /// An Encoder for when neither Content-Length nor Chunked encoding is set.
+     ///
+     /// This is mostly only used with HTTP/1.0 with a length. This kind requires
+     /// the connection to be closed when the body is finished.
+     #[cfg(feature = "server")]
+     CloseDelimited,
+ }
+ 
+ #[derive(Debug)]
+ enum BufKind<B> {
+     Exact(B),
+     Limited(Take<B>),
+     Chunked(Chain<Chain<ChunkSize, B>, StaticBuf>),
+     ChunkedEnd(StaticBuf),
+     Trailers(Chain<Chain<StaticBuf, Bytes>, StaticBuf>),
+ }
+ 
+ impl Encoder {
+     fn new(kind: Kind) -> Encoder {
+         Encoder {
+             kind,
+             is_last: false,
+         }
+     }
+     pub(crate) fn chunked() -> Encoder {
+         Encoder::new(Kind::Chunked(None))
+     }
+ 
+     pub(crate) fn length(len: u64) -> Encoder {
+         Encoder::new(Kind::Length(len))
+     }
+ 
+     #[cfg(feature = "server")]
+     pub(crate) fn close_delimited() -> Encoder {
+         Encoder::new(Kind::CloseDelimited)
+     }
+ 
+-    pub(crate) fn into_chunked_with_trailing_fields(self, trailers: Vec<HeaderValue>) -> Encoder {
++    pub(crate) fn into_chunked_with_trailing_fields(self, trailers: Vec<HeaderName>) -> Encoder {
+         match self.kind {
+             Kind::Chunked(_) => Encoder {
+                 kind: Kind::Chunked(Some(trailers)),
+                 is_last: self.is_last,
+             },
+             _ => self,
+         }
+     }
+ 
+     pub(crate) fn is_eof(&self) -> bool {
+         matches!(self.kind, Kind::Length(0))
+     }
+ 
+     #[cfg(feature = "server")]
+     pub(crate) fn set_last(mut self, is_last: bool) -> Self {
+         self.is_last = is_last;
+         self
+     }
+ 
+     pub(crate) fn is_last(&self) -> bool {
+         self.is_last
+     }
+ 
+     pub(crate) fn is_close_delimited(&self) -> bool {
+         match self.kind {
+             #[cfg(feature = "server")]
+             Kind::CloseDelimited => true,
+             _ => false,
+         }
+     }
+ 
+     pub(crate) fn is_chunked(&self) -> bool {
+         matches!(self.kind, Kind::Chunked(_))
+     }
+ 
+     pub(crate) fn end<B>(&self) -> Result<Option<EncodedBuf<B>>, NotEof> {
+         match self.kind {
+             Kind::Length(0) => Ok(None),
+             Kind::Chunked(_) => Ok(Some(EncodedBuf {
+                 kind: BufKind::ChunkedEnd(b"0\r\n\r\n"),
+             })),
+             #[cfg(feature = "server")]
+             Kind::CloseDelimited => Ok(None),
+             Kind::Length(n) => Err(NotEof(n)),
+         }
+     }
+ 
+     pub(crate) fn encode<B>(&mut self, msg: B) -> EncodedBuf<B>
+     where
+         B: Buf,
+     {
+         let len = msg.remaining();
+         debug_assert!(len > 0, "encode() called with empty buf");
+ 
+         let kind = match self.kind {
+             Kind::Chunked(_) => {
+                 trace!("encoding chunked {}B", len);
+                 let buf = ChunkSize::new(len)
+                     .chain(msg)
+                     .chain(b"\r\n" as &'static [u8]);
+                 BufKind::Chunked(buf)
+             }
+             Kind::Length(ref mut remaining) => {
+                 trace!("sized write, len = {}", len);
+                 if len as u64 > *remaining {
+                     let limit = *remaining as usize;
+                     *remaining = 0;
+                     BufKind::Limited(msg.take(limit))
+                 } else {
+                     *remaining -= len as u64;
+                     BufKind::Exact(msg)
+                 }
+             }
+             #[cfg(feature = "server")]
+             Kind::CloseDelimited => {
+                 trace!("close delimited write {}B", len);
+                 BufKind::Exact(msg)
+             }
+         };
+         EncodedBuf { kind }
+     }
+ 
+     pub(crate) fn encode_trailers<B>(
+         &self,
+         trailers: HeaderMap,
+         title_case_headers: bool,
+     ) -> Option<EncodedBuf<B>> {
+         trace!("encoding trailers");
+         match &self.kind {
+             Kind::Chunked(Some(allowed_trailer_fields)) => {
+-                let allowed_trailer_field_map = allowed_trailer_field_map(allowed_trailer_fields);
++                let allowed_set: HashSet<&HeaderName> = allowed_trailer_fields.iter().collect();
+ 
+                 let mut cur_name = None;
+                 let mut allowed_trailers = HeaderMap::new();
+ 
+                 for (opt_name, value) in trailers {
+                     if let Some(n) = opt_name {
+                         cur_name = Some(n);
+                     }
+                     let name = cur_name.as_ref().expect("current header name");
+ 
+-                    if allowed_trailer_field_map.contains_key(name.as_str()) {
++                    if allowed_set.contains(name) {
+                         if is_valid_trailer_field(name) {
+                             allowed_trailers.insert(name, value);
+                         } else {
+                             debug!("trailer field is not valid: {}", &name);
+                         }
+                     } else {
+                         debug!("trailer header name not found in trailer header: {}", &name);
+                     }
+                 }
+ 
+                 let mut buf = Vec::new();
+                 if title_case_headers {
+                     write_headers_title_case(&allowed_trailers, &mut buf);
+                 } else {
+                     write_headers(&allowed_trailers, &mut buf);
+                 }
+ 
+                 if buf.is_empty() {
+                     return None;
+                 }
+ 
+                 Some(EncodedBuf {
+                     kind: BufKind::Trailers(b"0\r\n".chain(Bytes::from(buf)).chain(b"\r\n")),
+                 })
+             }
+             Kind::Chunked(None) => {
+                 debug!("attempted to encode trailers, but the trailer header is not set");
+                 None
+             }
+             _ => {
+                 debug!("attempted to encode trailers for non-chunked response");
+                 None
+             }
+         }
+     }
+ 
+     pub(super) fn encode_and_end<B>(&self, msg: B, dst: &mut WriteBuf<EncodedBuf<B>>) -> bool
+     where
+         B: Buf,
+     {
+         let len = msg.remaining();
+         debug_assert!(len > 0, "encode() called with empty buf");
+ 
+         match self.kind {
+             Kind::Chunked(_) => {
+                 trace!("encoding chunked {}B", len);
+                 let buf = ChunkSize::new(len)
+                     .chain(msg)
+                     .chain(b"\r\n0\r\n\r\n" as &'static [u8]);
+                 dst.buffer(buf);
+                 !self.is_last
+             }
+             Kind::Length(remaining) => {
+                 use std::cmp::Ordering;
+ 
+                 trace!("sized write, len = {}", len);
+                 match (len as u64).cmp(&remaining) {
+                     Ordering::Equal => {
+                         dst.buffer(msg);
+                         !self.is_last
+                     }
+                     Ordering::Greater => {
+                         dst.buffer(msg.take(remaining as usize));
+                         !self.is_last
+                     }
+                     Ordering::Less => {
+                         dst.buffer(msg);
+                         false
+                     }
+                 }
+             }
+             #[cfg(feature = "server")]
+             Kind::CloseDelimited => {
+                 trace!("close delimited write {}B", len);
+                 dst.buffer(msg);
+                 false
+             }
+         }
+     }
+ }
+ 
+ fn is_valid_trailer_field(name: &HeaderName) -> bool {
+     !matches!(
+         *name,
+         AUTHORIZATION
+             | CACHE_CONTROL
+             | CONTENT_ENCODING
+             | CONTENT_LENGTH
+             | CONTENT_RANGE
+             | CONTENT_TYPE
+             | HOST
+             | MAX_FORWARDS
+             | SET_COOKIE
+             | TRAILER
+             | TRANSFER_ENCODING
+             | TE
+     )
+ }
+ 
+-fn allowed_trailer_field_map(allowed_trailer_fields: &Vec<HeaderValue>) -> HashMap<String, ()> {
+-    let mut trailer_map = HashMap::new();
+-
+-    for header_value in allowed_trailer_fields {
+-        if let Ok(header_str) = header_value.to_str() {
+-            let items: Vec<&str> = header_str.split(',').map(|item| item.trim()).collect();
+-
+-            for item in items {
+-                trailer_map.entry(item.to_string()).or_insert(());
+-            }
+-        }
+-    }
+-
+-    trailer_map
+-}
+-
+ impl<B> Buf for EncodedBuf<B>
+ where
+     B: Buf,
+ {
+     #[inline]
+     fn remaining(&self) -> usize {
+         match self.kind {
+             BufKind::Exact(ref b) => b.remaining(),
+             BufKind::Limited(ref b) => b.remaining(),
+             BufKind::Chunked(ref b) => b.remaining(),
+             BufKind::ChunkedEnd(ref b) => b.remaining(),
+             BufKind::Trailers(ref b) => b.remaining(),
+         }
+     }
+ 
+     #[inline]
+     fn chunk(&self) -> &[u8] {
+         match self.kind {
+             BufKind::Exact(ref b) => b.chunk(),
+             BufKind::Limited(ref b) => b.chunk(),
+             BufKind::Chunked(ref b) => b.chunk(),
+             BufKind::ChunkedEnd(ref b) => b.chunk(),
+             BufKind::Trailers(ref b) => b.chunk(),
+         }
+     }
+ 
+     #[inline]
+     fn advance(&mut self, cnt: usize) {
+         match self.kind {
+             BufKind::Exact(ref mut b) => b.advance(cnt),
+             BufKind::Limited(ref mut b) => b.advance(cnt),
+             BufKind::Chunked(ref mut b) => b.advance(cnt),
+             BufKind::ChunkedEnd(ref mut b) => b.advance(cnt),
+             BufKind::Trailers(ref mut b) => b.advance(cnt),
+         }
+     }
+ 
+     #[inline]
+     fn chunks_vectored<'t>(&'t self, dst: &mut [IoSlice<'t>]) -> usize {
+         match self.kind {
+             BufKind::Exact(ref b) => b.chunks_vectored(dst),
+             BufKind::Limited(ref b) => b.chunks_vectored(dst),
+             BufKind::Chunked(ref b) => b.chunks_vectored(dst),
+             BufKind::ChunkedEnd(ref b) => b.chunks_vectored(dst),
+             BufKind::Trailers(ref b) => b.chunks_vectored(dst),
+         }
+     }
+ }
+ 
+ #[cfg(target_pointer_width = "32")]
+ const USIZE_BYTES: usize = 4;
+ 
+ #[cfg(target_pointer_width = "64")]
+ const USIZE_BYTES: usize = 8;
+ 
+ // each byte will become 2 hex
+ const CHUNK_SIZE_MAX_BYTES: usize = USIZE_BYTES * 2;
+ 
+ #[derive(Clone, Copy)]
+ struct ChunkSize {
+     bytes: [u8; CHUNK_SIZE_MAX_BYTES + 2],
+     pos: u8,
+     len: u8,
+ }
+ 
+ impl ChunkSize {
+     fn new(len: usize) -> ChunkSize {
+         use std::fmt::Write;
+         let mut size = ChunkSize {
+             bytes: [0; CHUNK_SIZE_MAX_BYTES + 2],
+             pos: 0,
+             len: 0,
+         };
+         write!(&mut size, "{:X}\r\n", len).expect("CHUNK_SIZE_MAX_BYTES should fit any usize");
+         size
+     }
+ }
+ 
+ impl Buf for ChunkSize {
+     #[inline]
+@@ -455,206 +439,234 @@ mod tests {
+     };
+ 
+     use super::super::io::Cursor;
+     use super::Encoder;
+ 
+     #[test]
+     fn chunked() {
+         let mut encoder = Encoder::chunked();
+         let mut dst = Vec::new();
+ 
+         let msg1 = b"foo bar".as_ref();
+         let buf1 = encoder.encode(msg1);
+         dst.put(buf1);
+         assert_eq!(dst, b"7\r\nfoo bar\r\n");
+ 
+         let msg2 = b"baz quux herp".as_ref();
+         let buf2 = encoder.encode(msg2);
+         dst.put(buf2);
+ 
+         assert_eq!(dst, b"7\r\nfoo bar\r\nD\r\nbaz quux herp\r\n");
+ 
+         let end = encoder.end::<Cursor<Vec<u8>>>().unwrap().unwrap();
+         dst.put(end);
+ 
+         assert_eq!(
+             dst,
+             b"7\r\nfoo bar\r\nD\r\nbaz quux herp\r\n0\r\n\r\n".as_ref()
+         );
+     }
+ 
+     #[test]
+     fn length() {
+         let max_len = 8;
+         let mut encoder = Encoder::length(max_len as u64);
+         let mut dst = Vec::new();
+ 
+         let msg1 = b"foo bar".as_ref();
+         let buf1 = encoder.encode(msg1);
+         dst.put(buf1);
+ 
+         assert_eq!(dst, b"foo bar");
+         assert!(!encoder.is_eof());
+         encoder.end::<()>().unwrap_err();
+ 
+         let msg2 = b"baz".as_ref();
+         let buf2 = encoder.encode(msg2);
+         dst.put(buf2);
+ 
+         assert_eq!(dst.len(), max_len);
+         assert_eq!(dst, b"foo barb");
+         assert!(encoder.is_eof());
+         assert!(encoder.end::<()>().unwrap().is_none());
+     }
+ 
+     #[cfg(feature = "server")]
+     #[test]
+     fn eof() {
+         let mut encoder = Encoder::close_delimited();
+         let mut dst = Vec::new();
+ 
+         let msg1 = b"foo bar".as_ref();
+         let buf1 = encoder.encode(msg1);
+         dst.put(buf1);
+ 
+         assert_eq!(dst, b"foo bar");
+         assert!(!encoder.is_eof());
+         encoder.end::<()>().unwrap();
+ 
+         let msg2 = b"baz".as_ref();
+         let buf2 = encoder.encode(msg2);
+         dst.put(buf2);
+ 
+         assert_eq!(dst, b"foo barbaz");
+         assert!(!encoder.is_eof());
+         encoder.end::<()>().unwrap();
+     }
+ 
+     #[test]
+     fn chunked_with_valid_trailers() {
+         let encoder = Encoder::chunked();
+-        let trailers = vec![HeaderValue::from_static("chunky-trailer")];
++        let trailers = vec![HeaderName::from_static("chunky-trailer")];
+         let encoder = encoder.into_chunked_with_trailing_fields(trailers);
+ 
+         let headers = HeaderMap::from_iter(vec![
+             (
+                 HeaderName::from_static("chunky-trailer"),
+                 HeaderValue::from_static("header data"),
+             ),
+             (
+                 HeaderName::from_static("should-not-be-included"),
+                 HeaderValue::from_static("oops"),
+             ),
+         ]);
+ 
+         let buf1 = encoder.encode_trailers::<&[u8]>(headers, false).unwrap();
+ 
+         let mut dst = Vec::new();
+         dst.put(buf1);
+         assert_eq!(dst, b"0\r\nchunky-trailer: header data\r\n\r\n");
+     }
+ 
+     #[test]
+     fn chunked_with_multiple_trailer_headers() {
+         let encoder = Encoder::chunked();
+         let trailers = vec![
+-            HeaderValue::from_static("chunky-trailer"),
+-            HeaderValue::from_static("chunky-trailer-2"),
++            HeaderName::from_static("chunky-trailer"),
++            HeaderName::from_static("chunky-trailer-2"),
+         ];
+         let encoder = encoder.into_chunked_with_trailing_fields(trailers);
+ 
+         let headers = HeaderMap::from_iter(vec![
+             (
+                 HeaderName::from_static("chunky-trailer"),
+                 HeaderValue::from_static("header data"),
+             ),
+             (
+                 HeaderName::from_static("chunky-trailer-2"),
+                 HeaderValue::from_static("more header data"),
+             ),
+         ]);
+ 
+         let buf1 = encoder.encode_trailers::<&[u8]>(headers, false).unwrap();
+ 
+         let mut dst = Vec::new();
+         dst.put(buf1);
+         assert_eq!(
+             dst,
+             b"0\r\nchunky-trailer: header data\r\nchunky-trailer-2: more header data\r\n\r\n"
+         );
+     }
+ 
+     #[test]
+     fn chunked_with_no_trailer_header() {
+         let encoder = Encoder::chunked();
+ 
+         let headers = HeaderMap::from_iter(vec![(
+             HeaderName::from_static("chunky-trailer"),
+             HeaderValue::from_static("header data"),
+         )]);
+ 
+         assert!(encoder
+             .encode_trailers::<&[u8]>(headers.clone(), false)
+             .is_none());
+ 
+         let trailers = vec![];
+         let encoder = encoder.into_chunked_with_trailing_fields(trailers);
+ 
+         assert!(encoder.encode_trailers::<&[u8]>(headers, false).is_none());
+     }
+ 
+     #[test]
+     fn chunked_with_invalid_trailers() {
+         let encoder = Encoder::chunked();
+ 
+-        let trailers = format!(
+-            "{},{},{},{},{},{},{},{},{},{},{},{}",
++        let trailers = vec![
+             AUTHORIZATION,
+             CACHE_CONTROL,
+             CONTENT_ENCODING,
+             CONTENT_LENGTH,
+             CONTENT_RANGE,
+             CONTENT_TYPE,
+             HOST,
+             MAX_FORWARDS,
+             SET_COOKIE,
+             TRAILER,
+             TRANSFER_ENCODING,
+             TE,
+-        );
+-        let trailers = vec![HeaderValue::from_str(&trailers).unwrap()];
++        ];
+         let encoder = encoder.into_chunked_with_trailing_fields(trailers);
+ 
+         let mut headers = HeaderMap::new();
+         headers.insert(AUTHORIZATION, HeaderValue::from_static("header data"));
+         headers.insert(CACHE_CONTROL, HeaderValue::from_static("header data"));
+         headers.insert(CONTENT_ENCODING, HeaderValue::from_static("header data"));
+         headers.insert(CONTENT_LENGTH, HeaderValue::from_static("header data"));
+         headers.insert(CONTENT_RANGE, HeaderValue::from_static("header data"));
+         headers.insert(CONTENT_TYPE, HeaderValue::from_static("header data"));
+         headers.insert(HOST, HeaderValue::from_static("header data"));
+         headers.insert(MAX_FORWARDS, HeaderValue::from_static("header data"));
+         headers.insert(SET_COOKIE, HeaderValue::from_static("header data"));
+         headers.insert(TRAILER, HeaderValue::from_static("header data"));
+         headers.insert(TRANSFER_ENCODING, HeaderValue::from_static("header data"));
+         headers.insert(TE, HeaderValue::from_static("header data"));
+ 
+         assert!(encoder.encode_trailers::<&[u8]>(headers, true).is_none());
+     }
+ 
+     #[test]
+     fn chunked_with_title_case_headers() {
+         let encoder = Encoder::chunked();
+-        let trailers = vec![HeaderValue::from_static("chunky-trailer")];
++        let trailers = vec![HeaderName::from_static("chunky-trailer")];
+         let encoder = encoder.into_chunked_with_trailing_fields(trailers);
+ 
+         let headers = HeaderMap::from_iter(vec![(
+             HeaderName::from_static("chunky-trailer"),
+             HeaderValue::from_static("header data"),
+         )]);
+         let buf1 = encoder.encode_trailers::<&[u8]>(headers, true).unwrap();
+ 
+         let mut dst = Vec::new();
+         dst.put(buf1);
+         assert_eq!(dst, b"0\r\nChunky-Trailer: header data\r\n\r\n");
+     }
++
++    #[test]
++    fn chunked_trailers_case_insensitive_matching() {
++        // Regression test for issue #4010: HTTP/1.1 trailers are case-sensitive
++        //
++        // Previously, the Trailer header values were stored as HeaderValue (preserving case)
++        // and compared against HeaderName (which is always lowercase). This caused trailers
++        // declared as "Chunky-Trailer" to not match actual trailers sent as "chunky-trailer".
++        //
++        // The fix converts Trailer header values to HeaderName during parsing, which
++        // normalizes the case and enables proper case-insensitive matching.
++        //
++        // Note: HeaderName::from_static() requires lowercase input. In real usage,
++        // HeaderName::from_bytes() is used to parse the Trailer header value, which
++        // normalizes mixed-case input like "Chunky-Trailer" to "chunky-trailer".
++        let encoder = Encoder::chunked();
++        let trailers = vec![HeaderName::from_static("chunky-trailer")];
++        let encoder = encoder.into_chunked_with_trailing_fields(trailers);
++
++        // The actual trailer being sent
++        let headers = HeaderMap::from_iter(vec![(
++            HeaderName::from_static("chunky-trailer"),
++            HeaderValue::from_static("trailer value"),
++        )]);
++
++        let buf = encoder.encode_trailers::<&[u8]>(headers, false).unwrap();
++        let mut dst = Vec::new();
++        dst.put(buf);
++        assert_eq!(dst, b"0\r\nchunky-trailer: trailer value\r\n\r\n");
++    }
+ }
+diff --git a/src/proto/h1/role.rs b/src/proto/h1/role.rs
+index 1c8f1fbc..f92092e5 100644
+--- a/src/proto/h1/role.rs
++++ b/src/proto/h1/role.rs
+@@ -573,161 +573,161 @@ impl Server {
+             map: &'map HeaderCaseMap,
+             current: Option<(HeaderName, ValueIter<'map, Bytes>)>,
+             title_case_headers: bool,
+         }
+ 
+         impl HeaderNameWriter for OrigCaseWriter<'_> {
+             #[inline]
+             fn write_full_header_line(
+                 &mut self,
+                 dst: &mut Vec<u8>,
+                 _: &str,
+                 (name, rest): (HeaderName, &str),
+             ) {
+                 self.write_header_name(dst, &name);
+                 extend(dst, rest.as_bytes());
+             }
+ 
+             #[inline]
+             fn write_header_name_with_colon(
+                 &mut self,
+                 dst: &mut Vec<u8>,
+                 _: &str,
+                 name: HeaderName,
+             ) {
+                 self.write_header_name(dst, &name);
+                 extend(dst, b": ");
+             }
+ 
+             #[inline]
+             fn write_header_name(&mut self, dst: &mut Vec<u8>, name: &HeaderName) {
+                 let Self {
+                     map,
+                     ref mut current,
+                     title_case_headers,
+                 } = *self;
+                 if current.as_ref().map_or(true, |(last, _)| last != name) {
+                     *current = None;
+                 }
+                 let (_, values) =
+                     current.get_or_insert_with(|| (name.clone(), map.get_all_internal(name)));
+ 
+                 if let Some(orig_name) = values.next() {
+                     extend(dst, orig_name);
+                 } else if title_case_headers {
+                     title_case(dst, name.as_str().as_bytes());
+                 } else {
+                     extend(dst, name.as_str().as_bytes());
+                 }
+             }
+         }
+ 
+         let header_name_writer = OrigCaseWriter {
+             map: orig_headers,
+             current: None,
+             title_case_headers: msg.title_case_headers,
+         };
+ 
+         Self::encode_headers(msg, dst, is_last, orig_len, wrote_len, header_name_writer)
+     }
+ 
+     #[inline]
+     fn encode_headers<W>(
+         msg: Encode<'_, StatusCode>,
+         dst: &mut Vec<u8>,
+         mut is_last: bool,
+         orig_len: usize,
+         mut wrote_len: bool,
+         mut header_name_writer: W,
+     ) -> crate::Result<Encoder>
+     where
+         W: HeaderNameWriter,
+     {
+         // In some error cases, we don't know about the invalid message until already
+         // pushing some bytes onto the `dst`. In those cases, we don't want to send
+         // the half-pushed message, so rewind to before.
+         let rewind = |dst: &mut Vec<u8>| {
+             dst.truncate(orig_len);
+         };
+ 
+         let mut encoder = Encoder::length(0);
+-        let mut allowed_trailer_fields: Option<Vec<HeaderValue>> = None;
++        let mut allowed_trailer_fields: Option<Vec<HeaderName>> = None;
+         let mut wrote_date = false;
+         let mut cur_name = None;
+         let mut is_name_written = false;
+         let mut must_write_chunked = false;
+         let mut prev_con_len = None;
+ 
+         macro_rules! handle_is_name_written {
+             () => {{
+                 if is_name_written {
+                     // we need to clean up and write the newline
+                     debug_assert_ne!(
+                         &dst[dst.len() - 2..],
+                         b"\r\n",
+                         "previous header wrote newline but set is_name_written"
+                     );
+ 
+                     if must_write_chunked {
+                         extend(dst, b", chunked\r\n");
+                     } else {
+                         extend(dst, b"\r\n");
+                     }
+                 }
+             }};
+         }
+ 
+         'headers: for (opt_name, value) in msg.head.headers.drain() {
+             if let Some(n) = opt_name {
+                 cur_name = Some(n);
+                 handle_is_name_written!();
+                 is_name_written = false;
+             }
+             let name = cur_name.as_ref().expect("current header name");
+             match *name {
+                 header::CONTENT_LENGTH => {
+                     if wrote_len && !is_name_written {
+                         warn!("unexpected content-length found, canceling");
+                         rewind(dst);
+                         return Err(crate::Error::new_user_header());
+                     }
+                     match msg.body {
+                         Some(BodyLength::Known(known_len)) => {
+                             // The Body claims to know a length, and
+                             // the headers are already set. For performance
+                             // reasons, we are just going to trust that
+                             // the values match.
+                             //
+                             // In debug builds, we'll assert they are the
+                             // same to help developers find bugs.
+                             #[cfg(debug_assertions)]
+                             {
+                                 if let Some(len) = headers::content_length_parse(&value) {
+                                     if msg.req_method != &Some(Method::HEAD) || known_len != 0 {
+                                         assert!(
+                                         len == known_len,
+                                         "payload claims content-length of {}, custom content-length header claims {}",
+                                         known_len,
+                                         len,
+                                     );
+                                     }
+                                 }
+                             }
+ 
+                             if !is_name_written {
+                                 encoder = Encoder::length(known_len);
+                                 header_name_writer.write_header_name_with_colon(
+                                     dst,
+                                     "content-length: ",
+                                     header::CONTENT_LENGTH,
+                                 );
+                                 extend(dst, value.as_bytes());
+                                 wrote_len = true;
+                                 is_name_written = true;
+                             }
+                             continue 'headers;
+                         }
+                         Some(BodyLength::Unknown) => {
+                             // The Body impl didn't know how long the
+                             // body is, but a length header was included.
+                             // We have to parse the value to return our
+                             // Encoder...
+@@ -783,166 +783,176 @@ impl Server {
+                                 continue 'headers;
+                             }
+                         }
+                     }
+                     wrote_len = true;
+                 }
+                 header::TRANSFER_ENCODING => {
+                     if wrote_len && !is_name_written {
+                         warn!("unexpected transfer-encoding found, canceling");
+                         rewind(dst);
+                         return Err(crate::Error::new_user_header());
+                     }
+                     // check that we actually can send a chunked body...
+                     if msg.head.version == Version::HTTP_10
+                         || !Server::can_chunked(msg.req_method, msg.head.subject)
+                     {
+                         continue;
+                     }
+                     wrote_len = true;
+                     // Must check each value, because `chunked` needs to be the
+                     // last encoding, or else we add it.
+                     must_write_chunked = !headers::is_chunked_(&value);
+ 
+                     if !is_name_written {
+                         encoder = Encoder::chunked();
+                         is_name_written = true;
+                         header_name_writer.write_header_name_with_colon(
+                             dst,
+                             "transfer-encoding: ",
+                             header::TRANSFER_ENCODING,
+                         );
+                         extend(dst, value.as_bytes());
+                     } else {
+                         extend(dst, b", ");
+                         extend(dst, value.as_bytes());
+                     }
+                     continue 'headers;
+                 }
+                 header::CONNECTION => {
+                     if !is_last && headers::connection_close(&value) {
+                         is_last = true;
+                     }
+                     if !is_name_written {
+                         is_name_written = true;
+                         header_name_writer.write_header_name_with_colon(
+                             dst,
+                             "connection: ",
+                             header::CONNECTION,
+                         );
+                         extend(dst, value.as_bytes());
+                     } else {
+                         extend(dst, b", ");
+                         extend(dst, value.as_bytes());
+                     }
+                     continue 'headers;
+                 }
+                 header::DATE => {
+                     wrote_date = true;
+                 }
+                 header::TRAILER => {
+                     // check that we actually can send a chunked body...
+                     if msg.head.version == Version::HTTP_10
+                         || !Server::can_chunked(msg.req_method, msg.head.subject)
+                     {
+                         continue;
+                     }
+ 
+                     if !is_name_written {
+                         is_name_written = true;
+                         header_name_writer.write_header_name_with_colon(
+                             dst,
+                             "trailer: ",
+                             header::TRAILER,
+                         );
+                         extend(dst, value.as_bytes());
+                     } else {
+                         extend(dst, b", ");
+                         extend(dst, value.as_bytes());
+                     }
+ 
+-                    match allowed_trailer_fields {
+-                        Some(ref mut allowed_trailer_fields) => {
+-                            allowed_trailer_fields.push(value);
+-                        }
+-                        None => {
+-                            allowed_trailer_fields = Some(vec![value]);
++                    // Parse the Trailer header value into HeaderNames.
++                    // The value may contain comma-separated names.
++                    // HeaderName normalizes to lowercase for case-insensitive matching.
++                    if let Ok(value_str) = value.to_str() {
++                        let names: Vec<HeaderName> = value_str
++                            .split(',')
++                            .filter_map(|s| HeaderName::from_bytes(s.trim().as_bytes()).ok())
++                            .collect();
++
++                        match allowed_trailer_fields {
++                            Some(ref mut fields) => {
++                                fields.extend(names);
++                            }
++                            None => {
++                                allowed_trailer_fields = Some(names);
++                            }
+                         }
+                     }
+ 
+                     continue 'headers;
+                 }
+                 _ => (),
+             }
+             //TODO: this should perhaps instead combine them into
+             //single lines, as RFC7230 suggests is preferable.
+ 
+             // non-special write Name and Value
+             debug_assert!(
+                 !is_name_written,
+                 "{:?} set is_name_written and didn't continue loop",
+                 name,
+             );
+             header_name_writer.write_header_name(dst, name);
+             extend(dst, b": ");
+             extend(dst, value.as_bytes());
+             extend(dst, b"\r\n");
+         }
+ 
+         handle_is_name_written!();
+ 
+         if !wrote_len {
+             encoder = match msg.body {
+                 Some(BodyLength::Unknown) => {
+                     if msg.head.version == Version::HTTP_10
+                         || !Server::can_chunked(msg.req_method, msg.head.subject)
+                     {
+                         Encoder::close_delimited()
+                     } else {
+                         header_name_writer.write_full_header_line(
+                             dst,
+                             "transfer-encoding: chunked\r\n",
+                             (header::TRANSFER_ENCODING, ": chunked\r\n"),
+                         );
+                         Encoder::chunked()
+                     }
+                 }
+                 None | Some(BodyLength::Known(0)) => {
+                     if Server::can_have_implicit_zero_content_length(
+                         msg.req_method,
+                         msg.head.subject,
+                     ) {
+                         header_name_writer.write_full_header_line(
+                             dst,
+                             "content-length: 0\r\n",
+                             (header::CONTENT_LENGTH, ": 0\r\n"),
+                         )
+                     }
+                     Encoder::length(0)
+                 }
+                 Some(BodyLength::Known(len)) => {
+                     if !Server::can_have_content_length(msg.req_method, msg.head.subject) {
+                         Encoder::length(0)
+                     } else {
+                         header_name_writer.write_header_name_with_colon(
+                             dst,
+                             "content-length: ",
+                             header::CONTENT_LENGTH,
+                         );
+                         extend(dst, ::itoa::Buffer::new().format(len).as_bytes());
+                         extend(dst, b"\r\n");
+                         Encoder::length(len)
+                     }
+                 }
+             };
+         }
+ 
+         if !Server::can_have_body(msg.req_method, msg.head.subject) {
+             trace!(
+                 "server body forced to 0; method={:?}, status={:?}",
+                 msg.req_method,
+                 msg.head.subject
+             );
+             encoder = Encoder::length(0);
+         }
+ 
+         // cached date is much faster than formatting every request
+@@ -1312,162 +1322,170 @@ impl Client {
+         // of what the Body knows about itself. They set them for a reason.
+ 
+         // Because of the borrow checker, we can't check the for an existing
+         // Content-Length header while holding an `Entry` for the Transfer-Encoding
+         // header, so unfortunately, we must do the check here, first.
+ 
+         let existing_con_len = headers::content_length_parse_all(headers);
+         let mut should_remove_con_len = false;
+ 
+         if !can_chunked {
+             // Chunked isn't legal, so if it is set, we need to remove it.
+             if headers.remove(header::TRANSFER_ENCODING).is_some() {
+                 trace!("removing illegal transfer-encoding header");
+             }
+ 
+             return if let Some(len) = existing_con_len {
+                 Encoder::length(len)
+             } else if let BodyLength::Known(len) = body {
+                 set_content_length(headers, len)
+             } else {
+                 // HTTP/1.0 client requests without a content-length
+                 // cannot have any body at all.
+                 Encoder::length(0)
+             };
+         }
+ 
+         // If the user set a transfer-encoding, respect that. Let's just
+         // make sure `chunked` is the final encoding.
+         let encoder = match headers.entry(header::TRANSFER_ENCODING) {
+             Entry::Occupied(te) => {
+                 should_remove_con_len = true;
+                 if headers::is_chunked(te.iter()) {
+                     Some(Encoder::chunked())
+                 } else {
+                     warn!("user provided transfer-encoding does not end in 'chunked'");
+ 
+                     // There's a Transfer-Encoding, but it doesn't end in 'chunked'!
+                     // An example that could trigger this:
+                     //
+                     //     Transfer-Encoding: gzip
+                     //
+                     // This can be bad, depending on if this is a request or a
+                     // response.
+                     //
+                     // - A request is illegal if there is a `Transfer-Encoding`
+                     //   but it doesn't end in `chunked`.
+                     // - A response that has `Transfer-Encoding` but doesn't
+                     //   end in `chunked` isn't illegal, it just forces this
+                     //   to be close-delimited.
+                     //
+                     // We can try to repair this, by adding `chunked` ourselves.
+ 
+                     headers::add_chunked(te);
+                     Some(Encoder::chunked())
+                 }
+             }
+             Entry::Vacant(te) => {
+                 if let Some(len) = existing_con_len {
+                     Some(Encoder::length(len))
+                 } else if let BodyLength::Unknown = body {
+                     // GET, HEAD, and CONNECT almost never have bodies.
+                     //
+                     // So instead of sending a "chunked" body with a 0-chunk,
+                     // assume no body here. If you *must* send a body,
+                     // set the headers explicitly.
+                     match head.subject.0 {
+                         Method::GET | Method::HEAD | Method::CONNECT => Some(Encoder::length(0)),
+                         _ => {
+                             te.insert(HeaderValue::from_static("chunked"));
+                             Some(Encoder::chunked())
+                         }
+                     }
+                 } else {
+                     None
+                 }
+             }
+         };
+ 
+         let encoder = encoder.map(|enc| {
+             if enc.is_chunked() {
+-                let allowed_trailer_fields: Vec<HeaderValue> =
+-                    headers.get_all(header::TRAILER).iter().cloned().collect();
++                // Parse Trailer header values into HeaderNames.
++                // Each Trailer header value may contain comma-separated names.
++                // HeaderName normalizes to lowercase, enabling case-insensitive matching.
++                let allowed_trailer_fields: Vec<HeaderName> = headers
++                    .get_all(header::TRAILER)
++                    .iter()
++                    .filter_map(|hv| hv.to_str().ok())
++                    .flat_map(|s| s.split(','))
++                    .filter_map(|s| HeaderName::from_bytes(s.trim().as_bytes()).ok())
++                    .collect();
+ 
+                 if !allowed_trailer_fields.is_empty() {
+                     return enc.into_chunked_with_trailing_fields(allowed_trailer_fields);
+                 }
+             }
+ 
+             enc
+         });
+ 
+         // This is because we need a second mutable borrow to remove
+         // content-length header.
+         if let Some(encoder) = encoder {
+             if should_remove_con_len && existing_con_len.is_some() {
+                 headers.remove(header::CONTENT_LENGTH);
+             }
+             return encoder;
+         }
+ 
+         // User didn't set transfer-encoding, AND we know body length,
+         // so we can just set the Content-Length automatically.
+ 
+         let len = if let BodyLength::Known(len) = body {
+             len
+         } else {
+             unreachable!("BodyLength::Unknown would set chunked");
+         };
+ 
+         set_content_length(headers, len)
+     }
+ 
+     fn obs_fold_line(all: &mut [u8], idx: &mut HeaderIndices) {
+         // If the value has obs-folded text, then in-place shift the bytes out
+         // of here.
+         //
+         // https://httpwg.org/specs/rfc9112.html#line.folding
+         //
+         // > A user agent that receives an obs-fold MUST replace each received
+         // > obs-fold with one or more SP octets prior to interpreting the
+         // > field value.
+         //
+         // This means strings like "\r\n\t foo" must replace the "\r\n\t " with
+         // a single space.
+ 
+         let buf = &mut all[idx.value.0..idx.value.1];
+ 
+         // look for a newline, otherwise bail out
+         let first_nl = match buf.iter().position(|b| *b == b'\n') {
+             Some(i) => i,
+             None => return,
+         };
+ 
+         // not on standard slices because whatever, sigh
+         fn trim_start(mut s: &[u8]) -> &[u8] {
+             while let [first, rest @ ..] = s {
+                 if first.is_ascii_whitespace() {
+                     s = rest;
+                 } else {
+                     break;
+                 }
+             }
+             s
+         }
+ 
+         fn trim_end(mut s: &[u8]) -> &[u8] {
+             while let [rest @ .., last] = s {
+                 if last.is_ascii_whitespace() {
+                     s = rest;
+                 } else {
+                     break;
+                 }
+             }
+             s
+         }
+ 
+         fn trim(s: &[u8]) -> &[u8] {
+             trim_start(trim_end(s))
+         }
+ 
+         // TODO(perf): we could do the moves in-place, but this is so uncommon
+         // that it shouldn't matter.
+diff --git a/tests/client.rs b/tests/client.rs
+index d5a0e4e0..5f976b17 100644
+--- a/tests/client.rs
++++ b/tests/client.rs
+@@ -627,196 +627,270 @@ test! {
+         request: {
+             method: GET,
+             url: "http://{addr}/",
+         },
+         response:
+             status: OK,
+             headers: {},
+             body: &b"hello"[..],
+ }
+ 
+ test! {
+     name: client_get_req_body_chunked_with_multiple_trailers,
+ 
+     server:
+         expected: "\
+             GET / HTTP/1.1\r\n\
+             host: {addr}\r\n\
+             \r\n\
+             ",
+         reply: "\
+             HTTP/1.1 200 OK\r\n\
+             Transfer-Encoding: chunked\r\n\
+             \r\n\
+             5\r\n\
+             hello\r\n\
+             0\r\n\
+             Trailer: value\r\n\
+             another-trainer: another-value\r\n\
+             \r\n\
+             ",
+ 
+     client:
+         request: {
+             method: GET,
+             url: "http://{addr}/",
+         },
+         response:
+             status: OK,
+             headers: {},
+             body: &b"hello"[..],
+ }
+ 
+ test! {
+     name: client_post_req_body_chunked_with_trailer,
+ 
+     server:
+         expected: "\
+             POST / HTTP/1.1\r\n\
+             trailer: chunky-trailer\r\n\
+             host: {addr}\r\n\
+             transfer-encoding: chunked\r\n\
+             \r\n\
+             5\r\n\
+             hello\r\n\
+             0\r\n\
+             chunky-trailer: header data\r\n\
+             \r\n\
+             ",
+         reply: REPLY_OK,
+ 
+     client:
+         request: {
+             method: POST,
+             url: "http://{addr}/",
+             headers: {
+                 "trailer" => "chunky-trailer",
+             },
+             body_stream_with_trailers: (
+                 (futures_util::stream::once(async { Ok::<_, Infallible>(Bytes::from("hello"))})),
+                 HeaderMap::from_iter(vec![(
+                     HeaderName::from_static("chunky-trailer"),
+                     HeaderValue::from_static("header data")
+                 )].into_iter())),
+         },
+         response:
+             status: OK,
+             headers: {},
+             body: None,
+ }
+ 
++test! {
++    name: client_post_req_body_chunked_with_trailer_titlecase,
++
++    server:
++        expected: "\
++            POST / HTTP/1.1\r\n\
++            trailer: Chunky-Trailer\r\n\
++            host: {addr}\r\n\
++            transfer-encoding: chunked\r\n\
++            \r\n\
++            5\r\n\
++            hello\r\n\
++            0\r\n\
++            chunky-trailer: header data\r\n\
++            \r\n\
++            ",
++        reply: REPLY_OK,
++
++    client:
++        request: {
++            method: POST,
++            url: "http://{addr}/",
++            headers: {
++                "trailer" => "Chunky-Trailer",
++            },
++            body_stream_with_trailers: (
++                (futures_util::stream::once(async { Ok::<_, Infallible>(Bytes::from("hello"))})),
++                HeaderMap::from_iter(vec![(
++                    HeaderName::from_static("chunky-trailer"),
++                    HeaderValue::from_static("header data")
++                )].into_iter())),
++        },
++        response:
++            status: OK,
++            headers: {},
++            body: None,
++}
++
+ test! {
+     name: client_res_body_chunked_with_trailer,
+ 
+     server:
+         expected: "GET / HTTP/1.1\r\nte: trailers\r\nhost: {addr}\r\n\r\n",
+         reply: "\
+             HTTP/1.1 200 OK\r\n\
+             transfer-encoding: chunked\r\n\
+             trailer: chunky-trailer\r\n\
+             \r\n\
+             5\r\n\
+             hello\r\n\
+             0\r\n\
+             chunky-trailer: header data\r\n\
+             \r\n\
+             ",
+ 
+     client:
+         request: {
+             method: GET,
+             url: "http://{addr}/",
+             headers: {
+                 "te" => "trailers",
+             },
+         },
+         response:
+             status: OK,
+             headers: {
+                 "Transfer-Encoding" => "chunked",
+             },
+             body: &b"hello"[..],
+             trailers: {
+                 "chunky-trailer" => "header data",
+             },
+ }
+ 
++test! {
++    name: client_res_body_chunked_with_trailer_titlecase,
++
++    server:
++        expected: "GET / HTTP/1.1\r\nte: trailers\r\nhost: {addr}\r\n\r\n",
++        reply: "\
++            HTTP/1.1 200 OK\r\n\
++            transfer-encoding: chunked\r\n\
++            trailer: Chunky-Trailer\r\n\
++            \r\n\
++            5\r\n\
++            hello\r\n\
++            0\r\n\
++            chunky-trailer: header data\r\n\
++            \r\n\
++            ",
++
++    client:
++        request: {
++            method: GET,
++            url: "http://{addr}/",
++            headers: {
++                "te" => "trailers",
++            },
++        },
++        response:
++            status: OK,
++            headers: {
++                "Transfer-Encoding" => "chunked",
++            },
++            body: &b"hello"[..],
++            trailers: {
++                "chunky-trailer" => "header data",
++            },
++}
++
+ test! {
+     name: client_res_body_chunked_with_pathological_trailers,
+ 
+     server:
+         expected: "GET / HTTP/1.1\r\nte: trailers\r\nhost: {addr}\r\n\r\n",
+         reply: "\
+             HTTP/1.1 200 OK\r\n\
+             transfer-encoding: chunked\r\n\
+             trailer: chunky-trailer1, chunky-trailer2, chunky-trailer3, chunky-trailer4, chunky-trailer5\r\n\
+             \r\n\
+             5\r\n\
+             hello\r\n\
+             0\r\n\
+             chunky-trailer1: header data1\r\n\
+             chunky-trailer2: header data2\r\n\
+             chunky-trailer3: header data3\r\n\
+             chunky-trailer4: header data4\r\n\
+             chunky-trailer5: header data5\r\n\
+             sneaky-trailer: not in trailer header\r\n\
+             transfer-encoding: chunked\r\n\
+             content-length: 5\r\n\
+             trailer: foo\r\n\
+             \r\n\
+             ",
+ 
+     client:
+         request: {
+             method: GET,
+             url: "http://{addr}/",
+             headers: {
+                 "te" => "trailers",
+             },
+         },
+         response:
+             status: OK,
+             headers: {
+                 "Transfer-Encoding" => "chunked",
+             },
+             body: &b"hello"[..],
+             trailers: {
+                 "chunky-trailer1" => "header data1",
+                 "chunky-trailer2" => "header data2",
+                 "chunky-trailer3" => "header data3",
+                 "chunky-trailer4" => "header data4",
+                 "chunky-trailer5" => "header data5",
+                 "sneaky-trailer" => "not in trailer header",
+                 "transfer-encoding" => "chunked",
+                 "content-length" => "5",
+                 "trailer" => "foo",
+             },
+ }
+ 
+ test! {
+     name: client_get_req_body_sized,
+ 
+     server:
+         expected: "\
+             GET / HTTP/1.1\r\n\
+             content-length: 5\r\n\
+             host: {addr}\r\n\
+             \r\n\
+             hello\
+             ",
+         reply: REPLY_OK,
+ 
+     client:
+         request: {
+             method: GET,
+             url: "http://{addr}/",
+             headers: {
+                 "Content-Length" => "5",
+             },
+             // use a "stream" (where Body doesn't know length) with a
+             // content-length header
+             body_stream: (futures_util::stream::once(async {
+                 Ok::<_, Infallible>(Bytes::from("hello"))
+             })),
+         },
+         response:
+             status: OK,
+diff --git a/tests/server.rs b/tests/server.rs
+index 485a10e0..1cd0eba5 100644
+--- a/tests/server.rs
++++ b/tests/server.rs
+@@ -2773,160 +2773,205 @@ async fn http2_keep_alive_count_server_pings() {
+     // write h2 magic preface and settings frame
+     conn.write_all(b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n")
+         .await
+         .expect("client preface");
+     conn.write_all(&[
+         0, 0, 0, // len
+         4, // kind
+         0, // flag
+         0, 0, 0, 0, // stream id
+     ])
+     .await
+     .expect("client settings");
+ 
+     let read_pings = async {
+         // read until 3 pings are received
+         let mut pings = 0;
+         let mut buf = [0u8; 1024];
+         while pings < 3 {
+             let n = conn.read(&mut buf).await.expect("client.read");
+             assert!(n != 0);
+ 
+             if is_ping_frame(&buf) {
+                 assert_ping_frame(&buf, n);
+                 write_pong_frame(&mut conn).await;
+                 pings += 1;
+             }
+         }
+     };
+ 
+     // Expect all pings to occurs under 5 seconds
+     tokio::time::timeout(Duration::from_secs(5), read_pings)
+         .await
+         .expect("timed out waiting for pings");
+ }
+ 
+ #[test]
+ fn http1_trailer_send_fields() {
+     let body = futures_util::stream::once(async move { Ok("hello".into()) });
+     let mut headers = HeaderMap::new();
+     headers.insert("chunky-trailer", "header data".parse().unwrap());
+     // Invalid trailer field that should not be sent
+     headers.insert("Host", "www.example.com".parse().unwrap());
+     // Not specified in Trailer header, so should not be sent
+     headers.insert("foo", "bar".parse().unwrap());
+ 
+     let server = serve();
+     server
+         .reply()
+         .header("transfer-encoding", "chunked")
+         .header("trailer", "chunky-trailer")
+         .body_stream_with_trailers(body, headers);
+     let mut req = connect(server.addr());
+     req.write_all(
+         b"\
+         GET / HTTP/1.1\r\n\
+         Host: example.domain\r\n\
+         Connection: keep-alive\r\n\
+         TE: trailers\r\n\
+         \r\n\
+     ",
+     )
+     .expect("writing");
+ 
+     let chunky_trailer_chunk = b"\r\nchunky-trailer: header data\r\n\r\n";
+     let res = read_until(&mut req, |buf| buf.ends_with(chunky_trailer_chunk)).expect("reading");
+     let sres = s(&res);
+ 
+     let expected_head =
+         "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\ntrailer: chunky-trailer\r\n";
+     assert_eq!(&sres[..expected_head.len()], expected_head);
+ 
+     // skip the date header
+     let date_fragment = "GMT\r\n\r\n";
+     let pos = sres.find(date_fragment).expect("find GMT");
+     let body = &sres[pos + date_fragment.len()..];
+ 
+     let expected_body = "5\r\nhello\r\n0\r\nchunky-trailer: header data\r\n\r\n";
+     assert_eq!(body, expected_body);
+ }
+ 
++#[test]
++fn http1_trailer_send_fields_titlecase() {
++    let body = futures_util::stream::once(async move { Ok("hello".into()) });
++    let mut headers = HeaderMap::new();
++    headers.insert("chunky-trailer", "header data".parse().unwrap());
++    // Invalid trailer field that should not be sent
++    headers.insert("Host", "www.example.com".parse().unwrap());
++    // Not specified in Trailer header, so should not be sent
++    headers.insert("foo", "bar".parse().unwrap());
++
++    let server = serve();
++    server
++        .reply()
++        .header("transfer-encoding", "chunked")
++        .header("trailer", "Chunky-Trailer")
++        .body_stream_with_trailers(body, headers);
++    let mut req = connect(server.addr());
++    req.write_all(
++        b"\
++        GET / HTTP/1.1\r\n\
++        Host: example.domain\r\n\
++        Connection: keep-alive\r\n\
++        TE: trailers\r\n\
++        \r\n\
++    ",
++    )
++    .expect("writing");
++
++    let chunky_trailer_chunk = b"\r\nchunky-trailer: header data\r\n\r\n";
++    let res = read_until(&mut req, |buf| buf.ends_with(chunky_trailer_chunk)).expect("reading");
++    let sres = s(&res);
++
++    let expected_head =
++        "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\ntrailer: Chunky-Trailer\r\n";
++    assert_eq!(&sres[..expected_head.len()], expected_head);
++
++    // skip the date header
++    let date_fragment = "GMT\r\n\r\n";
++    let pos = sres.find(date_fragment).expect("find GMT");
++    let body = &sres[pos + date_fragment.len()..];
++
++    let expected_body = "5\r\nhello\r\n0\r\nchunky-trailer: header data\r\n\r\n";
++    assert_eq!(body, expected_body);
++}
++
+ #[test]
+ fn http1_trailer_fields_not_allowed() {
+     let body = futures_util::stream::once(async move { Ok("hello".into()) });
+     let mut headers = HeaderMap::new();
+     headers.insert("chunky-trailer", "header data".parse().unwrap());
+ 
+     let server = serve();
+     server
+         .reply()
+         .header("transfer-encoding", "chunked")
+         .header("trailer", "chunky-trailer")
+         .body_stream_with_trailers(body, headers);
+     let mut req = connect(server.addr());
+ 
+     // TE: trailers is not specified in request headers
+     req.write_all(
+         b"\
+         GET / HTTP/1.1\r\n\
+         Host: example.domain\r\n\
+         Connection: keep-alive\r\n\
+         \r\n\
+     ",
+     )
+     .expect("writing");
+ 
+     let last_chunk = b"\r\n0\r\n\r\n";
+     let res = read_until(&mut req, |buf| buf.ends_with(last_chunk)).expect("reading");
+     let sres = s(&res);
+ 
+     let expected_head =
+         "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\ntrailer: chunky-trailer\r\n";
+     assert_eq!(&sres[..expected_head.len()], expected_head);
+ 
+     // skip the date header
+     let date_fragment = "GMT\r\n\r\n";
+     let pos = sres.find(date_fragment).expect("find GMT");
+     let body = &sres[pos + date_fragment.len()..];
+ 
+     // no trailer fields should be sent because TE: trailers was not in request headers
+     let expected_body = "5\r\nhello\r\n0\r\n\r\n";
+     assert_eq!(body, expected_body);
+ }
+ 
+ #[test]
+ fn http1_trailer_recv_fields() {
+     let server = serve();
+     let mut req = connect(server.addr());
+     req.write_all(
+         b"\
+         POST / HTTP/1.1\r\n\
+         trailer: chunky-trailer\r\n\
+         host: example.domain\r\n\
+         transfer-encoding: chunked\r\n\
+         \r\n\
+         5\r\n\
+         hello\r\n\
+         0\r\n\
+         chunky-trailer: header data\r\n\
+         \r\n\
+     ",
+     )
+     .expect("writing");
+ 
+     assert_eq!(server.body(), b"hello");
+ 
+     let trailers = server.trailers();
+     assert_eq!(
+         trailers.get("chunky-trailer"),
+         Some(&"header data".parse().unwrap())
+     );
+ }
+ 
+ // -------------------------------------------------
+ // the Server that is used to run all the tests with
+ // -------------------------------------------------
+ 
+ struct Serve {
+     addr: SocketAddr,
+     msg_rx: mpsc::Receiver<Msg>,
+     trailers_rx: mpsc::Receiver<HeaderMap>,

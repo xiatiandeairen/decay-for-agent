@@ -1,0 +1,359 @@
+{
+  "case_id": "serde-rs-json-757",
+  "git_context": {
+    "base": "9bcb08fd926c1c727cb1343363d41c25f2e6025d",
+    "base_input": "9bcb08fd926c1c727cb1343363d41c25f2e6025d",
+    "changed_files": 2,
+    "head": "c64c1d7429d32eaef3a501c730906656a9606f5d",
+    "repo_root": "/private/tmp/decay-pr-eval/serde-rs-json-757/repo"
+  },
+  "pr_context": {
+    "body": "Fixes #755.",
+    "comments": [],
+    "files": [
+      {
+        "additions": 4,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/read.rs"
+      },
+      {
+        "additions": 19,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/test.rs"
+      }
+    ],
+    "number": 757,
+    "title": "Fix panic deserializing RawValue from invalid utf-8 bytes",
+    "url": "https://github.com/serde-rs/json/pull/757"
+  },
+  "version": "risk-context-wrapper.v1",
+  "wrappers": [
+    {
+      "analysis_contract": {
+        "consumer": "codex-cli",
+        "expected_output": "semantic-confidence-evidence.v1",
+        "rules": [
+          "Use only evidence and context in this wrapper.",
+          "Treat primary_evidence as direct evidence.",
+          "Treat supporting_evidence as supporting only.",
+          "Treat context_evidence as background only.",
+          "Do not claim a bug unless the wrapper contains explicit external confirmation.",
+          "Mention uncertainty when diff, source, test, or history context is missing."
+        ],
+        "task": "Produce semantic confidence evidence from this wrapper.",
+        "wrapper_type": "ErrorPropagationWrapper"
+      },
+      "context_evidence": [],
+      "coverage_limits": [],
+      "diff_context": {
+        "files": [
+          {
+            "hunks": [
+              {
+                "header": "@@ -510,161 +510,164 @@ impl<'a> Read<'a> for SliceRead<'a> {",
+                "lines": [
+                  "     fn position(&self) -> Position {",
+                  "         self.position_of_index(self.index)",
+                  "     }",
+                  " ",
+                  "     fn peek_position(&self) -> Position {",
+                  "         // Cap it at slice.len() just in case the most recent call was next()",
+                  "         // and it returned the last byte.",
+                  "         self.position_of_index(cmp::min(self.slice.len(), self.index + 1))",
+                  "     }",
+                  " ",
+                  "     fn byte_offset(&self) -> usize {",
+                  "         self.index",
+                  "     }",
+                  " ",
+                  "     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'a, 's, str>> {",
+                  "         self.parse_str_bytes(scratch, true, as_str)",
+                  "     }",
+                  " ",
+                  "     fn parse_str_raw<'s>(",
+                  "         &'s mut self,",
+                  "         scratch: &'s mut Vec<u8>,",
+                  "     ) -> Result<Reference<'a, 's, [u8]>> {",
+                  "         self.parse_str_bytes(scratch, false, |_, bytes| Ok(bytes))",
+                  "     }",
+                  " ",
+                  "     fn ignore_str(&mut self) -> Result<()> {",
+                  "         loop {",
+                  "             while self.index < self.slice.len() && !ESCAPE[self.slice[self.index] as usize] {",
+                  "                 self.index += 1;",
+                  "             }",
+                  "             if self.index == self.slice.len() {",
+                  "                 return error(self, ErrorCode::EofWhileParsingString);",
+                  "             }",
+                  "             match self.slice[self.index] {",
+                  "                 b'\"' => {",
+                  "                     self.index += 1;",
+                  "                     return Ok(());",
+                  "                 }",
+                  "                 b'\\\\' => {",
+                  "                     self.index += 1;",
+                  "                     tri!(ignore_escape(self));",
+                  "                 }",
+                  "                 _ => {",
+                  "                     return error(self, ErrorCode::ControlCharacterWhileParsingString);",
+                  "                 }",
+                  "             }",
+                  "         }",
+                  "     }",
+                  " ",
+                  "     fn decode_hex_escape(&mut self) -> Result<u16> {",
+                  "         if self.index + 4 > self.slice.len() {",
+                  "             self.index = self.slice.len();",
+                  "             return error(self, ErrorCode::EofWhileParsingString);",
+                  "         }",
+                  " ",
+                  "         let mut n = 0;",
+                  "         for _ in 0..4 {",
+                  "             let ch = decode_hex_val(self.slice[self.index]);",
+                  "             self.index += 1;",
+                  "             match ch {",
+                  "                 None => return error(self, ErrorCode::InvalidEscape),",
+                  "                 Some(val) => {",
+                  "                     n = (n << 4) + val;",
+                  "                 }",
+                  "             }",
+                  "         }",
+                  "         Ok(n)",
+                  "     }",
+                  " ",
+                  "     #[cfg(feature = \"raw_value\")]",
+                  "     fn begin_raw_buffering(&mut self) {",
+                  "         self.raw_buffering_start_index = self.index;",
+                  "     }",
+                  " ",
+                  "     #[cfg(feature = \"raw_value\")]",
+                  "     fn end_raw_buffering<V>(&mut self, visitor: V) -> Result<V::Value>",
+                  "     where",
+                  "         V: Visitor<'a>,",
+                  "     {",
+                  "         let raw = &self.slice[self.raw_buffering_start_index..self.index];",
+                  "-        let raw = str::from_utf8(raw).unwrap();",
+                  "+        let raw = match str::from_utf8(raw) {",
+                  "+            Ok(raw) => raw,",
+                  "+            Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint),",
+                  "+        };",
+                  "         visitor.visit_map(BorrowedRawDeserializer {",
+                  "             raw_value: Some(raw),",
+                  "         })",
+                  "     }",
+                  " ",
+                  "     const should_early_return_if_failed: bool = false;",
+                  " ",
+                  "     #[inline]",
+                  "     #[cold]",
+                  "     fn set_failed(&mut self, _failed: &mut bool) {",
+                  "         self.slice = &self.slice[..self.index];",
+                  "     }",
+                  " }",
+                  " ",
+                  " //////////////////////////////////////////////////////////////////////////////",
+                  " ",
+                  " impl<'a> StrRead<'a> {",
+                  "     /// Create a JSON input source to read from a UTF-8 string.",
+                  "     pub fn new(s: &'a str) -> Self {",
+                  "         StrRead {",
+                  "             delegate: SliceRead::new(s.as_bytes()),",
+                  "             #[cfg(feature = \"raw_value\")]",
+                  "             data: s,",
+                  "         }",
+                  "     }",
+                  " }",
+                  " ",
+                  " impl<'a> private::Sealed for StrRead<'a> {}",
+                  " ",
+                  " impl<'a> Read<'a> for StrRead<'a> {",
+                  "     #[inline]",
+                  "     fn next(&mut self) -> Result<Option<u8>> {",
+                  "         self.delegate.next()",
+                  "     }",
+                  " ",
+                  "     #[inline]",
+                  "     fn peek(&mut self) -> Result<Option<u8>> {",
+                  "         self.delegate.peek()",
+                  "     }",
+                  " ",
+                  "     #[inline]",
+                  "     fn discard(&mut self) {",
+                  "         self.delegate.discard();",
+                  "     }",
+                  " ",
+                  "     fn position(&self) -> Position {",
+                  "         self.delegate.position()",
+                  "     }",
+                  " ",
+                  "     fn peek_position(&self) -> Position {",
+                  "         self.delegate.peek_position()",
+                  "     }",
+                  " ",
+                  "     fn byte_offset(&self) -> usize {",
+                  "         self.delegate.byte_offset()",
+                  "     }",
+                  " ",
+                  "     fn parse_str<'s>(&'s mut self, scratch: &'s mut Vec<u8>) -> Result<Reference<'a, 's, str>> {",
+                  "         self.delegate.parse_str_bytes(scratch, true, |_, bytes| {",
+                  "             // The input is assumed to be valid UTF-8 and the \\u-escapes are",
+                  "             // checked along the way, so don't need to check here.",
+                  "             Ok(unsafe { str::from_utf8_unchecked(bytes) })",
+                  "         })",
+                  "     }",
+                  " ",
+                  "     fn parse_str_raw<'s>(",
+                  "         &'s mut self,",
+                  "         scratch: &'s mut Vec<u8>,",
+                  "     ) -> Result<Reference<'a, 's, [u8]>> {",
+                  "         self.delegate.parse_str_raw(scratch)",
+                  "     }",
+                  " ",
+                  "     fn ignore_str(&mut self) -> Result<()> {",
+                  "         self.delegate.ignore_str()",
+                  "     }",
+                  " ",
+                  "     fn decode_hex_escape(&mut self) -> Result<u16> {",
+                  "         self.delegate.decode_hex_escape()",
+                  "     }",
+                  " "
+                ],
+                "reason": "linked_to_primary_evidence"
+              }
+            ],
+            "path": "src/read.rs"
+          }
+        ]
+      },
+      "honest_review": {
+        "dimensions": {
+          "control": {
+            "inferred": [
+              "test evidence covers a related error path and asserts caller-visible failure"
+            ],
+            "observed": [
+              "tests/test.rs: +#[cfg(feature = \"raw_value\")]",
+              "tests/test.rs: +fn test_raw_invalid_utf8() {",
+              "tests/test.rs: +    use serde_json::value::RawValue;",
+              "tests/test.rs: +    let j = &[b'\"', b'\\xCE', b'\\xF8', b'\"'];",
+              "tests/test.rs: +    let value_err = serde_json::from_slice::<Value>(j).unwrap_err();",
+              "tests/test.rs: +    let raw_value_err = serde_json::from_slice::<Box<RawValue>>(j).unwrap_err();",
+              "tests/test.rs: +        \"invalid unicode code point at line 1 column 4\",",
+              "tests/test.rs: +        raw_value_err.to_string(),"
+            ],
+            "status": "partial",
+            "unknown": [
+              "coverage of all malformed-input variants and all entry points is not proven"
+            ]
+          },
+          "impact": {
+            "inferred": [
+              "caller-visible error behavior likely changed for malformed unicode input",
+              "PR metadata is consistent with a malformed-input behavior fix",
+              "impact likely reaches a caller-visible deserialization path"
+            ],
+            "observed": [
+              "changed production file: src/read.rs",
+              "new error code is InvalidUnicodeCodePoint",
+              "PR title: Fix panic deserializing RawValue from invalid utf-8 bytes",
+              "PR body: Fixes #755.",
+              "related test diff calls a public entry point or asserts an error"
+            ],
+            "status": "partial",
+            "unknown": [
+              "full public API contract is not available in this wrapper",
+              "call graph from changed function to every caller is not available in this wrapper",
+              "whether every affected entry point is covered is not proven"
+            ]
+          },
+          "mechanism": {
+            "inferred": [
+              "failure mode changed from panic-like handling to structured error return"
+            ],
+            "observed": [
+              "removed panic-like error handling: code contains `let raw = str::from_utf8(raw).unwrap()`",
+              "added explicit error return: code contains `Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint)`",
+              "added error-flow behavior: code contains `Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint)`",
+              "same input token appears on both sides: raw"
+            ],
+            "status": "confirmed",
+            "unknown": []
+          }
+        },
+        "overall": {
+          "control_status": "partial",
+          "impact_status": "partial",
+          "judgement": "review_worthy_behavior_change",
+          "mechanism_status": "confirmed",
+          "non_claims": [
+            "not evidence that this PR introduced a bug",
+            "not proof of complete test coverage",
+            "not a merge recommendation"
+          ]
+        },
+        "risk_item": "error_propagation_change",
+        "version": "honest-review.v1"
+      },
+      "primary_evidence": [
+        {
+          "category": "semantic",
+          "confidence": "high",
+          "file": "src/read.rs",
+          "id": 2,
+          "kind": "panic_to_error_propagation_changed",
+          "source": "semantic_diff",
+          "subject": "Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint)",
+          "value": "direct"
+        }
+      ],
+      "risk_question": "Did this diff change error propagation or terminal error handling?",
+      "supporting_evidence": [
+        {
+          "category": "quality",
+          "confidence": "low",
+          "file": "src/read.rs",
+          "id": 1,
+          "kind": "prod_change_with_tests",
+          "source": "quality",
+          "subject": "production code changed with test changes",
+          "value": "supporting"
+        }
+      ],
+      "wrapper_context": {
+        "after_error_flow_lines": [
+          "+            Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint),"
+        ],
+        "after_error_lines": [
+          "+            Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint),"
+        ],
+        "before_error_flow_lines": [],
+        "before_panic_lines": [
+          "-        let raw = str::from_utf8(raw).unwrap();"
+        ],
+        "error_tokens": [
+          "error",
+          "ErrorCode::InvalidUnicodeCodePoint"
+        ],
+        "primary_kind": "panic_to_error_propagation_changed",
+        "related_test_lines": [
+          "tests/test.rs: +#[cfg(feature = \"raw_value\")]",
+          "tests/test.rs: +fn test_raw_invalid_utf8() {",
+          "tests/test.rs: +    use serde_json::value::RawValue;",
+          "tests/test.rs: +    let j = &[b'\"', b'\\xCE', b'\\xF8', b'\"'];",
+          "tests/test.rs: +    let value_err = serde_json::from_slice::<Value>(j).unwrap_err();",
+          "tests/test.rs: +    let raw_value_err = serde_json::from_slice::<Box<RawValue>>(j).unwrap_err();",
+          "tests/test.rs: +        \"invalid unicode code point at line 1 column 4\",",
+          "tests/test.rs: +        raw_value_err.to_string(),",
+          "tests/test.rs: +        \"invalid unicode code point at line 1 column 4\","
+        ],
+        "shared_input_tokens": [
+          "raw"
+        ]
+      },
+      "wrapper_id": "w1",
+      "wrapper_type": "ErrorPropagationWrapper"
+    }
+  ]
+}

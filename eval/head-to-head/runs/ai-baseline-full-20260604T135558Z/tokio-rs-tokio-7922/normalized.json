@@ -1,0 +1,42 @@
+{
+  "case_id": "tokio-rs-tokio-7922",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "// since this is a legitimate wakeup,\n                    // the `Spawner::spawn_task` has already decremented `num_idle_threads`.\n                    is_counted_idle = false;",
+        "if is_counted_idle {"
+      ],
+      "rank": 1,
+      "rationale": "Exit-path decrement of num_idle_threads now gated on is_counted_idle, which is cleared only when num_notify!=0. Correctness depends on every num_notify increment being paired with a prior dec_num_idl\u2026",
+      "risk_signal": "state_transition",
+      "subject": "tokio/src/runtime/blocking/pool.rs:Inner::run",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "shared.num_notify -= 1;\n                    // since this is a legitimate wakeup,\n                    // the `Spawner::spawn_task` has already decremented `num_idle_threads`.\n                    is_counted_idle = false;"
+      ],
+      "rank": 2,
+      "rationale": "Worker infers ownership of the idle-count decrement from observing num_notify under the shared lock. Any future path that bumps num_notify without first decrementing num_idle_threads would silently d\u2026",
+      "risk_signal": "concurrency_ordering",
+      "subject": "tokio/src/runtime/blocking/pool.rs:Inner::run",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "fn spawn_blocking_then_shutdown() {",
+        "// 1. the blocking thread is woken up on the condvar\n        // 2. the main thread is waiting for the blocking thread to finish the task"
+      ],
+      "rank": 3,
+      "rationale": "Single new loom case exercises wakeup-then-shutdown with max_blocking_threads(1); does not cover spurious-wakeup-vs-shutdown or multi-thread idle-count interleavings that the new is_counted_idle inva\u2026",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tokio/src/runtime/tests/loom_blocking.rs:spawn_blocking_then_shutdown",
+      "value": "supporting"
+    }
+  ]
+}

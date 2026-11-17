@@ -1,0 +1,83 @@
+round = "frozen-v1-fill-b"
+reviewed_at = "2026-05-14"
+policy = "formal three-role review; fill final frozen-v1 gap without lowering the gate"
+
+[[cases]]
+id = "BurntSushi-ripgrep-3174"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["external_contract", "state_transition", "risk_path_test_gap"]
+decision = "Freeze. Ancestor .ignore whitelist path handling caused hidden files to be skipped; issue has CLI repro, external Emacs consult impact, maintainer confirmation, and regression test."
+limitations = "Use as parent ignore/path normalization contract risk, not concrete .ignore syntax memorization."
+
+[[cases]]
+id = "BurntSushi-ripgrep-801"
+ground_truth_score = 4
+signal_fit_score = 4
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["external_contract", "state_transition", "assumption_boundary"]
+decision = "Freeze. Custom ignore files were disabled when other ignore rules were disabled; issue includes failing unit test and maintainer bug confirmation."
+limitations = "Library-level ignore crate API contract; do not describe as ripgrep CLI risk."
+
+[[cases]]
+id = "BurntSushi-ripgrep-2000"
+ground_truth_score = 4
+signal_fit_score = 3
+skeptic_blocker = true
+final_status = "needs_more_context"
+final_signal_ids = ["external_contract", "assumption_boundary", "risk_path_test_gap"]
+decision = "Do not freeze. The 32-bit Windows large-file correctness issue is real, but the PR is dependency recovery/re-enable mmap and lacks executable regression evidence."
+limitations = "Could return as platform correctness + dependency behavior case with reproducible historical failure evidence."
+
+[[cases]]
+id = "hyperium-hyper-3952"
+ground_truth_score = 4
+signal_fit_score = 5
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["concurrency_ordering", "state_transition", "lifecycle_ordering", "non_happy_path"]
+decision = "Freeze. HTTP/1 poll loop could stall when readiness was available but progress/waker handling was wrong; PR includes pathological test and maintainer review."
+limitations = "Use as async readiness/waker progress risk, not performance optimization."
+
+[[cases]]
+id = "hyperium-hyper-3242"
+ground_truth_score = 4
+signal_fit_score = 5
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["external_contract", "state_transition", "risk_path_test_gap"]
+decision = "Freeze. HTTP/2 Extended CONNECT stripped required :scheme/:path pseudo-headers, violating RFC 8441 and causing HAProxy failure; integration tests and approval present."
+limitations = "Use as protocol required-field construction risk, not WebSocket-specific logic."
+
+[[cases]]
+id = "hyperium-hyper-1159"
+ground_truth_score = 3
+signal_fit_score = 3
+skeptic_blocker = true
+final_status = "needs_more_context"
+final_signal_ids = ["external_contract", "non_happy_path", "error_propagation"]
+decision = "Do not freeze. Invalid-cookie behavior is plausible but policy-shaped, with no independent issue or tests."
+limitations = "Needs proof that the old behavior was a user-visible bug rather than acceptable compatibility policy."
+
+[[cases]]
+id = "tokio-rs-tokio-8076"
+ground_truth_score = 5
+signal_fit_score = 5
+skeptic_blocker = false
+final_status = "freeze_ready"
+final_signal_ids = ["assumption_boundary", "concurrency_ordering", "state_transition"]
+decision = "Freeze. RwLock max_readers=0 broke mutual exclusion and could trigger UB; PR has PoC, Miri review, production guard, tests, and backport signal."
+limitations = "Use as zero-value parameter breaking concurrent primitive invariant."
+
+[[cases]]
+id = "hyperium-hyper-4019"
+ground_truth_score = 2
+signal_fit_score = 3
+skeptic_blocker = true
+final_status = "rejected"
+final_signal_ids = ["assumption_boundary", "non_happy_path", "error_propagation"]
+decision = "Reject for frozen v1. Current evidence is title-only with no body, issue, tests, or reproducible panic context."
+limitations = "Can return only if concrete non-UTF8 repro or regression test is collected."

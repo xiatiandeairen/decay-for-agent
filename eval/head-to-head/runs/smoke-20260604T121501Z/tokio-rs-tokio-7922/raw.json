@@ -1,0 +1,12 @@
+{
+  "case_id": "tokio-rs-tokio-7922",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"tokio-rs-tokio-7922\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"state_transition\",\"subject\":\"tokio/src/runtime/blocking/pool.rs:Inner::run\",\"evidence_refs\":[\"// is this thread currently counted in `num_idle_threads`?\\n+        let mut is_counted_idle;\",\"+                    // since this is a legitimate wakeup,\\n+                    // the `Spawner::spawn_task` has already decremented `num_idle_threads`.\\n+                    is_counted_idle = false;\",\"+        if is_counted_idle {\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Idle-accounting state is now tracked via a per-iteration flag; if a future path between IDLE re-entry and exit forgets to reset is_counted_idle, the dec assertion or leak reappears.\"},{\"rank\":2,\"risk_signal\":\"concurrency_ordering\",\"subject\":\"tokio/src/runtime/blocking/pool.rs:Inner::run\",\"evidence_refs\":[\"if shared.num_notify != 0 {\",\"shared.num_notify -= 1;\",\"+                    // the `Spawner::spawn_task` has already decremented `num_idle_threads`.\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Correctness relies on the invariant that whoever increments num_notify also decrements num_idle_threads; shutdown path racing with notify (the new test) previously double-decremented on exit.\"},{\"rank\":3,\"risk_signal\":\"non_happy_path\",\"subject\":\"tokio/src/runtime/blocking/pool.rs:Inner::run\",\"evidence_refs\":[\"if shared.shutdown {\",\"            // Drain the queue\",\"-        let prev_idle = self.metrics.dec_num_idle_threads();\",\"+        if is_counted_idle {\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"Shutdown branch breaks out of the inner loop without going through the num_notify path; is_counted_idle stays true so dec runs, but any future shutdown exit after a notify must reset the flag.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

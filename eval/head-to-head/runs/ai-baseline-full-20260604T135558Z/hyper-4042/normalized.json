@@ -1,0 +1,40 @@
+{
+  "case_id": "hyper-4042",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "this.pipe.as_mut().send_reset(h2::Reason::CANCEL);\n+                drop(this.conn_drop_ref.take().expect(\"Future polled twice\"));\n+                drop(this.ping.take().expect(\"Future polled twice\"));\n+                return Poll::Ready(());"
+      ],
+      "rank": 1,
+      "rationale": "On cancel path, PipeMap returns Ready after send_reset and drops conn_drop_ref/ping; if poll is called again (or pipe also completes), the subsequent expect(\"Future polled twice\") panics.",
+      "risk_signal": "lifecycle_ordering",
+      "subject": "src/proto/h2/client.rs:PipeMap::poll",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "// Tell pipe_task to reset the h2 stream so that\n                // RST_STREAM is sent and flow-control capacity freed.\n                this.when.as_mut().cancel();"
+      ],
+      "rank": 2,
+      "rationale": "Cancel signal is sent via oneshot only when poll_canceled returns Ready; pipe_task must be polled afterwards for send_reset to fire \u2014 relies on executor still scheduling the pipe future.",
+      "risk_signal": "concurrency_ordering",
+      "subject": "src/client/dispatch.rs:SendWhen::poll",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "let got_rst = tokio::time::timeout(Duration::from_secs(2), body.data())\n                .await\n                .map_or(false, |frame| matches!(frame, Some(Err(_)) | None));"
+      ],
+      "rank": 3,
+      "rationale": "Test treats both Some(Err(_)) and None as success \u2014 None could mean clean EOS rather than RST_STREAM, so the assertion may pass without actually verifying reset was received.",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tests/client.rs:h2_pipe_task_cancelled_on_response_future_drop",
+      "value": "supporting"
+    }
+  ]
+}

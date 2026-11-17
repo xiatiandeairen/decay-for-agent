@@ -1,0 +1,18 @@
+{
+  "case_id": "tokio-rs-tokio-8021",
+  "attempt_count": 2,
+  "attempts": [
+    {
+      "ok": false,
+      "exit_code": 1,
+      "stdout": "API Error: 529 Overloaded. This is a server-side issue, usually temporary \u2014 try again in a moment. If it persists, check https://status.claude.com.\n",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"tokio-rs-tokio-8021\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"state_transition\",\"subject\":\"tokio/src/sync/batch_semaphore.rs:forget_permits\",\"evidence_refs\":[\"(new << Self::PERMIT_SHIFT) | (curr_bits & Self::CLOSED),\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"CAS in forget_permits now ORs curr_bits & CLOSED into the new value; prior `new << PERMIT_SHIFT` write cleared the CLOSED flag, silently reopening a closed semaphore on forget.\"},{\"rank\":2,\"risk_signal\":\"test_gap_for_risk_path\",\"subject\":\"tokio/tests/sync_semaphore.rs:forget_closed\",\"evidence_refs\":[\"sem.close();\\n            sem.add_permits(add);\\n            assert_eq!(sem.available_permits(), size + add);\\n            assert!(sem.is_closed());\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"New closed-state tests cover single-threaded close-then-forget/add only; the CAS retry loop in forget_permits under concurrent permit churn against a closed semaphore is not exercised.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

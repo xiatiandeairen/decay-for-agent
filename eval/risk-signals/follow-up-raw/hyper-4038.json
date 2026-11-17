@@ -1,0 +1,59 @@
+{
+  "case_id": "hyper-4038",
+  "refs": [
+    {
+      "detail": {
+        "body": "### Version\n\nmaster branch\n\n### Platform\n\nLinux / Windows\n\n### Summary\n\n`src/ffi/http_types.rs` still has three exported `extern \"C\"` entrypoints that create `&mut` references from `hyper_request*` / `hyper_response*` before applying the usual `non_null!` guard:\n\n- `hyper_request_set_uri_parts`\n- `hyper_request_headers`\n- `hyper_response_headers`\n\n```rust\n*unsafe { &mut *req }.0.uri_mut() = u;\n\nhyper_headers::get_or_default(unsafe { &mut *req }.0.extensions_mut())\n\nhyper_headers::get_or_default(unsafe { &mut *resp }.0.extensions_mut())\n```\n\nThis looks like a missed follow-up to the earlier NULL-pointer sweep in #2624 / #2620. `#2624` says the goal was to check pointer arguments for NULL before trying to use them; these three call sites still violate that invariant. One likely reason is that `hyper_request_set_uri_parts` itself was added later in `#2581`.\n\n### Code Sample\n\n```rust\n#include <stdint.h>\n#include \"hyper.h\"\n\nint main(void) {\n    /* Case 1: always dereferences req */\n    hyper_request_headers(NULL);\n\n    /* Case 2: always dereferences resp */\n    hyper_response_headers(NULL);\n\n    /* Case 3: dereferences req on the successful URI-build path */\n    hyper_request_set_uri_parts(\n        NULL,\n        (const uint8_t *)\"https\", 5,\n        (const uint8_t *)\"example.com\", 11,\n        (const uint8_t *)\"/\", 1\n    );\n\n    return 0;\n}\n```\n\n### Expected Behavior\n\nThe request/response handle should be checked before any dereference, matching the rest of the FFI API.\n\nFor NULL handles:\n\n- `hyper_request_set_uri_parts` should return `HYPERE_INVALID_ARG`\n- `hyper_request_headers` should return `NULL`\n- `hyper_response_headers` should return `NULL`\n\n### Actual Behavior\n\nThese functions form `&mut` references from raw FFI pointers before validating the handle, so a NULL handle can invoke undefined behavior (for example, a segfault, abort, or other unpredictable behavior) instead of returning the established sentinel failure value.\n\nThe surrounding `ffi_fn!` wrapper does not make this safe: it wraps the body in `catch_unwind`, but this is not a normal argument-validation path and should be prevented before any dereference.\n\n\n### Additional Context\n\n_No response_",
+        "closedAt": "2026-03-16T14:03:37Z",
+        "comments": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "That's fair, a null check could be added, if anyone wants to contribute it.",
+            "createdAt": "2026-03-10T18:54:31Z",
+            "id": "IC_kwDOAWaYQc7wbY-J",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/4033#issuecomment-4033712009",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2026-03-10T04:14:06Z",
+        "labels": [
+          {
+            "color": "d93f0b",
+            "description": "Category: bug. Something is wrong. This is bad!",
+            "id": "MDU6TGFiZWwxMjU3MTAxOTc=",
+            "name": "C-bug"
+          },
+          {
+            "color": "0e8a16",
+            "description": "Effort: easy. A task that would be a great starting point for a new contributor.",
+            "id": "MDU6TGFiZWwxNTQwMDI2NzU=",
+            "name": "E-easy"
+          },
+          {
+            "color": "fbca04",
+            "description": "Area: ffi (C API)",
+            "id": "MDU6TGFiZWwyNjQwODQ0MDc0",
+            "name": "A-ffi"
+          }
+        ],
+        "number": 4033,
+        "state": "CLOSED",
+        "title": "`hyper_request_set_uri_parts`, `hyper_request_headers`, and `hyper_response_headers` dereference `req`/`resp` before NULL validation",
+        "url": "https://github.com/hyperium/hyper/issues/4033"
+      },
+      "target": {
+        "number": 4033,
+        "reason": "FFI NULL pointer report or reproduction.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    }
+  ]
+}

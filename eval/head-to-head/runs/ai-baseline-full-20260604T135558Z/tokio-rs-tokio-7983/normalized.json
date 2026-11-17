@@ -1,0 +1,41 @@
+{
+  "case_id": "tokio-rs-tokio-7983",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "ops.retain(|_, lifecycle| !matches!(lifecycle, Lifecycle::Completed(_)));"
+      ],
+      "rank": 1,
+      "rationale": "Drop discards Completed(_) entries without closing fds; a Completed(Open) CQE whose future never re-polled before shutdown would leak the fd since the new cleanup only fires on Cancelled(Open) CQEs a\u2026",
+      "risk_signal": "lifecycle_ordering",
+      "subject": "tokio/src/runtime/io/driver/uring.rs:UringContext::drop",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "if let Lifecycle::Cancelled(CancelData::Open(_)) = lifecycle {",
+        "match mem::replace(lifecycle, Lifecycle::Cancelled(cancel_data)) {"
+      ],
+      "rank": 2,
+      "rationale": "The if-let runs against the post-replace state, so fd closing depends on cancel_data faithfully matching the original op kind; the cleanup is hard-coded to CancelData::Open and won't extend to other\u2026",
+      "risk_signal": "state_transition",
+      "subject": "tokio/src/runtime/io/driver/uring.rs:cancel_op",
+      "value": "supporting"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "assert!(leaked <= 64);"
+      ],
+      "rank": 3,
+      "rationale": "All three new tests accept up to 64 leaked fds out of 128 opens (50%) to dodge flakiness; a regression that leaks fewer than half the fds would still pass, weakening coverage of the very leak path be\u2026",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tokio/tests/fs_uring_cancel_open.rs:file_descriptors_are_closed_when_cancelling_open_op",
+      "value": "direct"
+    }
+  ]
+}

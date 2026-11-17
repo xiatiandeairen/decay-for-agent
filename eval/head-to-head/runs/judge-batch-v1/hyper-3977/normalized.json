@@ -1,0 +1,44 @@
+{
+  "case_id": "hyper-3977",
+  "ground_truth_draft": {
+    "expected_behavior": "Reverts #3952: poll_loop's yield condition no longer considers wants_write_again, so the loop yields whenever wants_read_again is false. This re-removes the guard that the prior fix added to prevent a rare missed write-side wakeup/deadlock when body_rx still has data but no read is expected. The dedicated ready_stream test and its Cargo.toml entry are also deleted.",
+    "high_value": true,
+    "primary_signal_ids": [
+      "concurrency_ordering",
+      "test_gap_for_risk_path"
+    ],
+    "rationale_from_pr_metadata": "PR title: 'Revert \"fix(http1): fix rare missed write wakeup on connections (#3952)\"'. Body: 'This reverts commit 2377b893... Reports in #3976 suggest this is consuming a lot of CPU.' The revert intentionally re-introduces the prior wakeup behavior to address a CPU regression, accepting the original rare-missed-wakeup risk. The deleted inline comment explicitly warned 'would lead to a deadlock if we also don't expect reads.'",
+    "subject_files": [
+      "src/proto/h1/dispatch.rs",
+      "tests/ready_stream.rs"
+    ]
+  },
+  "judgement_drafts": {
+    "ai_baseline": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "Correctly pinpoints poll_loop wakeup-guard removal (citing the deleted deadlock-warning comment), the yield-condition change, and the deleted ready_stream test as a coverage gap. Both primary signals covered.",
+      "top3_total": 3,
+      "top3_useful": 3,
+      "weak_only_top_risk_count": 0
+    },
+    "fact_only": {
+      "actionable": false,
+      "missed_high_risk_count": 2,
+      "notes": "Only generic 'prod_change_with_tests' and 'dependency_changed' signals. Subject file matches but no mechanism \u2014 does not surface the wakeup/deadlock concern or the deleted test.",
+      "top3_total": 2,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 1
+    },
+    "semantic_filtered": {
+      "actionable": false,
+      "missed_high_risk_count": 2,
+      "notes": "Rewords the same low-confidence quality evidence into NL claims. Still no identification of the poll_loop wakeup logic or the test deletion as a coverage gap on the risk path.",
+      "top3_total": 2,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 1
+    }
+  },
+  "manifest_hash": "06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208",
+  "model": "claude-opus-4-7"
+}

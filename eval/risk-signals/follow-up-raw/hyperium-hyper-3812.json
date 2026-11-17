@@ -1,0 +1,88 @@
+{
+  "case_id": "hyperium-hyper-3812",
+  "refs": [
+    {
+      "detail": {
+        "body": "**Version**\r\n1.5.1\r\n\r\n**Platform**\r\n`Darwin ghost.local 23.5.0 Darwin Kernel Version 23.5.0: Wed May  1 20:19:05 PDT 2024; root:xnu-10063.121.3~5/RELEASE_ARM64_T8112 arm64`\r\n\r\n**Description**\r\nHyper client can panic when processing broken up 1xx HTTP1 responses.\r\n\r\nWhen a server responds with `HTTP/1.1 100 Continue\\r\\nContent-Type: text/plain\\r\\nServer: BaseHTTP/0.6 Python/3.12.5\\r\\nDate: Mon, 16 Dec 2024 03:08:27 GMT\\r\\n\\r\\nThis is a sample text/plain document.\\n\\nThis is not an HTML document.\\n\\n`, it's possible for hyper to first read `HTTP/1.1 100 Continue\\r\\nContent-Type: text/plain\\r\\nServer: BaseHTTP/0.6 Python/3.12.5\\r\\nDate: Mon, 16 Dec 2024 03:08:27 GMT\\r\\n\\r\\n`, followed by `This is a sample text/plain document.\\n\\nThis is not an HTML document.\\n\\n`.\r\n\r\nThis triggers a panic in [the code introduced in #3764](https://github.com/hyperium/hyper/pull/3764/files#diff-aa04de01d67bf1f61d03ef30830c744fa331c7918335393ace8c6137fa4d84d6R94), since the prev_length value stored after the first response is longer than the length of the second response.\r\n\r\nThis has been hit independently by both deno and Servo upon upgrading to hyper 1.5.1, since there are web-platform-tests that exercise 1xx responses: https://github.com/web-platform-tests/wpt/blob/master/fetch/security/1xx-response.any.js",
+        "closedAt": "2024-12-16T15:36:42Z",
+        "comments": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Thanks for the sample code, I'll get this fixed today 🫡 ",
+            "createdAt": "2024-12-16T13:57:14Z",
+            "id": "IC_kwDOAWaYQc6XvE7g",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "HEART",
+                "users": {
+                  "totalCount": 2
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/3811#issuecomment-2545700576",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Published in v1.5.2 (and v0.14.32). Thanks again!",
+            "createdAt": "2024-12-16T16:23:39Z",
+            "id": "IC_kwDOAWaYQc6XwfzR",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "ROCKET",
+                "users": {
+                  "totalCount": 4
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/3811#issuecomment-2546072785",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2024-12-16T03:13:53Z",
+        "labels": [
+          {
+            "color": "d93f0b",
+            "description": "Category: bug. Something is wrong. This is bad!",
+            "id": "MDU6TGFiZWwxMjU3MTAxOTc=",
+            "name": "C-bug"
+          },
+          {
+            "color": "0e8a16",
+            "description": "Effort: easy. A task that would be a great starting point for a new contributor.",
+            "id": "MDU6TGFiZWwxNTQwMDI2NzU=",
+            "name": "E-easy"
+          },
+          {
+            "color": "fbca04",
+            "description": "Area: HTTP/1 specific.",
+            "id": "MDU6TGFiZWw5NTY3OTU2OTI=",
+            "name": "A-http1"
+          }
+        ],
+        "number": 3811,
+        "state": "CLOSED",
+        "title": "Intermittent panic in is_complete_fast",
+        "url": "https://github.com/hyperium/hyper/issues/3811"
+      },
+      "target": {
+        "number": 3811,
+        "reason": "Partial header intermittent panic report.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    }
+  ]
+}

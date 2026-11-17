@@ -39,6 +39,8 @@ pub struct DiffEvidenceRecord {
     pub file: String,
     pub subject: String,
     pub source: String,
+    pub confidence: String,
+    pub value: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -189,19 +191,31 @@ impl EvidenceStore {
                     "evidence subject is required".to_string(),
                 ));
             }
+            if record.confidence.trim().is_empty() {
+                return Err(DecayError::InvalidProject(
+                    "evidence confidence is required".to_string(),
+                ));
+            }
+            if record.value.trim().is_empty() {
+                return Err(DecayError::InvalidProject(
+                    "evidence value is required".to_string(),
+                ));
+            }
 
             self.conn
                 .execute(
                     "INSERT INTO evidence_items (
-                        changeset_id, category, source, subject, kind, file, payload_json, created_at
-                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, '{}', strftime('%s','now'))",
+                        changeset_id, category, source, subject, kind, file, confidence, value, payload_json, created_at
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, '{}', strftime('%s','now'))",
                     params![
                         changeset.id,
                         record.category,
                         record.source,
                         record.subject,
                         record.kind,
-                        record.file
+                        record.file,
+                        record.confidence,
+                        record.value
                     ],
                 )
                 .map_err(map_db_err("failed to insert diff evidence"))?;
@@ -251,6 +265,8 @@ fn init_schema(conn: &Connection) -> Result<()> {
             subject TEXT NOT NULL CHECK(length(trim(subject)) > 0),
             kind TEXT NOT NULL,
             file TEXT NOT NULL DEFAULT '',
+            confidence TEXT NOT NULL DEFAULT 'low',
+            value TEXT NOT NULL DEFAULT 'context',
             payload_json TEXT NOT NULL,
             created_at INTEGER NOT NULL
         );",
@@ -275,9 +291,27 @@ fn migrate_schema(conn: &Connection) -> Result<()> {
         "TEXT NOT NULL DEFAULT 'unknown'",
     )?;
     add_column_if_missing(conn, "evidence_items", "file", "TEXT NOT NULL DEFAULT ''")?;
+    add_column_if_missing(
+        conn,
+        "evidence_items",
+        "confidence",
+        "TEXT NOT NULL DEFAULT 'low'",
+    )?;
+    add_column_if_missing(
+        conn,
+        "evidence_items",
+        "value",
+        "TEXT NOT NULL DEFAULT 'context'",
+    )?;
     conn.execute(
         "INSERT OR IGNORE INTO schema_migrations (namespace, version, applied_at)
          VALUES ('evidence', 2, strftime('%s','now'))",
+        [],
+    )
+    .map_err(map_db_err("failed to record evidence schema migration"))?;
+    conn.execute(
+        "INSERT OR IGNORE INTO schema_migrations (namespace, version, applied_at)
+         VALUES ('evidence', 3, strftime('%s','now'))",
         [],
     )
     .map_err(map_db_err("failed to record evidence schema migration"))?;

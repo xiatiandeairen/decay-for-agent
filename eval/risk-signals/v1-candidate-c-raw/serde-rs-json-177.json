@@ -1,0 +1,300 @@
+{
+  "candidate": {
+    "id": "serde-rs-json-177",
+    "repo": "serde-rs/json",
+    "url": "https://github.com/serde-rs/json/pull/177"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "6848cadd3d816c273577dfdd865b5341d139885c",
+    "body": "",
+    "comments": [
+      {
+        "author": {
+          "login": "bjorn3"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Added a test and it doesn't heap allocate anymore.",
+        "createdAt": "2016-12-24T14:26:04Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI2OTA4NjM3NQ==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/177#issuecomment-269086375",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> This has probably been discussed before... I'm not sure we want this, and if we do, we need deserialization along with it\r\n\r\nWe do want this. The discussion is in #45. Do you have any reasons against?",
+        "createdAt": "2016-12-24T16:50:19Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI2OTA5MTYwNA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/177#issuecomment-269091604",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "oli-obk"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> Do you have any reasons against?\r\n\r\nNo, I want this, but I didn't remember that issue or what became of the discussion. Let's do it",
+        "createdAt": "2016-12-24T21:32:16Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI2OTEwMTIxMw==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/177#issuecomment-269101213",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "bjorn3"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Pushed a commit to improve build times on travis. Feel free to omit it.",
+        "createdAt": "2016-12-25T13:49:09Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI2OTEyMzUyNw==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/177#issuecomment-269123527",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "oli-obk"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Hmm github doesn't allow me to approve @dtolnay's requested changes\r\n\r\nEverything looks good to me now. Also, good idea with the cargo cache. I wonder if that will go into crazy overdrive someday with incremental compilation.",
+        "createdAt": "2016-12-25T13:51:28Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI2OTEyMzYyOA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/177#issuecomment-269123628",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "arthurprs"
+        },
+        "authorAssociation": "NONE",
+        "body": "Did we regress this between 0.9 and 1.0? I'm still investigating but I have some code choking on deserializing a struct containing a map<int,...>",
+        "createdAt": "2017-04-27T17:15:36Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5Nzc4MDUwNg==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/177#issuecomment-297780506",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Yes, I'm working on a fix.",
+        "createdAt": "2017-04-27T17:44:21Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDI5Nzc4Nzg4Mg==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/serde-rs/json/pull/177#issuecomment-297787882",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": ".travis.yml"
+      },
+      {
+        "additions": 26,
+        "changeType": "MODIFIED",
+        "deletions": 20,
+        "path": "json/src/ser.rs"
+      },
+      {
+        "additions": 41,
+        "changeType": "MODIFIED",
+        "deletions": 4,
+        "path": "json_tests/tests/test_json.rs"
+      }
+    ],
+    "headRefName": "patch-3",
+    "headRefOid": "43da9352c944dd47060b43b5c3be7e45d1ee7c09",
+    "labels": [],
+    "mergedAt": "2016-12-25T15:25:39Z",
+    "number": 177,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "oli-obk"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Also needs a test for ints as keys\r\n\r\nThis has probably been discussed before... I'm not sure we want this, and if we do, we need deserialization along with it",
+        "commit": {
+          "oid": "a197ff888448c397b47e5889320e56d718945b17"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MTQzNTM5MDk=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "CHANGES_REQUESTED",
+        "submittedAt": "2016-12-24T14:18:31Z"
+      },
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "1215e8bfe701876df1425a7c72abac19ff51a092"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MTQzNTU0MTA=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "CHANGES_REQUESTED",
+        "submittedAt": "2016-12-24T17:03:59Z"
+      },
+      {
+        "author": {
+          "login": "bjorn3"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "1215e8bfe701876df1425a7c72abac19ff51a092"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MTQzNjE2NTc=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2016-12-25T09:08:58Z"
+      },
+      {
+        "author": {
+          "login": "bjorn3"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "1215e8bfe701876df1425a7c72abac19ff51a092"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MTQzNjE2NzM=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2016-12-25T09:10:19Z"
+      },
+      {
+        "author": {
+          "login": "oli-obk"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "20b29dda01f137c7a819ea3cd05d0bf12915c7bb"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MTQzNjE5NTg=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2016-12-25T09:38:43Z"
+      },
+      {
+        "author": {
+          "login": "oli-obk"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "20b29dda01f137c7a819ea3cd05d0bf12915c7bb"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MTQzNjE5NjQ=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2016-12-25T09:39:39Z"
+      },
+      {
+        "author": {
+          "login": "oli-obk"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "20b29dda01f137c7a819ea3cd05d0bf12915c7bb"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MTQzNjE5NzE=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2016-12-25T09:40:11Z"
+      },
+      {
+        "author": {
+          "login": "oli-obk"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "20b29dda01f137c7a819ea3cd05d0bf12915c7bb"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MTQzNjE5NzY=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2016-12-25T09:40:29Z"
+      },
+      {
+        "author": {
+          "login": "bjorn3"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "1215e8bfe701876df1425a7c72abac19ff51a092"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MTQzNjQ2NjY=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2016-12-25T14:09:22Z"
+      },
+      {
+        "author": {
+          "login": "dtolnay"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "43da9352c944dd47060b43b5c3be7e45d1ee7c09"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3MTQzNjU0ODA=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2016-12-25T15:25:19Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "Allow integers to be used as map keys",
+    "url": "https://github.com/serde-rs/json/pull/177"
+  }
+}

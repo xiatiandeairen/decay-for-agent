@@ -1,0 +1,40 @@
+{
+  "case_id": "BurntSushi-ripgrep-3174",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "if ig.0.dir.as_path() == Path::new(\".\") {\n                                return path;\n                            }"
+      ],
+      "rank": 1,
+      "rationale": "Guard compares ig.0.dir exactly to Path::new(\".\"). Equivalent forms (e.g. \"./\", empty, or normalized variants reaching this code) would skip the guard and still hit the prefix-strip path that can man\u2026",
+      "risk_signal": "assumption_boundary",
+      "subject": "crates/ignore/src/dir.rs:matched_ignore",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "let without_dot_slash =\n                                strip_if_is_prefix(\"./\", ig.0.dir.as_path());\n                            let relative_base =\n                                strip_if_is_prefix(without_dot_slash, path);"
+      ],
+      "rank": 2,
+      "rationale": "When ig.0.dir is exactly \"./\", without_dot_slash becomes empty; using an empty prefix as the second arg to strip_if_is_prefix may then strip nothing or unexpectedly match, with behavior not covered b\u2026",
+      "risk_signal": "assumption_boundary",
+      "subject": "crates/ignore/src/dir.rs:matched_ignore",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "dir.create(\"subdir/.foo.txt\", \"text\");\n+    dir.create(\".ignore\", \"!.foo.txt\");"
+      ],
+      "rank": 3,
+      "rationale": "Regression test only exercises a single hidden file under one subdir with simple whitelist. It does not cover nested hidden dirs, hidden files at root, or ig.0.dir variants like \"./\" that the new gua\u2026",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tests/regression.rs:r3173_hidden_whitelist_only_dot",
+      "value": "supporting"
+    }
+  ]
+}

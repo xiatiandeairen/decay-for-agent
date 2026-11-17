@@ -1,0 +1,4 @@
+M	CHANGELOG.md
+M	crates/printer/src/hyperlink/aliases.rs
+M	crates/searcher/src/line_buffer.rs
+M	crates/searcher/src/searcher/glue.rs

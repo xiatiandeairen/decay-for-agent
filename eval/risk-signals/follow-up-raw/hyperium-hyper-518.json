@@ -1,0 +1,47 @@
+{
+  "case_id": "hyperium-hyper-518",
+  "refs": [
+    {
+      "detail": {
+        "body": "When the `Client::set_ssl_verifier` method is called, it will discard any previously existing `Connector` instance that the `Client` was instantiated to use. This wasn't a problem before, when the connectors were largely stateless, but with the introduction of a `Pool` connector, this means that the pool's config will be dropped (replaced with the default one) and the client will use a brand new set of connections, instead of the originally intended ones.\n",
+        "closedAt": "2015-05-10T05:46:43Z",
+        "comments": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "This is true. Before, it was possible when `Client` was generic over the NetworkConnector. Perhaps such a method `set_ssl_verifier` should be added to the `NetworkConnector` trait...\n",
+            "createdAt": "2015-05-02T00:53:50Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDk4MjcxOTc5",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/495#issuecomment-98271979",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2015-05-01T15:26:57Z",
+        "labels": [
+          {
+            "color": "fbca04",
+            "description": "Area: client.",
+            "id": "MDU6TGFiZWwxMjgzOTk4NDE=",
+            "name": "A-client"
+          }
+        ],
+        "number": 495,
+        "state": "CLOSED",
+        "title": "Client: Setting a custom SSL verifier discards previous Connector",
+        "url": "https://github.com/hyperium/hyper/issues/495"
+      },
+      "target": {
+        "number": 495,
+        "reason": "SSL verifier connector preservation report.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    }
+  ]
+}

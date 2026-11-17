@@ -1,0 +1,63 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Title names panic and corner case; production utility and regression test changed.",
+    "id": "BurntSushi-ripgrep-3182",
+    "limitations": "Needs full regex/replacement semantic context.",
+    "production_files": [
+      "crates/printer/src/util.rs"
+    ],
+    "repo": "BurntSushi/ripgrep",
+    "risk_summary": "Replacement handling could panic in a look-around corner case.",
+    "signal_ids": [
+      "assumption_boundary",
+      "non_happy_path",
+      "risk_path_test_gap"
+    ],
+    "source_refs": [
+      "https://github.com/BurntSushi/ripgrep/pull/3182"
+    ],
+    "status": "candidate",
+    "test_files": [
+      "tests/regression.rs"
+    ],
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3182",
+    "why_high_value": "User input pattern replacement can crash output handling.",
+    "why_not_noise": "Specific panic path with production and regression test evidence."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "916415857f084e63efda03cf25a67fe7f6d24244",
+    "body": "The abstraction boundary fuck up is the gift that keeps on giving. It\nturns out that the invariant that the match would never exceed the range\ngiven is not always true. So we kludge around it.\n\nFixes #3180\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 4,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "CHANGELOG.md"
+      },
+      {
+        "additions": 10,
+        "changeType": "MODIFIED",
+        "deletions": 4,
+        "path": "crates/printer/src/util.rs"
+      },
+      {
+        "additions": 13,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/regression.rs"
+      }
+    ],
+    "headRefName": "ag/fix-printer-panic",
+    "headRefOid": "1e80e6e8a4ba4126e04df36aa9558bf6cb6ce73c",
+    "labels": [],
+    "mergedAt": "2025-10-12T21:25:20Z",
+    "number": 3182,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "printer: fix panic in replacements in look-around corner case",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3182"
+  }
+}

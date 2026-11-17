@@ -1,0 +1,40 @@
+{
+  "case_id": "hyperium-hyper-3365",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "timeout: config.idle_timeout.filter(|&t| t > Duration::ZERO),"
+      ],
+      "rank": 1,
+      "rationale": "Some(Duration::ZERO) is silently coerced to None, collapsing the 'zero timeout configured' boundary into 'no timeout' without surfacing the rejection to the caller.",
+      "risk_signal": "assumption_boundary",
+      "subject": "src/client/pool.rs:Pool::new",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "timeout: config.idle_timeout.filter(|&t| t > Duration::ZERO),"
+      ],
+      "rank": 2,
+      "rationale": "Config::idle_timeout semantics change: previously any Some value was stored verbatim; now Some(ZERO) is dropped, altering downstream interval/timer behavior for existing callers.",
+      "risk_signal": "external_contract",
+      "subject": "src/client/pool.rs:Pool::new",
+      "value": "direct"
+    },
+    {
+      "confidence": "low",
+      "evidence_refs": [
+        "timeout: config.idle_timeout.filter(|&t| t > Duration::ZERO),"
+      ],
+      "rank": 3,
+      "rationale": "Diff introduces a new boundary condition on idle_timeout but contains no accompanying test asserting the Duration::ZERO filtering behavior.",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "src/client/pool.rs:Pool::new",
+      "value": "supporting"
+    }
+  ]
+}

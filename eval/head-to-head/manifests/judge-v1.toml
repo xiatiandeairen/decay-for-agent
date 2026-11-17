@@ -1,0 +1,48 @@
+# Frozen manifest for the head-to-head judge v1.
+#
+# WARNING: this file is the freeze contract for the AI judge. Once committed,
+# do not edit. To change the judge model, prompt, or schema, open a v2 manifest
+# (`manifests/judge-v2.toml`). The runner refuses to execute when the on-disk
+# prompt / schema sha256 does not match the values below.
+#
+# The judge is intentionally allowed to see PR full metadata; this is the
+# orthogonal asymmetry to the AI baseline (which sees only the diff). A judge
+# must define ground truth, and ground truth requires PR intent.
+
+version = "head-to-head-judge-manifest.v1"
+manifest_id = "judge-v1"
+
+[model]
+name = "claude-opus-4-7"
+provider = "anthropic-claude-cli"
+cli_version_min = "2.1.0"
+
+[freeze]
+prompt_path = "eval/head-to-head/prompts/judge-v1.md"
+prompt_sha256 = "6f2cf4bb9d392fead0c491af50200bf29923f32435d9d0e66fdb219bec96dfe7"
+schema_path = "eval/head-to-head/schemas/judge-output.schema.json"
+schema_sha256 = "43d84c609078491d857ee3e1ccce2244bde7be8b49df706c595d4d6ad6a8c559"
+frozen_by = "sprint-20260604-130055-291"
+frozen_at = "2026-06-04T00:00:00Z"
+
+# What the judge is allowed to read for each case. Unlike the AI baseline,
+# the judge is allowed (in fact, required) to consume PR metadata so that
+# ground truth can be defined.
+[fairness]
+allowed_inputs = [
+  "pr.json",
+  "diff.patch",
+  "files.txt",
+  "decay.stdout",
+  "semantic-findings.json",
+  "ai-baseline.normalized.json"
+]
+denied_inputs = [
+  "repository_source_outside_diff"
+]
+
+# Retry policy for transient claude CLI failures.
+[retry]
+max_attempts = 3
+initial_backoff_seconds = 4
+backoff_multiplier = 2.0

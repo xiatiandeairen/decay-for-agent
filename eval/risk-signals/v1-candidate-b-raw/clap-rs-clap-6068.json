@@ -1,0 +1,406 @@
+{
+  "candidate": {
+    "id": "clap-rs-clap-6068",
+    "repo": "clap-rs/clap",
+    "url": "https://github.com/clap-rs/clap/pull/6068"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "7f164521b29e547cef396608246f977edbe3b616",
+    "body": "fix https://github.com/clap-rs/clap/issues/6067\r\n\r\nfix https://github.com/clap-rs/clap/issues/6073",
+    "comments": [
+      {
+        "author": {
+          "login": "GilShoshan94"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "I will probably have to update the ui tests as well",
+        "createdAt": "2025-07-09T23:02:19Z",
+        "id": "IC_kwDOAd3Usc62DgCx",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/6068#issuecomment-3054370993",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "GilShoshan94"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "I updated the ui testes as well in a separated commit",
+        "createdAt": "2025-07-09T23:20:52Z",
+        "id": "IC_kwDOAd3Usc62Dpn5",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/6068#issuecomment-3054410233",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "GilShoshan94"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "@epage \r\nThe PR is ready.\r\n\r\nI added the `visible long flag aliases`, as well as in the debug and adapted the ui tests.\r\nThe only thing not strictly necessary I did is to rename in one closure `a` to `s`, because it was confusing as `a` is already the function argument (`a: &Command`)",
+        "createdAt": "2025-07-09T23:24:18Z",
+        "id": "IC_kwDOAd3Usc62Dq2L",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/6068#issuecomment-3054415243",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "GilShoshan94"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Hi @epage,\r\n\r\nI have an issue in the CI because the test I made has the help to wide and I think it wraps. \r\nSee the CI error:\r\n<img width=\"1960\" height=\"1342\" alt=\"image\" src=\"https://github.com/user-attachments/assets/166931c2-522a-49bb-9d22-a670e3ee432e\" />\r\n\r\nI tried to fix this, by setting `.term_width(usize::MAX)` but it didn't help....\r\n`.term_width(0)` didn't solve it either.\r\n\r\nI am still looking for a solution, in case you see this before I solve it, your help and guidance will be appreciated as always.",
+        "createdAt": "2025-07-14T22:09:49Z",
+        "id": "IC_kwDOAd3Usc63Dox-",
+        "includesCreatedEdit": true,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/6068#issuecomment-3071183998",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "GilShoshan94"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "@epage \r\nI digged more into the `help_template.rs` to understand why it is wrapping.\r\nI am a bit confused as the test is working fine on my machine....\r\nI tried with `.term_width(120)` and it did not pass the CI still.\r\n\r\nI saw in the code that `term_w` default to 100, unrelated to the feature `wrap_help`.\r\nI follow the code, and I don't find why it does not behave the way I expected...\r\nAnd why it behaves differently in my machine and in the CI...\r\n\r\nI added one more test to check all the aliases (visible or not) are working, and I gated the tests for visible aliases under the feature `wrap_help`. \r\nNow it works.\r\n\r\nLet me know if this is good now.",
+        "createdAt": "2025-07-15T00:24:59Z",
+        "id": "IC_kwDOAd3Usc63Ejv6",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/6068#issuecomment-3071425530",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Yeah, I'd have to dig more into the wrapping issue.  Should be good for now though.\r\n\r\nBesides the test issue, this all looks good.  Thanks!",
+        "createdAt": "2025-07-18T17:31:02Z",
+        "id": "IC_kwDOAd3Usc64MEoD",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/6068#issuecomment-3090172419",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "GilShoshan94"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Hi @epage,\r\n\r\nI fixed the test issue.\r\nIt should be ready to be merged now I believe.",
+        "createdAt": "2025-07-21T21:32:22Z",
+        "id": "IC_kwDOAd3Usc64ueF4",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/6068#issuecomment-3099189624",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks!",
+        "createdAt": "2025-07-30T02:16:22Z",
+        "id": "IC_kwDOAd3Usc661wA_",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "HOORAY",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/clap-rs/clap/pull/6068#issuecomment-3134652479",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 9,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "clap_builder/src/output/help_template.rs"
+      },
+      {
+        "additions": 81,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/builder/flag_subcommands.rs"
+      },
+      {
+        "additions": 99,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/builder/help.rs"
+      },
+      {
+        "additions": 2,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "tests/ui/arg_required_else_help_stderr.toml"
+      },
+      {
+        "additions": 2,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "tests/ui/h_flag_stdout.toml"
+      },
+      {
+        "additions": 2,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "tests/ui/help_cmd_stdout.toml"
+      },
+      {
+        "additions": 2,
+        "changeType": "MODIFIED",
+        "deletions": 2,
+        "path": "tests/ui/help_flag_stdout.toml"
+      }
+    ],
+    "headRefName": "master",
+    "headRefOid": "debaa30eb5c8a77abcf2c381758628fbb904a822",
+    "labels": [],
+    "mergedAt": "2025-07-30T02:16:25Z",
+    "number": 6068,
+    "reviewDecision": "",
+    "reviews": [
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "c7a7342b652c187298b7a46843bc79c2b963550d"
+        },
+        "id": "PRR_kwDOAd3Usc6zLCdu",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-07-10T14:38:14Z"
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "9aa0fe18753ca7e396c546ec5c47b3f0eed5315b"
+        },
+        "id": "PRR_kwDOAd3Usc6zLFU6",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-07-10T14:40:10Z"
+      },
+      {
+        "author": {
+          "login": "GilShoshan94"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "c7a7342b652c187298b7a46843bc79c2b963550d"
+        },
+        "id": "PRR_kwDOAd3Usc6zL0pt",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-07-10T15:20:48Z"
+      },
+      {
+        "author": {
+          "login": "GilShoshan94"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "9aa0fe18753ca7e396c546ec5c47b3f0eed5315b"
+        },
+        "id": "PRR_kwDOAd3Usc6zMAvz",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-07-10T15:32:06Z"
+      },
+      {
+        "author": {
+          "login": "GilShoshan94"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "c7a7342b652c187298b7a46843bc79c2b963550d"
+        },
+        "id": "PRR_kwDOAd3Usc6zMB1F",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-07-10T15:32:54Z"
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "9aa0fe18753ca7e396c546ec5c47b3f0eed5315b"
+        },
+        "id": "PRR_kwDOAd3Usc6zMUcv",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-07-10T15:53:47Z"
+      },
+      {
+        "author": {
+          "login": "GilShoshan94"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "9aa0fe18753ca7e396c546ec5c47b3f0eed5315b"
+        },
+        "id": "PRR_kwDOAd3Usc6z29FK",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-07-14T19:35:10Z"
+      },
+      {
+        "author": {
+          "login": "GilShoshan94"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "c7a7342b652c187298b7a46843bc79c2b963550d"
+        },
+        "id": "PRR_kwDOAd3Usc6z4jYX",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-07-14T21:58:52Z"
+      },
+      {
+        "author": {
+          "login": "GilShoshan94"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "9aa0fe18753ca7e396c546ec5c47b3f0eed5315b"
+        },
+        "id": "PRR_kwDOAd3Usc6z4kIy",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-07-14T22:01:06Z"
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "7a133de36efa7df8ed52a101d6896586c7ebf661"
+        },
+        "id": "PRR_kwDOAd3Usc6027zI",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-07-18T17:28:44Z"
+      },
+      {
+        "author": {
+          "login": "GilShoshan94"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "7a133de36efa7df8ed52a101d6896586c7ebf661"
+        },
+        "id": "PRR_kwDOAd3Usc603g0x",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-07-18T18:32:30Z"
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "7a133de36efa7df8ed52a101d6896586c7ebf661"
+        },
+        "id": "PRR_kwDOAd3Usc603kIx",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-07-18T18:38:21Z"
+      },
+      {
+        "author": {
+          "login": "GilShoshan94"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "7a133de36efa7df8ed52a101d6896586c7ebf661"
+        },
+        "id": "PRR_kwDOAd3Usc61LGfX",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-07-21T19:59:45Z"
+      },
+      {
+        "author": {
+          "login": "GilShoshan94"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "7a133de36efa7df8ed52a101d6896586c7ebf661"
+        },
+        "id": "PRR_kwDOAd3Usc61MVUd",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2025-07-21T21:27:50Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix: added visible long flag aliases in help",
+    "url": "https://github.com/clap-rs/clap/pull/6068"
+  }
+}

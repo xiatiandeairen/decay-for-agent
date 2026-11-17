@@ -1,0 +1,40 @@
+{
+  "case_id": "hyperium-hyper-3616",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "// Connection (`inner`) is `None` if it was upgraded (and `poll` is `Ready`).\n        // In that case, we don't need to call `graceful_shutdown`.\n        if let Some(conn) = self.inner.as_mut() {\n            Pin::new(conn).graceful_shutdown()\n        }"
+      ],
+      "rank": 1,
+      "rationale": "graceful_shutdown changes from panicking to silently no-op when inner=None (post-upgrade). Behavior now depends on hidden upgrade state; callers cannot distinguish 'shutdown initiated' from 'ignored'.",
+      "risk_signal": "state_transition",
+      "subject": "src/server/conn/http1.rs:graceful_shutdown",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "match ready!(Pin::new(&mut self.inner.as_mut().unwrap().conn).poll(cx)) {"
+      ],
+      "rank": 2,
+      "rationale": "poll still unwraps self.inner. The new comment asserts inner=None only after poll is Ready, but poll itself would panic if invoked in that state \u2014 asymmetric handling vs graceful_shutdown.",
+      "risk_signal": "assumption_boundary",
+      "subject": "src/server/conn/http1.rs:UpgradeableConnection::poll",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "// graceful shutdown doesn't cause issues or panic. It should be ignored after upgrade\n    conn.as_mut().graceful_shutdown();"
+      ],
+      "rank": 3,
+      "rationale": "Test covers graceful_shutdown post-upgrade but does not assert ordering (shutdown before poll completes upgrade) nor poll-after-upgrade behavior, leaving the inner.unwrap() path in poll untested.",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tests/server.rs:http1_graceful_shutdown_after_upgrade",
+      "value": "supporting"
+    }
+  ]
+}

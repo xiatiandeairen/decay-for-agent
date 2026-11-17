@@ -1,0 +1,3 @@
+ crates/printer/src/summary.rs |  6 +++++-
+ tests/regression.rs           | 41 +++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 46 insertions(+), 1 deletion(-)

@@ -1,0 +1,73 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Title states the panic and upgrade condition; production and test files changed.",
+    "id": "hyperium-hyper-3616",
+    "limitations": "Needs full diff context before frozen eval.",
+    "production_files": [
+      "src/server/conn/http1.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "Calling graceful_shutdown after an HTTP/1 connection upgrade could panic.",
+    "signal_ids": [
+      "lifecycle_ordering",
+      "state_transition",
+      "assumption_boundary"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/3616"
+    ],
+    "status": "candidate",
+    "test_files": [
+      "tests/server.rs"
+    ],
+    "url": "https://github.com/hyperium/hyper/pull/3616",
+    "why_high_value": "Upgrade changes lifecycle state and can crash shutdown handling.",
+    "why_not_noise": "Specific panic condition in production connection lifecycle."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "bc9a86f58f8bd5c35b2bfd7e632ec132280d79ba",
+    "body": "Closes #3615\r\n\r\nAdded test which fails without these changes",
+    "comments": [],
+    "files": [
+      {
+        "additions": 5,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/server/conn/http1.rs"
+      },
+      {
+        "additions": 61,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/server.rs"
+      }
+    ],
+    "headRefName": "fix-3615",
+    "headRefOid": "ff109f584d9d280a93fce29047c90c7088e2c6f8",
+    "labels": [],
+    "mergedAt": "2024-03-31T15:30:31Z",
+    "number": 3616,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "dswij"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "thank you!",
+        "commit": {
+          "oid": "ff109f584d9d280a93fce29047c90c7088e2c6f8"
+        },
+        "id": "PRR_kwDOAWaYQc51cJVM",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2024-03-31T15:28:46Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix: avoid panic when calling `graceful_shutdown` if H1 connection was upgraded",
+    "url": "https://github.com/hyperium/hyper/pull/3616"
+  }
+}

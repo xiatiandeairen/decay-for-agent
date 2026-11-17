@@ -1,0 +1,40 @@
+{
+  "case_id": "serde-rs-json-757",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "-        let raw = str::from_utf8(raw).unwrap();\n+        let raw = match str::from_utf8(raw) {\n+            Ok(raw) => raw,\n+            Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint),\n+        };"
+      ],
+      "rank": 1,
+      "rationale": "Replaces an unwrap-induced panic on non-UTF-8 raw buffer with a propagated InvalidUnicodeCodePoint error; changes externally observable failure mode from panic to Err.",
+      "risk_signal": "error_propagation",
+      "subject": "src/read.rs:end_raw_buffering",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "let raw = &self.slice[self.raw_buffering_start_index..self.index];"
+      ],
+      "rank": 2,
+      "rationale": "Raw buffer slice between start_index and current index was assumed valid UTF-8; assumption broken when input bytes (e.g. \\xCE\\xF8) reach RawValue path, now guarded by from_utf8 check.",
+      "risk_signal": "assumption_boundary",
+      "subject": "src/read.rs:end_raw_buffering",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "let raw_value_err = serde_json::from_slice::<Box<RawValue>>(j).unwrap_err();"
+      ],
+      "rank": 3,
+      "rationale": "New test only exercises SliceRead via from_slice; the IoRead path (from_reader) used elsewhere in test_boxed_raw_value is not covered for invalid-UTF-8 RawValue input.",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tests/test.rs:test_raw_invalid_utf8",
+      "value": "supporting"
+    }
+  ]
+}

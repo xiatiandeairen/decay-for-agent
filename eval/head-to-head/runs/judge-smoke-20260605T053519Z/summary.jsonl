@@ -1,0 +1,5 @@
+{"attempts": 1, "case_id": "hyperium-hyper-3616", "flags": [], "status": "ok"}
+{"case_id": "tokio-rs-tokio-7922", "normalize_error": "ground_truth_draft: unexpected fields ['judgement_drafts']", "status": "judge-failed"}
+{"attempts": 1, "case_id": "hyperium-hyper-4069", "flags": ["ai_baseline: ai=1, mechanical=0"], "status": "ok"}
+{"attempts": 1, "case_id": "hyperium-hyper-518", "flags": ["ai_baseline: ai=2, mechanical=1"], "status": "ok"}
+{"attempts": 1, "case_id": "tokio-rs-tokio-8076", "flags": [], "status": "ok"}

@@ -1,0 +1,12 @@
+{
+  "case_id": "hyper-3998",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"hyper-3998\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208\",\"ground_truth_draft\":{\"high_value\":true,\"primary_signal_ids\":[\"error_propagation\"],\"subject_files\":[\"src/body/incoming.rs\"],\"expected_behavior\":\"In Incoming::poll_frame's H2 branch, reading trailers must treat h2 RST_STREAM with NO_ERROR as a graceful end (Poll::Ready(None)) instead of surfacing it as a body error. The data-frame branch is also re-shaped so only NO_ERROR maps to Ready(None); CANCEL now propagates as an error.\",\"rationale_from_pr_metadata\":\"PR title 'fix(client): reading trailers shouldn't propagate NO_ERROR from early response' and body explicitly extend the #3275 body-read fix to trailers, citing RFC 7540 \u00a78.1 RST_STREAM(NO_ERROR) early-response semantics. A trailers-only variant of http2_responds_before_consuming_request_body is added that fails without the patch, anchoring the trailer error-propagation change as the central fix.\"},\"judgement_drafts\":{\"fact_only\":{\"top3_total\":3,\"top3_useful\":2,\"actionable\":true,\"missed_high_risk_count\":0,\"weak_only_top_risk_count\":0,\"notes\":\"Top-2 are semantic error_propagation_changed hits on Poll::Ready(None) in incoming.rs, matching the real mechanism; #3 is complexity worsened on poll_frame (supporting but correctly localized).\"},\"semantic_filtered\":{\"top3_total\":2,\"top3_useful\":1,\"actionable\":true,\"missed_high_risk_count\":0,\"weak_only_top_risk_count\":0,\"notes\":\"Finding 1 frames error propagation around Poll::Ready(None) in incoming.rs \u2014 direct match to the trailers/data NO_ERROR fix. Finding 2 is structural complexity, supporting only.\"},\"ai_baseline\":{\"top3_total\":3,\"top3_useful\":2,\"actionable\":true,\"missed_high_risk_count\":0,\"weak_only_top_risk_count\":0,\"notes\":\"Rank 2 nails the exact fix: trailers branch now swallows NO_ERROR via Ready(None). Rank 1 additionally catches the CANCEL narrowing side-effect. Rank 3 is a supporting test-gap observation.\"}}}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

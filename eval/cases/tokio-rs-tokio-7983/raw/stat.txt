@@ -1,0 +1,5 @@
+ tokio/src/runtime/io/driver/uring.rs               |  35 +++++-
+ tokio/tests/fs_uring_cancel_open.rs                |  71 +++++++++++
+ ...s_uring_completed_then_dropped_before_repoll.rs | 130 +++++++++++++++++++++
+ tokio/tests/fs_uring_runtime_shutdown.rs           |  78 +++++++++++++
+ 4 files changed, 310 insertions(+), 4 deletions(-)

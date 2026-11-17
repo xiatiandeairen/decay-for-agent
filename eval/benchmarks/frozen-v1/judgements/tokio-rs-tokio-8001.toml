@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "tokio-rs-tokio-8001"
+repo = "tokio-rs/tokio"
+pr = 8001
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "UDP error-readiness propagation."
+
+[fact_only]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "True risk is UDP SO_ERROR/error-readiness propagation. Fact output flags prod_change_with_tests and history context on the right file but does not surface error readiness or propagation."
+
+[semantic_filtered]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "Semantic mentions UDP behavior invariants but only from generic prod/test and history evidence; it still misses SO_ERROR readiness semantics."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = false
+notes = "No material semantic gain; weak evidence remains weak."

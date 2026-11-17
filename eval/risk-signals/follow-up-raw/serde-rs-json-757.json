@@ -1,0 +1,47 @@
+{
+  "case_id": "serde-rs-json-757",
+  "refs": [
+    {
+      "detail": {
+        "body": "Very similar to this issue: https://github.com/serde-rs/json/issues/99\r\n\r\nHowever, I ran into this problem when deserializing to a RawValue.\r\n\r\n```\r\nlet json_str2 = &[ b'\"', b'\\xCE', b'\\xF8', b'\"'];\r\nlet v2: serde_json::Result<Box<serde_json::value::RawValue>> = serde_json::from_slice(json_str2);\r\n```\r\n\r\nI get this kind of backtrace:\r\n\r\n```\r\nthread 'main' panicked at 'called `Result::unwrap()` on an `Err` value: Utf8Error { valid_up_to: 1, error_len: Some(1) }', C:\\Users\\X\\.cargo\\registry\\src\\github.com-1ecc6299db9ec823\\serde_json-1.0.63\\src\\read.rs:590:39\r\nstack backtrace:\r\n   0: std::panicking::begin_panic_handler\r\n             at /rustc/cb75ad5db02783e8b0222fee363c5f63f7e2cf5b\\/library\\std\\src\\panicking.rs:493\r\n   1: core::panicking::panic_fmt\r\n             at /rustc/cb75ad5db02783e8b0222fee363c5f63f7e2cf5b\\/library\\core\\src\\panicking.rs:92\r\n   2: core::option::expect_none_failed\r\n             at /rustc/cb75ad5db02783e8b0222fee363c5f63f7e2cf5b\\/library\\core\\src\\option.rs:1268\r\n   3: core::result::Result<str, core::str::error::Utf8Error>::unwrap<str,core::str::error::Utf8Error>\r\n             at C:\\Users\\X\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\src\\rust\\library\\core\\src\\result.rs:973\r\n   4: serde_json::read::{{impl}}::end_raw_buffering<serde_json::raw::{{impl}}::deserialize::BoxedVisitor>\r\n             at C:\\Users\\X\\.cargo\\registry\\src\\github.com-1ecc6299db9ec823\\serde_json-1.0.63\\src\\read.rs:590\r\n   5: serde_json::de::Deserializer<serde_json::read::SliceRead>::deserialize_raw_value<serde_json::read::SliceRead,serde_json::raw::{{impl}}::deserialize::BoxedVisitor>\r\n             at C:\\Users\\X\\.cargo\\registry\\src\\github.com-1ecc6299db9ec823\\serde_json-1.0.63\\src\\de.rs:1194\r\n   6: serde_json::de::{{impl}}::deserialize_newtype_struct<serde_json::read::SliceRead,serde_json::raw::{{impl}}::deserialize::BoxedVisitor>\r\n             at C:\\Users\\X\\.cargo\\registry\\src\\github.com-1ecc6299db9ec823\\serde_json-1.0.63\\src\\de.rs:1695\r\n   7: serde_json::raw::{{impl}}::deserialize<mut serde_json::de::Deserializer<serde_json::read::SliceRead>*>\r\n             at C:\\Users\\X\\.cargo\\registry\\src\\github.com-1ecc6299db9ec823\\serde_json-1.0.63\\src\\raw.rs:347\r\n   8: serde_json::de::from_trait<serde_json::read::SliceRead,alloc::boxed::Box<serde_json::raw::RawValue, alloc::alloc::Global>>\r\n             at C:\\Users\\X\\.cargo\\registry\\src\\github.com-1ecc6299db9ec823\\serde_json-1.0.63\\src\\de.rs:2386\r\n   9: serde_json::de::from_slice<alloc::boxed::Box<serde_json::raw::RawValue, alloc::alloc::Global>>\r\n             at C:\\Users\\X\\.cargo\\registry\\src\\github.com-1ecc6299db9ec823\\serde_json-1.0.63\\src\\de.rs:2544\r\n  10: gltf_data_packer::main\r\n             at .\\src\\main.rs:34\r\n  11: core::ops::function::FnOnce::call_once<fn(),tuple<>>\r\n             at C:\\Users\\X\\.rustup\\toolchains\\stable-x86_64-pc-windows-msvc\\lib\\rustlib\\src\\rust\\library\\core\\src\\ops\\function.rs:227\r\n```\r\n\r\nI encountered this issue when parsing a glTF-file: https://github.com/gltf-rs/gltf/issues/298",
+        "closedAt": "2021-02-28T04:54:05Z",
+        "comments": [
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Thanks, fixed in 1.0.64.",
+            "createdAt": "2021-02-28T04:59:15Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDc4NzM5NDk0Mw==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/755#issuecomment-787394943",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2021-02-26T09:17:34Z",
+        "labels": [
+          {
+            "color": "fc2929",
+            "description": "",
+            "id": "MDU6TGFiZWwyMTM0OTkyNTc=",
+            "name": "bug"
+          }
+        ],
+        "number": 755,
+        "state": "CLOSED",
+        "title": "Panic on input that is not valid UTF8 when deserializing to a RawValue",
+        "url": "https://github.com/serde-rs/json/issues/755"
+      },
+      "target": {
+        "number": 755,
+        "reason": "Invalid UTF-8 RawValue panic reproduction.",
+        "repo": "serde-rs/json",
+        "type": "issue"
+      }
+    }
+  ]
+}

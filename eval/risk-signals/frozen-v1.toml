@@ -1,0 +1,81 @@
+# M3 40-case frozen eval v1 product-effect validation set.
+#
+# This file defines the product validation target. It is intentionally stricter
+# than frozen-pilot-v1.toml. The set is not complete until it has 40 frozen
+# cases and status = "complete".
+
+version = "risk-signal-frozen-eval-v1"
+status = "complete"
+target_cases = 40
+actual_cases = 40
+source = "eval/risk-signals/eval-candidates.toml"
+runner_corpus = "eval/corpus/risk-signal-frozen-v1.toml"
+purpose = "Product-effect validation: compare fact-only vs semantic-filtered output without replacing cases to improve scores."
+limitations = "Frozen v1 is complete as a 40-case product-effect validation set, but product value still depends on running the comparison and reporting misses/noise honestly."
+
+case_ids = [
+  "tokio-rs-tokio-7991",
+  "tokio-rs-tokio-8001",
+  "hyperium-hyper-647",
+  "hyperium-hyper-3365",
+  "hyperium-hyper-228",
+  "hyperium-hyper-3261",
+  "hyperium-hyper-3616",
+  "tokio-rs-tokio-7922",
+  "BurntSushi-ripgrep-3182",
+  "serde-rs-json-757",
+  "hyper-4056",
+  "hyper-4061",
+  "hyper-3988",
+  "hyper-4043",
+  "hyper-4042",
+  "hyper-4038",
+  "hyper-3998",
+  "hyper-4011",
+  "hyper-3977",
+  "hyper-3185",
+  "ripgrep-3195",
+  "ripgrep-3189",
+  "ripgrep-3154",
+  "ripgrep-2885",
+  "hyperium-hyper-518",
+  "hyperium-hyper-3812",
+  "BurntSushi-ripgrep-454",
+  "BurntSushi-ripgrep-620",
+  "BurntSushi-ripgrep-762",
+  "hyperium-hyper-2544",
+  "hyperium-hyper-3275",
+  "serde-rs-json-521",
+  "tokio-rs-tokio-8021",
+  "tokio-rs-tokio-7983",
+  "hyperium-hyper-4069",
+  "BurntSushi-ripgrep-3174",
+  "BurntSushi-ripgrep-801",
+  "hyperium-hyper-3952",
+  "hyperium-hyper-3242",
+  "tokio-rs-tokio-8076",
+]
+
+[metrics]
+precision_at_top3_target = 0.75
+actionable_pr_rate_target = 0.70
+negative_control_silence_rate_target = 0.90
+missed_high_risk_count_max = 1
+weak_only_top_risk_max = 2
+
+[gap]
+missing_cases = 0
+reason = "Initial 40 real PR seed review produced 26 freeze_ready cases. Frozen fill A added 9 cases and frozen fill B added 5 cases after strict review. The 40-case frozen eval v1 target is complete."
+next_sources = [
+  "new high-confidence runtime/protocol/concurrency correctness PRs",
+  "split child cases for rollup PRs only when each child has clean ground truth",
+  "blocked candidates with newly collected independent repro or test evidence",
+]
+excluded_tracks_for_v1 = [
+  "platform performance without a dedicated performance signal",
+  "macro compile-time hygiene until macro evidence is in scope",
+  "build-only compatibility without executable build matrix evidence",
+  "revert-only cases where the original risky diff is not represented",
+  "duplicate aliases of already frozen PRs",
+  "rollup PRs that mix unrelated risk sources into one judgement",
+]

@@ -1,0 +1,56 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Previously accepted large-scale candidate; merged bug fix with regression test.",
+    "id": "ripgrep-3154",
+    "limitations": "Needs exact changed files and test path.",
+    "production_files": [
+      "crates/searcher/src/searcher/mod.rs"
+    ],
+    "repo": "BurntSushi/ripgrep",
+    "risk_summary": "PCRE2 multiline look-around with --files-with-matches needed a correctness fix.",
+    "signal_ids": [
+      "external_contract",
+      "non_happy_path",
+      "state_transition"
+    ],
+    "source_refs": [
+      "https://github.com/BurntSushi/ripgrep/pull/3154",
+      "eval/large-scale-50/candidates/open-source.toml"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3154",
+    "why_high_value": "Search output mode correctness is externally visible.",
+    "why_not_noise": "Specific option combination and regression test."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "491bf3f6d5bc1a621754440e291960f460a9c003",
+    "body": "The underlying issue here is #2528, which was introduced by commit\nefd9cfb2fc1f0233de9eda4c03416d32ef2c3ce8 which fixed another bug.\n\nFor the specific case of \"did a file match,\" we can always assume the\nmatch count is at least 1 here. But this doesn't fix the underlying\nproblem.\n\nFixes #3139\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 5,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "crates/printer/src/summary.rs"
+      },
+      {
+        "additions": 41,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/regression.rs"
+      }
+    ],
+    "headRefName": "ag/fix-i3139",
+    "headRefOid": "635afac2ebe52dcb5c8393567f204703d0c7c347",
+    "labels": [],
+    "mergedAt": "2025-09-22T13:12:16Z",
+    "number": 3154,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "printer: hack in a fix for `-l/--files-with-matches` when using `--pcre2 --multiline` with look-around",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/3154"
+  }
+}

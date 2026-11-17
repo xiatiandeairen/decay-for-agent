@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "risk-eval-judgement.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "risk-eval-judgement.v1"
+    },
+    "case_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repo": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pr": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "status": {
+      "enum": ["pending", "complete"]
+    },
+    "judge": {
+      "type": "string"
+    },
+    "judged_at": {
+      "type": "string"
+    },
+    "ground_truth_summary": {
+      "type": "string"
+    },
+    "ground_truth": {
+      "$ref": "#/$defs/ground_truth"
+    },
+    "fact_only": {
+      "$ref": "#/$defs/mode"
+    },
+    "semantic_filtered": {
+      "$ref": "#/$defs/mode"
+    },
+    "comparison": {
+      "$ref": "#/$defs/comparison"
+    },
+    "gate": {
+      "$ref": "#/$defs/gate"
+    }
+  },
+  "required": [
+    "version",
+    "case_id",
+    "repo",
+    "pr",
+    "status",
+    "judge",
+    "judged_at",
+    "ground_truth_summary",
+    "ground_truth",
+    "fact_only",
+    "semantic_filtered",
+    "comparison",
+    "gate"
+  ],
+  "$defs": {
+    "ground_truth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gate_role": {
+          "type": "string"
+        },
+        "high_value": {
+          "type": "boolean"
+        },
+        "primary_signal_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "expected_behavior": {
+          "type": "string"
+        },
+        "forbidden_claims": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required_context": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "gate_role",
+        "high_value",
+        "primary_signal_ids",
+        "expected_behavior",
+        "forbidden_claims",
+        "required_context",
+        "notes"
+      ]
+    },
+    "mode": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "top3_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "top3_useful": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "actionable": {
+          "type": "boolean"
+        },
+        "missed_high_risk_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "weak_only_top_risk_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "detection": {
+          "type": "string"
+        },
+        "value_verdict": {
+          "type": "string"
+        },
+        "evidence_valid": {
+          "type": "boolean"
+        },
+        "overclaim": {
+          "type": "boolean"
+        },
+        "forbidden_claim_breached": {
+          "type": "boolean"
+        },
+        "unsupported_scope_silence": {
+          "type": "boolean"
+        },
+        "next_check_useful": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "top3_total",
+        "top3_useful",
+        "actionable",
+        "missed_high_risk_count",
+        "weak_only_top_risk_count",
+        "detection",
+        "value_verdict",
+        "evidence_valid",
+        "overclaim",
+        "forbidden_claim_breached",
+        "unsupported_scope_silence",
+        "next_check_useful",
+        "notes"
+      ]
+    },
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "semantic_improved_ranking": {
+          "type": "boolean"
+        },
+        "semantic_reduced_noise": {
+          "type": "boolean"
+        },
+        "semantic_introduced_noise": {
+          "type": "boolean"
+        },
+        "semantic_net_value": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "semantic_improved_ranking",
+        "semantic_reduced_noise",
+        "semantic_introduced_noise",
+        "semantic_net_value",
+        "notes"
+      ]
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ground_truth_complete": {
+          "type": "boolean"
+        },
+        "forbidden_claims_checked": {
+          "type": "boolean"
+        },
+        "holdout_eligible": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ground_truth_complete",
+        "forbidden_claims_checked",
+        "holdout_eligible",
+        "notes"
+      ]
+    }
+  }
+}

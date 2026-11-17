@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "hyperium-hyper-3812"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "In Buffered::parse, when parse_headers returns None with curr_len==0 (a 1xx informational response was just consumed and emptied the buffer), partial_len must be reset to None instead of leaving the previous Some(_) value, otherwise the next parse uses stale partial_len and intermittently panics."
+
+[ai_baseline]
+top3_total = 3
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank 1 is direct/high on state_transition, pinpointing the new else-branch resetting partial_len on the 1xx-consumed empty-buffer path — exactly the bug fix. Ranks 2-3 are supporting but coherent. [mechanical-flag: ai_baseline: ai=1, mechanical=2]"

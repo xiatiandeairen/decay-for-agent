@@ -1,0 +1,12 @@
+{
+  "case_id": "hyper-4038",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"hyper-4038\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"assumption_boundary\",\"subject\":\"src/ffi/http_types.rs:hyper_request_headers\",\"evidence_refs\":[\"let req = non_null!(&mut *req ?= std::ptr::null_mut());\\n        hyper_headers::get_or_default(req.0.extensions_mut())\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Adds null-pointer boundary check on FFI input that previously dereferenced raw pointer unconditionally; null req now returns null_mut instead of UB.\"},{\"rank\":2,\"risk_signal\":\"assumption_boundary\",\"subject\":\"src/ffi/http_types.rs:hyper_response_headers\",\"evidence_refs\":[\"let resp = non_null!(&mut *resp ?= std::ptr::null_mut());\\n        hyper_headers::get_or_default(resp.0.extensions_mut())\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"Same null-check hardening as request_headers; mechanism: previously unsafe { &mut *resp } would UB on null, now returns null_mut sentinel via non_null! guard.\"},{\"rank\":3,\"risk_signal\":\"external_contract\",\"subject\":\"src/ffi/http_types.rs:hyper_request_set_uri_parts\",\"evidence_refs\":[\"let req = non_null!(&mut *req ?= hyper_code::HYPERE_INVALID_ARG);\\n        match builder.build() {\",\"builder = builder.scheme(scheme_bytes);\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"req null-check inserted after scheme/authority/path slice::from_raw_parts work; null req still performs raw_parts reads on non-null component pointers before returning INVALID_ARG.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

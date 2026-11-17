@@ -1,0 +1,104 @@
+{
+  "candidate": {
+    "id": "hyperium-hyper-3275",
+    "repo": "hyperium/hyper",
+    "url": "https://github.com/hyperium/hyper/pull/3275"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "a45d5d5a04369f93334fc893875d8d1a49054e04",
+    "body": "Closes #2872\r\n\r\nAdded test is failing against the current version (before this fix)\n\r\nBackport for `0.14.x`: https://github.com/hyperium/hyper/pull/3274\r\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 10,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/body/incoming.rs"
+      },
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/proto/mod.rs"
+      },
+      {
+        "additions": 57,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "tests/client.rs"
+      }
+    ],
+    "headRefName": "fix-rst-stream-error-for-early-response-h2",
+    "headRefOid": "e06502673c8792f080c835e502f03c9745511673",
+    "labels": [],
+    "mergedAt": "2023-07-26T19:47:07Z",
+    "number": 3275,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "DDtKey"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "5b8fc426ee9502198863e5972057d02815d4306e"
+        },
+        "id": "PRR_kwDOAWaYQc5b66po",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-07-23T01:04:58Z"
+      },
+      {
+        "author": {
+          "login": "DDtKey"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "",
+        "commit": {
+          "oid": "5b8fc426ee9502198863e5972057d02815d4306e"
+        },
+        "id": "PRR_kwDOAWaYQc5b7Uy7",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "COMMENTED",
+        "submittedAt": "2023-07-23T15:36:05Z"
+      },
+      {
+        "author": {
+          "login": "nox"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Seems good to me given we already do something similar for streams upgraded from HTTP/2.",
+        "commit": {
+          "oid": "e06502673c8792f080c835e502f03c9745511673"
+        },
+        "id": "PRR_kwDOAWaYQc5cOerO",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2023-07-26T09:44:11Z"
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "",
+        "commit": {
+          "oid": "e06502673c8792f080c835e502f03c9745511673"
+        },
+        "id": "PRR_kwDOAWaYQc5cS_3w",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2023-07-26T19:46:32Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "fix(client): early server response shouldn't propagate NO_ERROR",
+    "url": "https://github.com/hyperium/hyper/pull/3275"
+  }
+}

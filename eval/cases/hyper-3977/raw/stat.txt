@@ -1,0 +1,4 @@
+ Cargo.toml               |   5 -
+ src/proto/h1/dispatch.rs |  17 +---
+ tests/ready_stream.rs    | 234 -----------------------------------------------
+ 3 files changed, 2 insertions(+), 254 deletions(-)

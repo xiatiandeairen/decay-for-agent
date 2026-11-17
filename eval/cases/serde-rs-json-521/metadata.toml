@@ -1,0 +1,8 @@
+case_id = "serde-rs-json-521"
+repo = "serde-rs/json"
+pr = 521
+kind = "risk_signal"
+status = "freeze_ready"
+base_sha = "6ac689b2b327ed00e8a56d812a5c860177ab10dd"
+head_sha = "d79c8e5f1e38011f5e85f394baf3f33f2c3d679c"
+diff_exit = 0

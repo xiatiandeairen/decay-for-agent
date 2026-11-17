@@ -1,0 +1,98 @@
+{
+  "candidate": {
+    "id": "clap-rs-clap-5836",
+    "repo": "clap-rs/clap",
+    "url": "https://github.com/clap-rs/clap/pull/5836"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "b4ea2d4be9f01b6c7945084cbd158d6075cf2408",
+    "body": "It's non-sensical for an argument to require itself, so it must be a mistake, and should be prevented.\n\nThis is arguably a breaking change, but of the spacebar heating kind.\n\nLet me know if I should add any tests for this.",
+    "comments": [
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> Let me know if I should add any tests for this.\r\n\r\nPlease do.\r\n\r\nGenerally, we recommend PRs be structured as\r\n- A test commit **where the tests pass**, showing the existing behavior\r\n- A behavior change that updates the test so to continues to pass\r\n\r\nThis\r\n- Makes the behavior change obvious to the reviewer and outsiders\r\n- Helps verify the test\r\n\r\nIn this case, its going to be a little more obvious, so we might be able to let it slide (in my ideal world, I'd even break out that argument unpacking into its own refactor commit).",
+        "createdAt": "2024-12-03T18:32:41Z",
+        "id": "IC_kwDOAd3Usc6V7IcP",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/5836#issuecomment-2515306255",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "omertuc"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Makes sense, will do that",
+        "createdAt": "2024-12-03T18:50:37Z",
+        "id": "IC_kwDOAd3Usc6V7QYp",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/5836#issuecomment-2515338793",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "omertuc"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Is this what you had in mind?",
+        "createdAt": "2024-12-03T19:01:59Z",
+        "id": "IC_kwDOAd3Usc6V7VP5",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/5836#issuecomment-2515358713",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "epage"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Thanks!  Small commits like that make things very easy to review!",
+        "createdAt": "2024-12-03T19:02:52Z",
+        "id": "IC_kwDOAd3Usc6V7Vmc",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/clap-rs/clap/pull/5836#issuecomment-2515360156",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 9,
+        "changeType": "MODIFIED",
+        "deletions": 3,
+        "path": "clap_builder/src/builder/debug_asserts.rs"
+      },
+      {
+        "additions": 8,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/builder/require.rs"
+      }
+    ],
+    "headRefName": "reqself",
+    "headRefOid": "29d9e8844fda2a97902de76e47053552e3cddd39",
+    "labels": [],
+    "mergedAt": "2024-12-03T20:31:52Z",
+    "number": 5836,
+    "reviewDecision": "",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "fix(assert): Prevent arguments from requiring self",
+    "url": "https://github.com/clap-rs/clap/pull/5836"
+  }
+}

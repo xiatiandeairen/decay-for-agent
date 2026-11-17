@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "ripgrep-2885"
+repo = "BurntSushi/ripgrep"
+pr = 2885
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Regex literal extraction false negative."
+
+[fact_only]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 1
+notes = "True risk is regex literal extraction false negative. Fact output flags worsened crates/regex/src/literal.rs:choose, a relevant literal-selection path; prod/test is supporting context."
+
+[semantic_filtered]
+top3_total = 2
+top3_useful = 2
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Semantic preserves choose complexity and ties tests to the same literal.rs path; still not exact false-negative semantics, but actionable."
+
+[comparison]
+semantic_improved_ranking = true
+semantic_reduced_noise = true
+semantic_introduced_noise = false
+notes = "Semantic improves by making weak prod/test evidence dependent on direct function evidence."

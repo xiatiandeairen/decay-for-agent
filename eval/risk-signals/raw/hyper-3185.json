@@ -1,0 +1,384 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Previously accepted large-scale candidate; discussion covered DoS/idle timeout semantics and user report.",
+    "id": "hyper-3185",
+    "limitations": "Needs full discussion/source capture.",
+    "production_files": [
+      "src/proto/h1/conn.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "HTTP/1 header read timeout needed to start immediately.",
+    "signal_ids": [
+      "lifecycle_ordering",
+      "external_contract",
+      "non_happy_path"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/3185",
+      "eval/large-scale-50/candidates/open-source.toml"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/hyperium/hyper/pull/3185",
+    "why_high_value": "Timeout start point affects idle connection and DoS behavior.",
+    "why_not_noise": "Specific timeout semantic boundary with user/review context."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "f9aa697ec371d36c6d553c988d84b6f709e63362",
+    "body": "The `http1_header_read_timeout` used to start once there was a single read of headers. This change makes it start the timer immediately, right when the connection is estabilished.\r\n\r\nCloses #3178 \r\n\r\ncc @paolobarbolini @silence-coding @SylvainGarrigues ",
+    "comments": [
+      {
+        "author": {
+          "login": "jeromegn"
+        },
+        "authorAssociation": "NONE",
+        "body": "I ran into this Today. Anything blocking this?",
+        "createdAt": "2023-03-29T16:16:21Z",
+        "id": "IC_kwDOAWaYQc5YvvsS",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-1488911122",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "A comment on the linked issue gave me pause. I started looking in other libraries, and for instance in Go, they use a `ReadHeaderTimeout` and an `IdleTimeout` for the different stages of a connection. It might be more appropriate to do the same here. I'm not yet sure which is better.\n\ncc @sfackler, you've asked often about idle and read timeouts.",
+        "createdAt": "2023-03-29T19:19:59Z",
+        "id": "IC_kwDOAWaYQc5YwvFj",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-1489170787",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "sfackler"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "I would interpret the time before the first byte of the header is read as idle time rather than read-header time, yeah.\r\n\r\nYou can already make a wrapper around a Hyper Connection + handler service that tracks idle timeouts but it's a huge PITA. Having a built in feature for that would definitely be a good idea given that it's a pretty universal thing to want in servers.",
+        "createdAt": "2023-03-29T19:24:20Z",
+        "id": "IC_kwDOAWaYQc5YwwfL",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-1489176523",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "finnbear"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "FWIW the [documentation on `http1_header_read_timeout`](https://docs.rs/hyper/latest/hyper/server/conn/struct.Http.html#method.http1_header_read_timeout) implies to me that the timeout would start immediately and stop when the header was fully transferred. I would have expected to see \"If a client starts but does not finish transmitting the entire header within this time, the connection is closed\" to describe the current behavior.\r\n\r\n>  I'm not yet sure which is better.\r\n\r\n+1 to using the same timeout such that a longer time budget helps both idle connections and slow header connections but does not help malicious connections (which idle and then slowly send headers) last twice as long.",
+        "createdAt": "2023-04-13T03:52:21Z",
+        "id": "IC_kwDOAWaYQc5ZyEqb",
+        "includesCreatedEdit": true,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-1506298523",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "jeromegn"
+        },
+        "authorAssociation": "NONE",
+        "body": "I forgot about this and made my own PR.\r\n\r\nWithout this change, hyper is vulnerable to malicious actors who may just open connections and never send anything.\r\n\r\nI'd love a idle timeout functionality, but that's a lot more involved afaict.\r\n\r\nTo be honest, I was planning on just using this \"fixed\" header timeout behaviour in addition to a \"idle timeout\" in my `http_body::Body` implementation that would reset on successful reads w/ `poll_data`. That would be sufficient for our use case.\r\n\r\nReading headers is the very first stage of a new HTTP 1 connection and it makes sense to me that it would timeout if `http1_header_read_timeout` is set and the client does not send any data. If hyper were to add a idle timeout, it would also work, both would start at the very beginning of the connection. A sensible idle timeout might be 60 seconds, but that seems wrong for a header read timeout. I'd set our timeout for headers to ~5s.",
+        "createdAt": "2023-09-06T14:39:48Z",
+        "id": "IC_kwDOAWaYQc5l1bOz",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "HEART",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-1708503987",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "jeromegn"
+        },
+        "authorAssociation": "NONE",
+        "body": "Would a different config please everybody? Maybe `http1_header_start_timeout`?",
+        "createdAt": "2023-09-20T14:13:45Z",
+        "id": "IC_kwDOAWaYQc5m_HDP",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "HEART",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-1727819983",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "> Would a different config please everybody? Maybe http1_header_start_timeout?\r\n\r\nI think, from talking to several people, many find it clearer for there to be a separate timeout. So yea, something like `http1_idle_timeout` (or `http1_keepalive_timeout`, or something, naming is hard). If so, I could close this, and we could make a new issue describing it the feature.",
+        "createdAt": "2023-09-20T18:12:22Z",
+        "id": "IC_kwDOAWaYQc5nAn5X",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 2
+            }
+          }
+        ],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-1728216663",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "finnbear"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "_This is a restatement of https://github.com/hyperium/hyper/pull/3185#issuecomment-1506298523 with additional details._\r\n\r\n>  think, from talking to several people, many find it clearer for there to be a separate timeout.\r\n\r\nClarity aside, isn't it the case that splitting one timeout into two timeouts could make DoS twice as effective?\r\n\r\nFor example, assume 99.99% of legitimate clients will send a header consisting of multiple TCP segments, and may *occasionally* experience up to 5000ms of latency/congestion e.g. due to being on a cellular data connection.\r\n\r\nIf there was one timeout, it could be 5000ms. As such, an adversary must transmit the entire header in 4750ms for a good chance keeping the connection open.\r\n\r\nIf there were two timeouts, *both of them* would have to be 5000ms, because the congestion could occur either before or during the header transmission. As such, an adversary could wait 4750ms before sending the first segment and then an additional 4750ms before sending the rest of the header, keeping the connection open for twice as long.\r\n\r\nBy [Little's Law](https://en.wikipedia.org/wiki/Little%27s_law), doubling the lifetime of a connection means there will be double the number of active connections, per unit of potentially-firewall-limited adversary bandwidth. This could double the impact of a DoS attack on OS and server process resources.\r\n\r\n(that said, having a timeout is infinitely better than not having one. the two-timeout approach is probably good enough for me)",
+        "createdAt": "2023-09-20T18:54:29Z",
+        "id": "IC_kwDOAWaYQc5nA0uj",
+        "includesCreatedEdit": true,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "HEART",
+            "users": {
+              "totalCount": 2
+            }
+          }
+        ],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-1728269219",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "I've since decided to re-open this and merge. While some libraries do have a separate timeout options, none of them seem to use the _idle_ timeout for the very first request. Any concern of a browser preconnect not working isn't a concern to any other implementation, and that makes sense: if a browser looks like a bad guy, it should stop that.",
+        "createdAt": "2024-06-03T19:17:41Z",
+        "id": "IC_kwDOAWaYQc5_6H_h",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "HOORAY",
+            "users": {
+              "totalCount": 3
+            }
+          },
+          {
+            "content": "ROCKET",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-2145943521",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "RLuzi"
+        },
+        "authorAssociation": "NONE",
+        "body": "\r\nHello everyone, sorry to bother you. \r\nI'm having a problem that I can't explain with a simple server I implemented with hyper, setting 10 seconds as the value of the header_read_timeout() function in the Builder of the http1 server.\r\n\r\nIf I connect with nc <ip> <port> and do nothing for 10 sec or if I start pressing enter without typing anything, the connection is closed after 10 sec.\r\n\r\nIf I send a request and, after receiving the reply, press enter again, the connection is closed after 10 sec.\r\n\r\nBut it will never be closed if I send a request and do nothing after receiving the reply, leaving the connection open and inactive.\r\n\r\nIs this normal behaviour? Shouldn't it still be closed by the server after 10 sec?\r\n\r\nThanks in advance.",
+        "createdAt": "2025-01-14T17:30:35Z",
+        "id": "IC_kwDOAWaYQc6aah8K",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-2590646026",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "finnbear"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "~~I want to investigate this, because I rely on the `header_read_timeout` being applied to all requests.~~\r\n\r\n~~@RLuzi please confirm which version of `hyper` you are using (you can find it in `Cargo.lock` as `Cargo.toml` is just a lower bound)~~",
+        "createdAt": "2025-01-14T17:57:42Z",
+        "id": "IC_kwDOAWaYQc6aa2Fl",
+        "includesCreatedEdit": true,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-2590728549",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "seanmonstar"
+        },
+        "authorAssociation": "MEMBER",
+        "body": "Interesting. Could you open a new issue with a reproduction so we can look into it?",
+        "createdAt": "2025-01-14T18:23:43Z",
+        "id": "IC_kwDOAWaYQc6abFFE",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "THUMBS_UP",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-2590789956",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "jeromegn"
+        },
+        "authorAssociation": "NONE",
+        "body": "> If I send a request and, after receiving the reply, press enter again, the connection is closed after 10 sec.\r\n\r\nMaybe I'm understanding wrong, but I think this is working as designed.\r\n\r\nIf you press enter, then you're sending a new request and at that point the header read timeout starts ticking.\r\n\r\nIf you want connections to be closed after a request is done, then that's probably new code to handle that or different settings?\r\n\r\nWhat if you send `Connection: close` in the first request and then do nothing? Does it close right after receiving the response?",
+        "createdAt": "2025-01-14T18:26:27Z",
+        "id": "IC_kwDOAWaYQc6abH61",
+        "includesCreatedEdit": true,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-2590801589",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "finnbear"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Ah, yes. I was confused (see https://github.com/hyperium/hyper/pull/3743#issuecomment-2590813919 for more). The current behavior only starts the header read timeout once a subsequent request has already been started. The linked comment shows a simple change that would change this.\r\n\r\nThis PR will, if merged, apply the h1 header timeout when waiting for subsequent requests, closing the gap between expectations and actual behavior here: https://github.com/hyperium/hyper/pull/3828\r\n\r\n> Could you open a new issue with a reproduction so we can look into it?\r\n\r\nThis new test is a reproducible example: https://github.com/hyperium/hyper/pull/3828/commits/1ed8ea0431d0521a353c49e718cdb13b22b2bd7e",
+        "createdAt": "2025-01-14T18:31:32Z",
+        "id": "IC_kwDOAWaYQc6abNAd",
+        "includesCreatedEdit": true,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-2590822429",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "RLuzi"
+        },
+        "authorAssociation": "NONE",
+        "body": "> Interesting. Could you open a new issue with a reproduction so we can look into it?\r\n\r\nI think that https://github.com/hyperium/hyper/pull/3828 describes perfectly the situation: \"after the first request, the connection can remain open indefinitely\". So if the change proposed in the PR solves this problem, we should be fine.\r\n\r\n> If you press enter, then you're sending a new request and at that point the header read timeout starts ticking.\r\n\r\nI totally agree with what you said here.\r\n\r\n> If you want connections to be closed after a request is done, then that's probably new code to handle that or different settings?\r\n> What if you send `Connection: close` in the first request and then do nothing? Does it close right after receiving the response?\r\n\r\nBut the behaviour I would like is not to close the connection after each request. This can be achieved by deactivating keep_alive with the dedicated function of the server's Builder.\r\n\r\nWhat I would like is for there to be a timeout that tells the server when to close the connection if it remains idle after a request. Which is exactly the behaviour described for what was called ‘idle_timeout’ in the quoted PR.\r\n\r\nI apologise if I misspoke above, what I was wondering was whether it was normal for the timeout set with header_request_timeout() to fail during an idle period after a request has been sent.\r\n\r\n> ~@RLuzi please confirm which version of `hyper` you are using (you can find it in `Cargo.lock` as `Cargo.toml` is just a lower bound)~\r\n\r\nIf it can still be useful, I'm working with hyper version 1.5.1.\r\n\r\nThank you all for your time.\r\n",
+        "createdAt": "2025-01-15T08:17:38Z",
+        "id": "IC_kwDOAWaYQc6afVjZ",
+        "includesCreatedEdit": true,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [
+          {
+            "content": "HEART",
+            "users": {
+              "totalCount": 1
+            }
+          }
+        ],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-2591906009",
+        "viewerDidAuthor": false
+      },
+      {
+        "author": {
+          "login": "RLuzi"
+        },
+        "authorAssociation": "NONE",
+        "body": "Good morning! When do you think the pull request for this problem will be reviewed and possibly accepted?",
+        "createdAt": "2025-01-20T10:47:34Z",
+        "id": "IC_kwDOAWaYQc6bGIgB",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/hyperium/hyper/pull/3185#issuecomment-2602076161",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 49,
+        "changeType": "MODIFIED",
+        "deletions": 13,
+        "path": "src/proto/h1/conn.rs"
+      },
+      {
+        "additions": 1,
+        "changeType": "MODIFIED",
+        "deletions": 37,
+        "path": "src/proto/h1/io.rs"
+      },
+      {
+        "additions": 0,
+        "changeType": "MODIFIED",
+        "deletions": 15,
+        "path": "src/proto/h1/mod.rs"
+      },
+      {
+        "additions": 0,
+        "changeType": "MODIFIED",
+        "deletions": 94,
+        "path": "src/proto/h1/role.rs"
+      },
+      {
+        "additions": 21,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "tests/server.rs"
+      }
+    ],
+    "headRefName": "server-headers-timeout-start-immediately",
+    "headRefOid": "25a4abfc25b744ccb17e0e91a601601df2de93de",
+    "labels": [],
+    "mergedAt": "2024-06-03T19:18:14Z",
+    "number": 3185,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "fix(server): start header read timeout immediately",
+    "url": "https://github.com/hyperium/hyper/pull/3185"
+  }
+}

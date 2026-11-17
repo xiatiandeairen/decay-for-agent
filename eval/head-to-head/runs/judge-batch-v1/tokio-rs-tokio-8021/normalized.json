@@ -1,0 +1,42 @@
+{
+  "case_id": "tokio-rs-tokio-8021",
+  "ground_truth_draft": {
+    "expected_behavior": "forget_permits must preserve the CLOSED (LSB) bit in the CAS write. Previously `new << PERMIT_SHIFT` wrote 0 to LSB, silently reopening a closed semaphore. Fix ORs `curr_bits & Self::CLOSED` into the new value so closed state is sticky across forget.",
+    "high_value": true,
+    "primary_signal_ids": [
+      "state_transition"
+    ],
+    "rationale_from_pr_metadata": "PR title 'fix(semaphore): Fix semaphore reopens after forget' and body: 'Current forget_semaphores doesn't consider LSB ... which is used to store semaphore open or closed, which leads to a weird behavior that semaphore reopens. Solution: sets the closed bit on forget_semaphores.' Closes #8020. Approved by Darksonn; labeled M-sync, R-loom-sync. New tests forget_closed/add_permits_closed assert is_closed() after forget on a closed semaphore.",
+    "subject_files": [
+      "tokio/src/sync/batch_semaphore.rs"
+    ]
+  },
+  "judgement_drafts": {
+    "ai_baseline": {
+      "actionable": true,
+      "missed_high_risk_count": 0,
+      "notes": "Rank-1 state_transition (direct, high) nails the mechanism: prior `new << PERMIT_SHIFT` cleared CLOSED, silently reopening on forget. Rank-2 test_gap is supporting but reasonable (concurrent CAS-retry path not exercised by new single-threaded tests).",
+      "top3_total": 2,
+      "top3_useful": 1,
+      "weak_only_top_risk_count": 0
+    },
+    "fact_only": {
+      "actionable": true,
+      "missed_high_risk_count": 1,
+      "notes": "boundary_expression_changed (direct, high) points at the exact fixed expression including the `| (curr_bits & Self::CLOSED)` term \u2014 a reviewer would land on the right line. But it doesn't name the state_transition / closed-bit-preservation mechanism; quality finding is only supporting.",
+      "top3_total": 2,
+      "top3_useful": 1,
+      "weak_only_top_risk_count": 0
+    },
+    "semantic_filtered": {
+      "actionable": false,
+      "missed_high_risk_count": 1,
+      "notes": "Single finding is medium-confidence prod_change_with_tests recast as 'review invariants and regression paths'. Generic; no mention of CLOSED bit, LSB, or state transition. Would not change a reviewer's action beyond 'look at this file'.",
+      "top3_total": 1,
+      "top3_useful": 0,
+      "weak_only_top_risk_count": 1
+    }
+  },
+  "manifest_hash": "06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208",
+  "model": "claude-opus-4-7"
+}

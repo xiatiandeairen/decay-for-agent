@@ -2,9 +2,15 @@
 from __future__ import annotations
 
 import json
-import re
 import sys
 from pathlib import Path
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from decay_evidence import evidence_ids
 
 
 REQUIRED_FINDING_KEYS = {
@@ -16,10 +22,6 @@ REQUIRED_FINDING_KEYS = {
     "review_action",
 }
 ALLOWED_CONFIDENCE = {"high", "medium", "low"}
-
-
-def evidence_ids(stdout: str) -> set[int]:
-    return {int(match) for match in re.findall(r"^- id=(\d+)\b", stdout, re.MULTILINE)}
 
 
 def load_json(path: Path) -> dict:

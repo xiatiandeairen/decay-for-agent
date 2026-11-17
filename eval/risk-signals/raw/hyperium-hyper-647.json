@@ -1,0 +1,48 @@
+{
+  "candidate": {
+    "ground_truth_summary": "Title and code location identify an invalid input protocol recovery problem.",
+    "id": "hyperium-hyper-647",
+    "limitations": "Needs linked issue or follow-up context to harden ground truth.",
+    "production_files": [
+      "src/http/h1.rs"
+    ],
+    "repo": "hyperium/hyper",
+    "risk_summary": "HTTP/1 invalid content-length handling could lose the stream.",
+    "signal_ids": [
+      "non_happy_path",
+      "state_transition"
+    ],
+    "source_refs": [
+      "https://github.com/hyperium/hyper/pull/647"
+    ],
+    "status": "candidate",
+    "test_files": [],
+    "url": "https://github.com/hyperium/hyper/pull/647",
+    "why_high_value": "HTTP parser recovery can affect connection correctness and data handling.",
+    "why_not_noise": "Single core protocol file with explicit invalid content-length failure mode."
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "32e09a04292b0247456a8fb9003a75a6abaa998e",
+    "body": "When the Content-Length header is invalid, the Http11Message ends up\ndropping the stream before returning the error. This causes a panic when\nthe `close_connection` method of the message is used later. This commit\nfixes this by saving the stream onto the message instance before\nreturning the error. A regression test is also included.\n\nCloses #646\n",
+    "comments": [],
+    "files": [
+      {
+        "additions": 13,
+        "changeType": "MODIFIED",
+        "deletions": 1,
+        "path": "src/http/h1.rs"
+      }
+    ],
+    "headRefName": "issue-646",
+    "headRefOid": "a36e44af7d4e665a122c1498011ff10035f7376f",
+    "labels": [],
+    "mergedAt": "2015-09-04T23:33:48Z",
+    "number": 647,
+    "reviewDecision": "REVIEW_REQUIRED",
+    "reviews": [],
+    "state": "MERGED",
+    "title": "fix(http): Make sure not to lose the stream when CL is invalid",
+    "url": "https://github.com/hyperium/hyper/pull/647"
+  }
+}

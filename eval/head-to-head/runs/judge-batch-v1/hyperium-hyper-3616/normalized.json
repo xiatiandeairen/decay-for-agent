@@ -1,0 +1,5 @@
+{
+  "case_id": "hyperium-hyper-3616",
+  "reason": "ground_truth_draft: unexpected fields ['rationale']",
+  "status": "judge-failed"
+}

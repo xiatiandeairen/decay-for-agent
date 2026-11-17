@@ -1,0 +1,12 @@
+{
+  "case_id": "BurntSushi-ripgrep-454",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"BurntSushi-ripgrep-454\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\"top_risks\":[{\"rank\":1,\"risk_signal\":\"assumption_boundary\",\"subject\":\"src/printer.rs:write_match\",\"evidence_refs\":[\"let start_offset = start + column;\\n                let m = re.find(&buf[start_offset..end]).unwrap();\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"only_matching path re-runs re.find on a slice starting at the previously-found column and unwraps. Assumes the regex still matches at offset 0 of the subslice; any divergence (e.g. empty/zero-width semantics) panics.\"},{\"rank\":2,\"risk_signal\":\"state_transition\",\"subject\":\"src/printer.rs:matched\",\"evidence_refs\":[\"let column = re.find(&buf[start..end])\\n                           .map(|m| m.start()).unwrap_or(0);\",\"if self.column {\\n            self.column_number(column as u64 + 1, b':');\"],\"confidence\":\"high\",\"value\":\"direct\",\"rationale\":\"column is now always computed (re.find runs even when --column is off), and the Option<u64> contract becomes a raw usize defaulted to 0 \u2014 losing the no-match-found distinction at the API boundary.\"},{\"rank\":3,\"risk_signal\":\"test_gap_for_risk_path\",\"subject\":\"tests/tests.rs:regression_451_only_matching\",\"evidence_refs\":[\"cmd.arg(\\\"[0-9]\\\").arg(path)\\n        .arg(\\\"--only-matching\\\")\\n        .arg(\\\"--column\\\");\"],\"confidence\":\"medium\",\"value\":\"supporting\",\"rationale\":\"New tests cover single-char numeric matches but do not exercise overlapping/empty matches, multi-byte UTF-8 columns, or only-matching without --column where the re-find+unwrap path still runs.\"}]}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

@@ -1,0 +1,342 @@
+diff --git a/src/server/conn/http1.rs b/src/server/conn/http1.rs
+index 23f91472..e3737edb 100644
+--- a/src/server/conn/http1.rs
++++ b/src/server/conn/http1.rs
+@@ -405,106 +405,110 @@ impl Builder {
+     /// let http = Builder::new();
+     /// let conn = http.serve_connection(some_io, some_service);
+     ///
+     /// if let Err(e) = conn.await {
+     ///     eprintln!("server connection error: {}", e);
+     /// }
+     /// # }
+     /// # fn main() {}
+     /// ```
+     pub fn serve_connection<I, S>(&self, io: I, service: S) -> Connection<I, S>
+     where
+         S: HttpService<IncomingBody>,
+         S::Error: Into<Box<dyn StdError + Send + Sync>>,
+         S::ResBody: 'static,
+         <S::ResBody as Body>::Error: Into<Box<dyn StdError + Send + Sync>>,
+         I: Read + Write + Unpin,
+     {
+         let mut conn = proto::Conn::new(io);
+         conn.set_timer(self.timer.clone());
+         if !self.h1_keep_alive {
+             conn.disable_keep_alive();
+         }
+         if self.h1_half_close {
+             conn.set_allow_half_close();
+         }
+         if self.h1_title_case_headers {
+             conn.set_title_case_headers();
+         }
+         if self.h1_preserve_header_case {
+             conn.set_preserve_header_case();
+         }
+         if let Some(max_headers) = self.h1_max_headers {
+             conn.set_http1_max_headers(max_headers);
+         }
+         if let Some(dur) = self
+             .timer
+             .check(self.h1_header_read_timeout, "header_read_timeout")
+         {
+             conn.set_http1_header_read_timeout(dur);
+         };
+         if let Some(writev) = self.h1_writev {
+             if writev {
+                 conn.set_write_strategy_queue();
+             } else {
+                 conn.set_write_strategy_flatten();
+             }
+         }
+         conn.set_flush_pipeline(self.pipeline_flush);
+         if let Some(max) = self.max_buf_size {
+             conn.set_max_buf_size(max);
+         }
+         let sd = proto::h1::dispatch::Server::new(service);
+         let proto = proto::h1::Dispatcher::new(sd, conn);
+         Connection { conn: proto }
+     }
+ }
+ 
+ /// A future binding a connection with a Service with Upgrade support.
+ #[must_use = "futures do nothing unless polled"]
+ #[allow(missing_debug_implementations)]
+ pub struct UpgradeableConnection<T, S>
+ where
+     S: HttpService<IncomingBody>,
+ {
+     pub(super) inner: Option<Connection<T, S>>,
+ }
+ 
+ impl<I, B, S> UpgradeableConnection<I, S>
+ where
+     S: HttpService<IncomingBody, ResBody = B>,
+     S::Error: Into<Box<dyn StdError + Send + Sync>>,
+     I: Read + Write + Unpin,
+     B: Body + 'static,
+     B::Error: Into<Box<dyn StdError + Send + Sync>>,
+ {
+     /// Start a graceful shutdown process for this connection.
+     ///
+     /// This `Connection` should continue to be polled until shutdown
+     /// can finish.
+     pub fn graceful_shutdown(mut self: Pin<&mut Self>) {
+-        Pin::new(self.inner.as_mut().unwrap()).graceful_shutdown()
++        // Connection (`inner`) is `None` if it was upgraded (and `poll` is `Ready`).
++        // In that case, we don't need to call `graceful_shutdown`.
++        if let Some(conn) = self.inner.as_mut() {
++            Pin::new(conn).graceful_shutdown()
++        }
+     }
+ }
+ 
+ impl<I, B, S> Future for UpgradeableConnection<I, S>
+ where
+     S: HttpService<IncomingBody, ResBody = B>,
+     S::Error: Into<Box<dyn StdError + Send + Sync>>,
+     I: Read + Write + Unpin + Send + 'static,
+     B: Body + 'static,
+     B::Error: Into<Box<dyn StdError + Send + Sync>>,
+ {
+     type Output = crate::Result<()>;
+ 
+     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+         match ready!(Pin::new(&mut self.inner.as_mut().unwrap().conn).poll(cx)) {
+             Ok(proto::Dispatched::Shutdown) => Poll::Ready(Ok(())),
+             Ok(proto::Dispatched::Upgrade(pending)) => {
+                 let (io, buf, _) = self.inner.take().unwrap().conn.into_inner();
+                 pending.fulfill(Upgraded::new(io, buf));
+                 Poll::Ready(Ok(()))
+             }
+             Err(e) => Poll::Ready(Err(e)),
+         }
+     }
+ }
+diff --git a/tests/server.rs b/tests/server.rs
+index dcbe6695..661b98d1 100644
+--- a/tests/server.rs
++++ b/tests/server.rs
+@@ -1179,160 +1179,221 @@ async fn disable_keep_alive_mid_request() {
+         rx2.recv().unwrap();
+         req.write_all(b"Host: localhost\r\n\r\n").unwrap();
+         let mut buf = vec![];
+         req.read_to_end(&mut buf).unwrap();
+         assert!(
+             buf.starts_with(b"HTTP/1.1 200 OK\r\n"),
+             "should receive OK response, but buf: {:?}",
+             buf,
+         );
+     });
+ 
+     let (socket, _) = listener.accept().await.unwrap();
+     let socket = TokioIo::new(socket);
+     let srv = http1::Builder::new().serve_connection(socket, HelloWorld);
+     future::try_select(srv, rx1)
+         .then(|r| match r {
+             Ok(Either::Left(_)) => panic!("expected rx first"),
+             Ok(Either::Right(((), mut conn))) => {
+                 Pin::new(&mut conn).graceful_shutdown();
+                 tx2.send(()).unwrap();
+                 conn
+             }
+             Err(Either::Left((e, _))) => panic!("unexpected error {}", e),
+             Err(Either::Right((e, _))) => panic!("unexpected error {}", e),
+         })
+         .await
+         .unwrap();
+ 
+     child.join().unwrap();
+ }
+ 
+ #[tokio::test]
+ async fn disable_keep_alive_post_request() {
+     let (listener, addr) = setup_tcp_listener();
+     let (tx1, rx1) = oneshot::channel();
+ 
+     let child = thread::spawn(move || {
+         let mut req = connect(&addr);
+         req.write_all(
+             b"\
+             GET / HTTP/1.1\r\n\
+             Host: localhost\r\n\
+             \r\n\
+         ",
+         )
+         .unwrap();
+ 
+         read_until(&mut req, |buf| buf.ends_with(HELLO.as_bytes())).expect("reading 1");
+ 
+         // Connection should get closed *after* tx is sent on
+         tx1.send(()).unwrap();
+ 
+         let nread = req.read(&mut [0u8; 1024]).expect("keep-alive reading");
+         assert_eq!(nread, 0);
+     });
+ 
+     let dropped = Dropped::new();
+     let dropped2 = dropped.clone();
+     let (socket, _) = listener.accept().await.unwrap();
+     let transport = DebugStream {
+         stream: TokioIo::new(socket),
+         _debug: dropped2,
+     };
+     let server = http1::Builder::new().serve_connection(transport, HelloWorld);
+     let fut = future::try_select(server, rx1).then(|r| match r {
+         Ok(Either::Left(_)) => panic!("expected rx first"),
+         Ok(Either::Right(((), mut conn))) => {
+             Pin::new(&mut conn).graceful_shutdown();
+             conn
+         }
+         Err(Either::Left((e, _))) => panic!("unexpected error {}", e),
+         Err(Either::Right((e, _))) => panic!("unexpected error {}", e),
+     });
+ 
+     assert!(!dropped.load());
+     fut.await.unwrap();
+     assert!(dropped.load());
+     child.join().unwrap();
+ }
+ 
++#[tokio::test]
++async fn http1_graceful_shutdown_after_upgrade() {
++    let (listener, addr) = setup_tcp_listener();
++    let (read_101_tx, read_101_rx) = oneshot::channel();
++
++    thread::spawn(move || {
++        let mut tcp = connect(&addr);
++        tcp.write_all(
++            b"\
++            GET / HTTP/1.1\r\n\
++            Upgrade: foobar\r\n\
++            Connection: upgrade\r\n\
++            \r\n\
++            eagerly optimistic\
++        ",
++        )
++        .expect("write 1");
++        let mut buf = [0; 256];
++        tcp.read(&mut buf).expect("read 1");
++
++        let response = s(&buf);
++        assert!(response.starts_with("HTTP/1.1 101 Switching Protocols\r\n"));
++        assert!(!has_header(&response, "content-length"));
++        let _ = read_101_tx.send(());
++    });
++
++    let (upgrades_tx, upgrades_rx) = mpsc::channel();
++    let svc = service_fn(move |req: Request<IncomingBody>| {
++        let on_upgrade = hyper::upgrade::on(req);
++        let _ = upgrades_tx.send(on_upgrade);
++        future::ok::<_, hyper::Error>(
++            Response::builder()
++                .status(101)
++                .header("upgrade", "foobar")
++                .body(Empty::<Bytes>::new())
++                .unwrap(),
++        )
++    });
++
++    let (socket, _) = listener.accept().await.unwrap();
++    let socket = TokioIo::new(socket);
++
++    let mut conn = http1::Builder::new()
++        .serve_connection(socket, svc)
++        .with_upgrades();
++    (&mut conn).await.unwrap();
++
++    let on_upgrade = upgrades_rx.recv().unwrap();
++
++    // wait so that we don't write until other side saw 101 response
++    read_101_rx.await.unwrap();
++
++    let upgraded = on_upgrade.await.expect("on_upgrade");
++    let parts = upgraded.downcast::<TokioIo<TkTcpStream>>().unwrap();
++    assert_eq!(parts.read_buf, "eagerly optimistic");
++
++    pin!(conn);
++    // graceful shutdown doesn't cause issues or panic. It should be ignored after upgrade
++    conn.as_mut().graceful_shutdown();
++}
++
+ #[tokio::test]
+ async fn empty_parse_eof_does_not_return_error() {
+     let (listener, addr) = setup_tcp_listener();
+     thread::spawn(move || {
+         let _tcp = connect(&addr);
+     });
+ 
+     let (socket, _) = listener.accept().await.unwrap();
+     let socket = TokioIo::new(socket);
+     http1::Builder::new()
+         .serve_connection(socket, HelloWorld)
+         .await
+         .expect("empty parse eof is ok");
+ }
+ 
+ #[tokio::test]
+ async fn nonempty_parse_eof_returns_error() {
+     let (listener, addr) = setup_tcp_listener();
+ 
+     thread::spawn(move || {
+         let mut tcp = connect(&addr);
+         tcp.write_all(b"GET / HTTP/1.1").unwrap();
+     });
+ 
+     let (socket, _) = listener.accept().await.unwrap();
+     let socket = TokioIo::new(socket);
+     http1::Builder::new()
+         .serve_connection(socket, HelloWorld)
+         .await
+         .expect_err("partial parse eof is error");
+ }
+ 
+ #[cfg(feature = "http1")]
+ #[tokio::test]
+ async fn http1_allow_half_close() {
+     let (listener, addr) = setup_tcp_listener();
+ 
+     let t1 = thread::spawn(move || {
+         let mut tcp = connect(&addr);
+         tcp.write_all(b"GET / HTTP/1.1\r\n\r\n").unwrap();
+         tcp.shutdown(::std::net::Shutdown::Write).expect("SHDN_WR");
+ 
+         let mut buf = [0; 256];
+         tcp.read(&mut buf).unwrap();
+         let expected = "HTTP/1.1 200 OK\r\n";
+         assert_eq!(s(&buf[..expected.len()]), expected);
+     });
+ 
+     let (socket, _) = listener.accept().await.unwrap();
+     let socket = TokioIo::new(socket);
+     http1::Builder::new()
+         .half_close(true)
+         .serve_connection(
+             socket,
+             service_fn(|_| {
+                 TokioTimer
+                     .sleep(Duration::from_millis(500))
+                     .map(|_| Ok::<_, hyper::Error>(Response::new(Empty::<Bytes>::new())))
+             }),
+         )
+         .await
+         .unwrap();
+ 
+     t1.join().expect("client thread");
+ }
+ 
+ #[cfg(feature = "http1")]
+ #[tokio::test]
+ async fn disconnect_after_reading_request_before_responding() {
+     let (listener, addr) = setup_tcp_listener();
+ 
+     thread::spawn(move || {
+         let mut tcp = connect(&addr);
+         tcp.write_all(b"GET / HTTP/1.1\r\n\r\n").unwrap();
+     });
+ 
+     let (socket, _) = listener.accept().await.unwrap();
+     let socket = TokioIo::new(socket);
+     http1::Builder::new()
+         .half_close(false)

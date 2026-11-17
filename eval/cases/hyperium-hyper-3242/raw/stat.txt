@@ -1,0 +1,4 @@
+ src/client/client.rs |  8 +++++
+ tests/integration.rs | 42 +++++++++++++++++++++++++
+ tests/support/mod.rs | 88 ++++++++++++++++++++++++++++++++--------------------
+ 3 files changed, 105 insertions(+), 33 deletions(-)

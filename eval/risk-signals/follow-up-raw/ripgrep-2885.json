@@ -1,0 +1,84 @@
+{
+  "case_id": "ripgrep-2885",
+  "refs": [
+    {
+      "detail": {
+        "body": "### Please tick this box to confirm you have reviewed the above.\n\n- [X] I have a different issue.\n\n### What version of ripgrep are you using?\n\n14.1.0\n\n### How did you install ripgrep?\n\nCargo\n\n### What operating system are you using ripgrep on?\n\nFedora 40\n\n### Describe your bug.\n\nripgrep fails to return some matches when case is ignored. This only happens with very particular matches and specific characters.\r\n\r\nA git bisect seems to suggest this is a regression introduced by\r\nca740d9ace9065103036c101ca973b79e59ae85a.\n\n### What are the steps to reproduce the behavior?\n\nRun the following:\r\n```\r\necho -n \"e-x\" | rg -i \"e.x|ex\"\r\n```\r\n\n\n### What is the actual behavior?\n\n```\r\n$ echo -n \"e-x\" | rg --debug -i \"e.x|ex\"\r\nrg: DEBUG|rg::flags::config|/home/ido/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ripgrep-14.1.0/crates/core/flags/config.rs:41: /home/ido/.ripgreprc: arguments loaded from config file: []\r\nrg: DEBUG|rg::flags::parse|/home/ido/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ripgrep-14.1.0/crates/core/flags/parse.rs:97: no extra arguments found from configuration file\r\nrg: DEBUG|rg::flags::hiargs|/home/ido/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ripgrep-14.1.0/crates/core/flags/hiargs.rs:1099: using heuristics to determine whether to read from stdin or search ./ (is_readable_stdin=true, stdin_consumed=false, mode=Search(Standard))\r\nrg: DEBUG|rg::flags::hiargs|/home/ido/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ripgrep-14.1.0/crates/core/flags/hiargs.rs:1112: heuristic chose to search stdin\r\nrg: DEBUG|rg::flags::hiargs|/home/ido/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ripgrep-14.1.0/crates/core/flags/hiargs.rs:1260: found hostname for hyperlink configuration: sourcerer\r\nrg: DEBUG|rg::flags::hiargs|/home/ido/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ripgrep-14.1.0/crates/core/flags/hiargs.rs:1270: hyperlink format: \"\"\r\nrg: DEBUG|rg::flags::hiargs|/home/ido/.cargo/registry/src/index.crates.io-6f17d22bba15001f/ripgrep-14.1.0/crates/core/flags/hiargs.rs:174: using 1 thread(s)\r\nrg: DEBUG|grep_regex::literal|/home/ido/.cargo/registry/src/index.crates.io-6f17d22bba15001f/grep-regex-0.1.12/src/literal.rs:117: extracted fast line regex: \"(?:(?:EX)|(?:Ex)|(?:eX)|(?:ex))\"\r\nrg: DEBUG|globset|/home/ido/.cargo/registry/src/index.crates.io-6f17d22bba15001f/globset-0.4.14/src/lib.rs:453: built glob set; 0 literals, 0 basenames, 12 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\r\n$\r\n```\n\n### What is the expected behavior?\n\nripgrep should have returned `e-x` instead of returning no matches.\r\nThe same occurs when `e` is replaced with `k`, `s`, or `t`, but doesn't with any other alphabetic character, or if case isn't ignored.",
+        "closedAt": "2024-09-09T02:00:48Z",
+        "comments": [
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "Excellent find. When you find weird behaviors like this where small perturbations to the regex make the bug go away, it almost always points toward literal extraction. In this case, the bug was in ripgrep's inner literal extractor (which isn't in the regex engine), and that only runs when the regex engine believes its own optimizations \"aren't great.\" And there are tons of layers here. In this case, multiple optimizations and heuristics have to come together to produce an incorrect result.\r\n\r\nThis is also made clearer in ripgrep's trace logging, which shows the literals it extracted which are clearly incorrect:\r\n\r\n```\r\n$ echo \"e-x\" | rg-14.1.0 \"(?i:e.x|ex)\" --trace\r\nrg: DEBUG|rg::flags::config|crates/core/flags/config.rs:41: /home/andrew/.ripgreprc: arguments loaded from config file: [\"--max-columns-preview\", \"--colors=match:bg:0xff,0x7f,0x00\", \"--colors=match:fg:0xff,0xff,0xff\", \"--colors=line:none\", \"--colors=line:fg:magenta\", \"--colors=path:fg:green\", \"--type-add=got:*_test.go\"]\r\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1099: using heuristics to determine whether to read from stdin or search ./ (is_readable_stdin=true, stdin_consumed=false, mode=Search(Standard))\r\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1112: heuristic chose to search stdin\r\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1260: found hostname for hyperlink configuration: duff\r\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:1270: hyperlink format: \"\"\r\nrg: DEBUG|rg::flags::hiargs|crates/core/flags/hiargs.rs:174: using 1 thread(s)\r\nrg: TRACE|grep_regex::matcher|crates/regex/src/matcher.rs:66: final regex: \"(?:[Ee](?:(?:[\\0-\\t\\u{b}-\\u{10ffff}][Xx])|[Xx]))\"\r\nrg: TRACE|grep_regex::literal|crates/regex/src/literal.rs:154: extracted inner literals: Seq[E(\"EX\"), E(\"Ex\"), E(\"EX\"), E(\"Ex\"), E(\"eX\"), E(\"ex\"), E(\"eX\"), E(\"ex\")]\r\nrg: TRACE|grep_regex::literal|crates/regex/src/literal.rs:156: extracted inner literals after optimization: Seq[E(\"EX\"), E(\"Ex\"), E(\"eX\"), E(\"ex\")]\r\nrg: DEBUG|grep_regex::literal|crates/regex/src/literal.rs:117: extracted fast line regex: \"(?:(?:EX)|(?:Ex)|(?:eX)|(?:ex))\"\r\nrg: DEBUG|globset|crates/globset/src/lib.rs:453: built glob set; 0 literals, 0 basenames, 12 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\r\nrg: TRACE|rg::search|crates/core/search.rs:254: <stdin>: binary detection: BinaryDetection(Convert(0))\r\nrg: TRACE|grep_searcher::searcher|crates/searcher/src/searcher/mod.rs:743: generic reader: searching via roll buffer strategy\r\nrg: TRACE|grep_searcher::searcher::core|crates/searcher/src/searcher/core.rs:65: searcher core: will use fast line searcher\r\n```\r\n\r\nSpecifically, this bit:\r\n\r\n```\r\nextracted fast line regex: \"(?:(?:EX)|(?:Ex)|(?:eX)|(?:ex))\"\r\n```\r\n\r\nClearly, this regex won't match the input, and thus ripgrep reports a false negative.\r\n\r\nI fixed this in #2885.",
+            "createdAt": "2024-09-09T02:00:38Z",
+            "id": "IC_kwDOAzJbyc6LS0wn",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/2884#issuecomment-2336967719",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "This should be fixed in the [14.1.1 release](https://github.com/BurntSushi/ripgrep/releases/tag/14.1.1).",
+            "createdAt": "2024-09-09T02:32:34Z",
+            "id": "IC_kwDOAzJbyc6LS7Dd",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/2884#issuecomment-2336993501",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "codido"
+            },
+            "authorAssociation": "NONE",
+            "body": "Thank you @BurntSushi!",
+            "createdAt": "2024-09-09T04:18:04Z",
+            "id": "IC_kwDOAzJbyc6LTQLQ",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/2884#issuecomment-2337080016",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2024-09-09T01:05:45Z",
+        "labels": [
+          {
+            "color": "fc2929",
+            "description": "A bug.",
+            "id": "MDU6TGFiZWwzMzk3MjE2Nzg=",
+            "name": "bug"
+          }
+        ],
+        "number": 2884,
+        "state": "CLOSED",
+        "title": "Alternation match regression",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/2884"
+      },
+      "target": {
+        "number": 2884,
+        "reason": "False-negative regex literal extraction report.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    }
+  ]
+}

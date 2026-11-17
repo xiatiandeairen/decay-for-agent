@@ -1,0 +1,1215 @@
+diff --git a/benches/client.rs b/benches/client.rs
+index 9059ec75..9e26d39b 100644
+--- a/benches/client.rs
++++ b/benches/client.rs
+@@ -1,104 +1,107 @@
+ #![deny(warnings)]
+ #![feature(collections, test)]
+ extern crate hyper;
+ 
+ extern crate test;
+ 
+ use std::fmt;
+ use std::io::{self, Read, Write, Cursor};
+ use std::net::SocketAddr;
+ 
+-use hyper::net;
++use hyper::net::{self, ContextVerifier};
+ 
+ static README: &'static [u8] = include_bytes!("../README.md");
+ 
+ struct MockStream {
+     read: Cursor<Vec<u8>>
+ }
+ 
+ impl MockStream {
+     fn new() -> MockStream {
+         let head = b"HTTP/1.1 200 OK\r\nServer: Mock\r\n\r\n";
+         let mut res = head.to_vec();
+         res.push_all(README);
+         MockStream {
+             read: Cursor::new(res)
+         }
+     }
+ }
+ 
+ impl Clone for MockStream {
+     fn clone(&self) -> MockStream {
+         MockStream {
+             read: Cursor::new(self.read.get_ref().clone())
+         }
+     }
+ }
+ 
+ impl Read for MockStream {
+     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+         self.read.read(buf)
+     }
+ }
+ 
+ impl Write for MockStream {
+     fn write(&mut self, msg: &[u8]) -> io::Result<usize> {
+         // we're mocking, what do we care.
+         Ok(msg.len())
+     }
+     fn flush(&mut self) -> io::Result<()> {
+         Ok(())
+     }
+ }
+ 
+ #[derive(Clone, Debug)]
+ struct Foo;
+ 
+ impl hyper::header::Header for Foo {
+     fn header_name() -> &'static str {
+         "x-foo"
+     }
+     fn parse_header(_: &[Vec<u8>]) -> Option<Foo> {
+         None
+     }
+ }
+ 
+ impl hyper::header::HeaderFormat for Foo {
+     fn fmt_header(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+         fmt.write_str("Bar")
+     }
+ }
+ 
+ impl net::NetworkStream for MockStream {
+     fn peer_addr(&mut self) -> io::Result<SocketAddr> {
+         Ok("127.0.0.1:1337".parse().unwrap())
+     }
+ }
+ 
+ struct MockConnector;
+ 
+ impl net::NetworkConnector for MockConnector {
+     type Stream = MockStream;
+     fn connect(&mut self, _: &str, _: u16, _: &str) -> hyper::Result<MockStream> {
+         Ok(MockStream::new())
+     }
+ 
++    fn set_ssl_verifier(&mut self, _verifier: ContextVerifier) {
++        // pass
++    }
+ }
+ 
+ #[bench]
+ fn bench_mock_hyper(b: &mut test::Bencher) {
+     let url = "http://127.0.0.1:1337/";
+     b.iter(|| {
+         let mut req = hyper::client::Request::with_connector(
+             hyper::Get, hyper::Url::parse(url).unwrap(), &mut MockConnector
+         ).unwrap();
+         req.headers_mut().set(Foo);
+ 
+         let mut s = String::new();
+         req
+             .start().unwrap()
+             .send().unwrap()
+             .read_to_string(&mut s).unwrap()
+     });
+ }
+ 
+diff --git a/src/client/mod.rs b/src/client/mod.rs
+index 4d1a5be4..6931e6f1 100644
+--- a/src/client/mod.rs
++++ b/src/client/mod.rs
+@@ -1,240 +1,245 @@
+ //! HTTP Client
+ //!
+ //! # Usage
+ //!
+ //! The `Client` API is designed for most people to make HTTP requests.
+ //! It utilizes the lower level `Request` API.
+ //!
+ //! ## GET
+ //!
+ //! ```no_run
+ //! # use hyper::Client;
+ //! let mut client = Client::new();
+ //!
+ //! let res = client.get("http://example.domain").send().unwrap();
+ //! assert_eq!(res.status, hyper::Ok);
+ //! ```
+ //!
+ //! The returned value is a `Response`, which provides easy access to
+ //! the `status`, the `headers`, and the response body via the `Read`
+ //! trait.
+ //!
+ //! ## POST
+ //!
+ //! ```no_run
+ //! # use hyper::Client;
+ //! let mut client = Client::new();
+ //!
+ //! let res = client.post("http://example.domain")
+ //!     .body("foo=bar")
+ //!     .send()
+ //!     .unwrap();
+ //! assert_eq!(res.status, hyper::Ok);
+ //! ```
+ use std::default::Default;
+ use std::io::{self, copy, Read};
+ use std::iter::Extend;
+ 
+ use url::UrlParser;
+ use url::ParseError as UrlError;
+ 
+ use header::{Headers, Header, HeaderFormat};
+ use header::{ContentLength, Location};
+ use method::Method;
+-use net::{NetworkConnector, NetworkStream, HttpConnector, ContextVerifier};
++use net::{NetworkConnector, NetworkStream, ContextVerifier};
+ use status::StatusClass::Redirection;
+ use {Url};
+ use Error;
+ 
+ pub use self::pool::Pool;
+ pub use self::request::Request;
+ pub use self::response::Response;
+ 
+ pub mod pool;
+ pub mod request;
+ pub mod response;
+ 
+ /// A Client to use additional features with Requests.
+ ///
+ /// Clients can handle things such as: redirect policy, connection pooling.
+ pub struct Client {
+     connector: Connector,
+     redirect_policy: RedirectPolicy,
+ }
+ 
+ impl Client {
+ 
+     /// Create a new Client.
+     pub fn new() -> Client {
+         Client::with_pool_config(Default::default())
+     }
+ 
+     /// Create a new Client with a configured Pool Config.
+     pub fn with_pool_config(config: pool::Config) -> Client {
+         Client::with_connector(Pool::new(config))
+     }
+ 
+     /// Create a new client with a specific connector.
+     pub fn with_connector<C, S>(connector: C) -> Client
+     where C: NetworkConnector<Stream=S> + Send + 'static, S: NetworkStream + Send {
+         Client {
+             connector: with_connector(connector),
+             redirect_policy: Default::default()
+         }
+     }
+ 
+     /// Set the SSL verifier callback for use with OpenSSL.
+     pub fn set_ssl_verifier(&mut self, verifier: ContextVerifier) {
+-        self.connector = with_connector(Pool::with_connector(
+-            Default::default(),
+-            HttpConnector(Some(verifier))
+-        ));
++        self.connector.set_ssl_verifier(verifier);
+     }
+ 
+     /// Set the RedirectPolicy.
+     pub fn set_redirect_policy(&mut self, policy: RedirectPolicy) {
+         self.redirect_policy = policy;
+     }
+ 
+     /// Build a Get request.
+     pub fn get<U: IntoUrl>(&mut self, url: U) -> RequestBuilder<U> {
+         self.request(Method::Get, url)
+     }
+ 
+     /// Build a Head request.
+     pub fn head<U: IntoUrl>(&mut self, url: U) -> RequestBuilder<U> {
+         self.request(Method::Head, url)
+     }
+ 
+     /// Build a Post request.
+     pub fn post<U: IntoUrl>(&mut self, url: U) -> RequestBuilder<U> {
+         self.request(Method::Post, url)
+     }
+ 
+     /// Build a Put request.
+     pub fn put<U: IntoUrl>(&mut self, url: U) -> RequestBuilder<U> {
+         self.request(Method::Put, url)
+     }
+ 
+     /// Build a Delete request.
+     pub fn delete<U: IntoUrl>(&mut self, url: U) -> RequestBuilder<U> {
+         self.request(Method::Delete, url)
+     }
+ 
+ 
+     /// Build a new request using this Client.
+     pub fn request<U: IntoUrl>(&mut self, method: Method, url: U) -> RequestBuilder<U> {
+         RequestBuilder {
+             client: self,
+             method: method,
+             url: url,
+             body: None,
+             headers: None,
+         }
+     }
+ }
+ 
+ fn with_connector<C: NetworkConnector<Stream=S> + Send + 'static, S: NetworkStream + Send>(c: C) -> Connector {
+     Connector(Box::new(ConnAdapter(c)))
+ }
+ 
+ struct ConnAdapter<C: NetworkConnector + Send>(C);
+ 
+ impl<C: NetworkConnector<Stream=S> + Send, S: NetworkStream + Send> NetworkConnector for ConnAdapter<C> {
+     type Stream = Box<NetworkStream + Send>;
+     #[inline]
+     fn connect(&mut self, host: &str, port: u16, scheme: &str)
+         -> ::Result<Box<NetworkStream + Send>> {
+         Ok(try!(self.0.connect(host, port, scheme)).into())
+     }
++    #[inline]
++    fn set_ssl_verifier(&mut self, verifier: ContextVerifier) {
++        self.0.set_ssl_verifier(verifier);
++    }
+ }
+ 
+ struct Connector(Box<NetworkConnector<Stream=Box<NetworkStream + Send>> + Send>);
+ 
+ impl NetworkConnector for Connector {
+     type Stream = Box<NetworkStream + Send>;
+     #[inline]
+     fn connect(&mut self, host: &str, port: u16, scheme: &str)
+         -> ::Result<Box<NetworkStream + Send>> {
+         Ok(try!(self.0.connect(host, port, scheme)).into())
+     }
++    #[inline]
++    fn set_ssl_verifier(&mut self, verifier: ContextVerifier) {
++        self.0.set_ssl_verifier(verifier);
++    }
+ }
+ 
+ /// Options for an individual Request.
+ ///
+ /// One of these will be built for you if you use one of the convenience
+ /// methods, such as `get()`, `post()`, etc.
+ pub struct RequestBuilder<'a, U: IntoUrl> {
+     client: &'a mut Client,
+     url: U,
+     headers: Option<Headers>,
+     method: Method,
+     body: Option<Body<'a>>,
+ }
+ 
+ impl<'a, U: IntoUrl> RequestBuilder<'a, U> {
+ 
+     /// Set a request body to be sent.
+     pub fn body<B: Into<Body<'a>>>(mut self, body: B) -> RequestBuilder<'a, U> {
+         self.body = Some(body.into());
+         self
+     }
+ 
+     /// Add additional headers to the request.
+     pub fn headers(mut self, headers: Headers) -> RequestBuilder<'a, U> {
+         self.headers = Some(headers);
+         self
+     }
+ 
+     /// Add an individual new header to the request.
+     pub fn header<H: Header + HeaderFormat>(mut self, header: H) -> RequestBuilder<'a, U> {
+         {
+             let mut headers = match self.headers {
+                 Some(ref mut h) => h,
+                 None => {
+                     self.headers = Some(Headers::new());
+                     self.headers.as_mut().unwrap()
+                 }
+             };
+ 
+             headers.set(header);
+         }
+         self
+     }
+ 
+     /// Execute this request and receive a Response back.
+     pub fn send(self) -> ::Result<Response> {
+         let RequestBuilder { client, method, url, headers, body } = self;
+         let mut url = try!(url.into_url());
+         trace!("send {:?} {:?}", method, url);
+ 
+         let can_have_body = match &method {
+             &Method::Get | &Method::Head => false,
+             _ => true
+         };
+ 
+         let mut body = if can_have_body {
+             body
+         } else {
+             None
+         };
+ 
+         loop {
+             let mut req = try!(Request::with_connector(method.clone(), url.clone(), &mut client.connector));
+             headers.as_ref().map(|headers| req.headers_mut().extend(headers.iter()));
+ 
+             match (can_have_body, body.as_ref()) {
+                 (true, Some(body)) => match body.size() {
+                     Some(size) => req.headers_mut().set(ContentLength(size)),
+                     None => (), // chunked, Request will add it automatically
+                 },
+                 (true, None) => req.headers_mut().set(ContentLength(0)),
+                 _ => () // neither
+             }
+             let mut streaming = try!(req.start());
+             body.take().map(|mut rdr| copy(&mut rdr, &mut streaming));
+             let res = try!(streaming.send());
+             if res.status.class() != Redirection {
+                 return Ok(res)
+             }
+             debug!("redirect code {:?} for {:?}", res.status, url);
+@@ -324,127 +329,155 @@ impl<'a> Into<Body<'a>> for &'a String {
+     #[inline]
+     fn into(self) -> Body<'a> {
+         self.as_bytes().into()
+     }
+ }
+ 
+ impl<'a, R: Read> From<&'a mut R> for Body<'a> {
+     #[inline]
+     fn from(r: &'a mut R) -> Body<'a> {
+         Body::ChunkedBody(r)
+     }
+ }
+ 
+ /// A helper trait to convert common objects into a Url.
+ pub trait IntoUrl {
+     /// Consumes the object, trying to return a Url.
+     fn into_url(self) -> Result<Url, UrlError>;
+ }
+ 
+ impl IntoUrl for Url {
+     fn into_url(self) -> Result<Url, UrlError> {
+         Ok(self)
+     }
+ }
+ 
+ impl<'a> IntoUrl for &'a str {
+     fn into_url(self) -> Result<Url, UrlError> {
+         Url::parse(self)
+     }
+ }
+ 
+ impl<'a> IntoUrl for &'a String {
+     fn into_url(self) -> Result<Url, UrlError> {
+         Url::parse(self)
+     }
+ }
+ 
+ /// Behavior regarding how to handle redirects within a Client.
+ #[derive(Copy)]
+ pub enum RedirectPolicy {
+     /// Don't follow any redirects.
+     FollowNone,
+     /// Follow all redirects.
+     FollowAll,
+     /// Follow a redirect if the contained function returns true.
+     FollowIf(fn(&Url) -> bool),
+ }
+ 
+ // This is a hack because of upstream typesystem issues. 
+ impl Clone for RedirectPolicy {
+     fn clone(&self) -> RedirectPolicy {
+         *self
+     }
+ }
+ 
+ impl Default for RedirectPolicy {
+     fn default() -> RedirectPolicy {
+         RedirectPolicy::FollowAll
+     }
+ }
+ 
+ fn get_host_and_port(url: &Url) -> ::Result<(String, u16)> {
+     let host = match url.serialize_host() {
+         Some(host) => host,
+         None => return Err(Error::Uri(UrlError::EmptyHost))
+     };
+     trace!("host={:?}", host);
+     let port = match url.port_or_default() {
+         Some(port) => port,
+         None => return Err(Error::Uri(UrlError::InvalidPort))
+     };
+     trace!("port={:?}", port);
+     Ok((host, port))
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use header::Server;
+     use super::{Client, RedirectPolicy};
+     use url::Url;
++    use mock::ChannelMockConnector;
++    use std::sync::mpsc::{self, TryRecvError};
+ 
+     mock_connector!(MockRedirectPolicy {
+         "http://127.0.0.1" =>       "HTTP/1.1 301 Redirect\r\n\
+                                      Location: http://127.0.0.2\r\n\
+                                      Server: mock1\r\n\
+                                      \r\n\
+                                     "
+         "http://127.0.0.2" =>       "HTTP/1.1 302 Found\r\n\
+                                      Location: https://127.0.0.3\r\n\
+                                      Server: mock2\r\n\
+                                      \r\n\
+                                     "
+         "https://127.0.0.3" =>      "HTTP/1.1 200 OK\r\n\
+                                      Server: mock3\r\n\
+                                      \r\n\
+                                     "
+     });
+ 
+     #[test]
+     fn test_redirect_followall() {
+         let mut client = Client::with_connector(MockRedirectPolicy);
+         client.set_redirect_policy(RedirectPolicy::FollowAll);
+ 
+         let res = client.get("http://127.0.0.1").send().unwrap();
+         assert_eq!(res.headers.get(), Some(&Server("mock3".to_string())));
+     }
+ 
+     #[test]
+     fn test_redirect_dontfollow() {
+         let mut client = Client::with_connector(MockRedirectPolicy);
+         client.set_redirect_policy(RedirectPolicy::FollowNone);
+         let res = client.get("http://127.0.0.1").send().unwrap();
+         assert_eq!(res.headers.get(), Some(&Server("mock1".to_string())));
+     }
+ 
+     #[test]
+     fn test_redirect_followif() {
+         fn follow_if(url: &Url) -> bool {
+             !url.serialize().contains("127.0.0.3")
+         }
+         let mut client = Client::with_connector(MockRedirectPolicy);
+         client.set_redirect_policy(RedirectPolicy::FollowIf(follow_if));
+         let res = client.get("http://127.0.0.1").send().unwrap();
+         assert_eq!(res.headers.get(), Some(&Server("mock2".to_string())));
+     }
+ 
++    /// Tests that the `Client::set_ssl_verifier` method does not drop the
++    /// old connector, but rather delegates the change to the connector itself.
++    #[test]
++    fn test_client_set_ssl_verifer() {
++        let (tx, rx) = mpsc::channel();
++        let mut client = Client::with_connector(ChannelMockConnector::new(tx));
++
++        client.set_ssl_verifier(Box::new(|_| {}));
++
++        // Make sure that the client called the `set_ssl_verifier` method
++        match rx.try_recv() {
++            Ok(meth) => {
++                assert_eq!(meth, "set_ssl_verifier");
++            },
++            _ => panic!("Expected a call to `set_ssl_verifier`"),
++        };
++        // Now make sure that no other method was called, as well as that
++        // the connector is still alive (i.e. wasn't dropped by the client).
++        match rx.try_recv() {
++            Err(TryRecvError::Empty) => {},
++            Err(TryRecvError::Disconnected) => {
++                panic!("Expected the connector to still be alive.");
++            },
++            Ok(_) => panic!("Did not expect any more method calls."),
++        };
++    }
+ }
+diff --git a/src/client/pool.rs b/src/client/pool.rs
+index 0f570cc3..bf18402c 100644
+--- a/src/client/pool.rs
++++ b/src/client/pool.rs
+@@ -1,227 +1,246 @@
+ //! Client Connection Pooling
+ use std::borrow::ToOwned;
+ use std::collections::HashMap;
+ use std::io::{self, Read, Write};
+ use std::net::{SocketAddr, Shutdown};
+ use std::sync::{Arc, Mutex};
+ 
+-use net::{NetworkConnector, NetworkStream, HttpConnector};
++use net::{NetworkConnector, NetworkStream, HttpConnector, ContextVerifier};
+ 
+ /// The `NetworkConnector` that behaves as a connection pool used by hyper's `Client`.
+ pub struct Pool<C: NetworkConnector> {
+     connector: C,
+     inner: Arc<Mutex<PoolImpl<<C as NetworkConnector>::Stream>>>
+ }
+ 
+ /// Config options for the `Pool`.
+ #[derive(Debug)]
+ pub struct Config {
+     /// The maximum idle connections *per host*.
+     pub max_idle: usize,
+ }
+ 
+ impl Default for Config {
+     #[inline]
+     fn default() -> Config {
+         Config {
+             max_idle: 5,
+         }
+     }
+ }
+ 
+ #[derive(Debug)]
+ struct PoolImpl<S> {
+     conns: HashMap<Key, Vec<S>>,
+     config: Config,
+ }
+ 
+ type Key = (String, u16, Scheme);
+ 
+ fn key<T: Into<Scheme>>(host: &str, port: u16, scheme: T) -> Key {
+     (host.to_owned(), port, scheme.into())
+ }
+ 
+ #[derive(Clone, PartialEq, Eq, Debug, Hash)]
+ enum Scheme {
+     Http,
+     Https,
+     Other(String)
+ }
+ 
+ impl<'a> From<&'a str> for Scheme {
+     fn from(s: &'a str) -> Scheme {
+         match s {
+             "http" => Scheme::Http,
+             "https" => Scheme::Https,
+             s => Scheme::Other(String::from(s))
+         }
+     }
+ }
+ 
+ impl Pool<HttpConnector> {
+     /// Creates a `Pool` with an `HttpConnector`.
+     #[inline]
+     pub fn new(config: Config) -> Pool<HttpConnector> {
+         Pool::with_connector(config, HttpConnector(None))
+     }
+ }
+ 
+ impl<C: NetworkConnector> Pool<C> {
+     /// Creates a `Pool` with a specified `NetworkConnector`.
+     #[inline]
+     pub fn with_connector(config: Config, connector: C) -> Pool<C> {
+         Pool {
+             connector: connector,
+             inner: Arc::new(Mutex::new(PoolImpl {
+                 conns: HashMap::new(),
+                 config: config,
+             }))
+         }
+     }
+ 
+     /// Clear all idle connections from the Pool, closing them.
+     #[inline]
+     pub fn clear_idle(&mut self) {
+         self.inner.lock().unwrap().conns.clear();
+     }
+ }
+ 
+ impl<S> PoolImpl<S> {
+     fn reuse(&mut self, key: Key, conn: S) {
+         trace!("reuse {:?}", key);
+         let conns = self.conns.entry(key).or_insert(vec![]);
+         if conns.len() < self.config.max_idle {
+             conns.push(conn);
+         }
+     }
+ }
+ 
+ impl<C: NetworkConnector<Stream=S>, S: NetworkStream + Send> NetworkConnector for Pool<C> {
+     type Stream = PooledStream<S>;
+     fn connect(&mut self, host: &str, port: u16, scheme: &str) -> ::Result<PooledStream<S>> {
+         let key = key(host, port, scheme);
+         let mut locked = self.inner.lock().unwrap();
+         let mut should_remove = false;
+         let conn = match locked.conns.get_mut(&key) {
+             Some(ref mut vec) => {
+                 should_remove = vec.len() == 1;
+                 vec.pop().unwrap()
+             }
+             _ => try!(self.connector.connect(host, port, scheme))
+         };
+         if should_remove {
+             locked.conns.remove(&key);
+         }
+         Ok(PooledStream {
+             inner: Some((key, conn)),
+             is_closed: false,
+             is_drained: false,
+             pool: self.inner.clone()
+         })
+     }
++    #[inline]
++    fn set_ssl_verifier(&mut self, verifier: ContextVerifier) {
++        self.connector.set_ssl_verifier(verifier);
++    }
+ }
+ 
+ /// A Stream that will try to be returned to the Pool when dropped.
+ pub struct PooledStream<S> {
+     inner: Option<(Key, S)>,
+     is_closed: bool,
+     is_drained: bool,
+     pool: Arc<Mutex<PoolImpl<S>>>
+ }
+ 
+ impl<S: NetworkStream> Read for PooledStream<S> {
+     #[inline]
+     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+         match self.inner.as_mut().unwrap().1.read(buf) {
+             Ok(0) => {
+                 self.is_drained = true;
+                 Ok(0)
+             }
+             r => r
+         }
+     }
+ }
+ 
+ impl<S: NetworkStream> Write for PooledStream<S> {
+     #[inline]
+     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+         self.inner.as_mut().unwrap().1.write(buf)
+     }
+ 
+     #[inline]
+     fn flush(&mut self) -> io::Result<()> {
+         self.inner.as_mut().unwrap().1.flush()
+     }
+ }
+ 
+ impl<S: NetworkStream> NetworkStream for PooledStream<S> {
+     #[inline]
+     fn peer_addr(&mut self) -> io::Result<SocketAddr> {
+         self.inner.as_mut().unwrap().1.peer_addr()
+     }
+ 
+     #[inline]
+     fn close(&mut self, how: Shutdown) -> io::Result<()> {
+         self.is_closed = true;
+         self.inner.as_mut().unwrap().1.close(how)
+     }
+ }
+ 
+ impl<S> Drop for PooledStream<S> {
+     fn drop(&mut self) {
+         trace!("PooledStream.drop, is_closed={}, is_drained={}", self.is_closed, self.is_drained);
+         if !self.is_closed && self.is_drained {
+             self.inner.take().map(|(key, conn)| {
+                 if let Ok(mut pool) = self.pool.lock() {
+                     pool.reuse(key, conn);
+                 }
+                 // else poisoned, give up
+             });
+         }
+     }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use std::net::Shutdown;
+-    use mock::MockConnector;
++    use mock::{MockConnector, ChannelMockConnector};
+     use net::{NetworkConnector, NetworkStream};
++    use std::sync::mpsc;
+ 
+     use super::{Pool, key};
+ 
+     macro_rules! mocked {
+         () => ({
+             Pool::with_connector(Default::default(), MockConnector)
+         })
+     }
+ 
+     #[test]
+     fn test_connect_and_drop() {
+         let mut pool = mocked!();
+         let key = key("127.0.0.1", 3000, "http");
+         pool.connect("127.0.0.1", 3000, "http").unwrap().is_drained = true;
+         {
+             let locked = pool.inner.lock().unwrap();
+             assert_eq!(locked.conns.len(), 1);
+             assert_eq!(locked.conns.get(&key).unwrap().len(), 1);
+         }
+         pool.connect("127.0.0.1", 3000, "http").unwrap().is_drained = true; //reused
+         {
+             let locked = pool.inner.lock().unwrap();
+             assert_eq!(locked.conns.len(), 1);
+             assert_eq!(locked.conns.get(&key).unwrap().len(), 1);
+         }
+     }
+ 
+     #[test]
+     fn test_closed() {
+         let mut pool = mocked!();
+         let mut stream = pool.connect("127.0.0.1", 3000, "http").unwrap();
+         stream.close(Shutdown::Both).unwrap();
+         drop(stream);
+         let locked = pool.inner.lock().unwrap();
+         assert_eq!(locked.conns.len(), 0);
+     }
+ 
++    /// Tests that the `Pool::set_ssl_verifier` method sets the SSL verifier of
++    /// the underlying `Connector` instance that it uses.
++    #[test]
++    fn test_set_ssl_verifier_delegates_to_connector() {
++        let (tx, rx) = mpsc::channel();
++        let mut pool = Pool::with_connector(
++            Default::default(), ChannelMockConnector::new(tx));
++
++        pool.set_ssl_verifier(Box::new(|_| { }));
+ 
++        match rx.try_recv() {
++            Ok(meth) => assert_eq!(meth, "set_ssl_verifier"),
++            _ => panic!("Expected a call to `set_ssl_verifier`"),
++        };
++    }
+ }
+diff --git a/src/mock.rs b/src/mock.rs
+index 9cbd022d..817aa22d 100644
+--- a/src/mock.rs
++++ b/src/mock.rs
+@@ -1,114 +1,151 @@
+ use std::fmt;
+ use std::io::{self, Read, Write, Cursor};
+ use std::net::SocketAddr;
++use std::sync::mpsc::Sender;
+ 
+-use net::{NetworkStream, NetworkConnector};
++use net::{NetworkStream, NetworkConnector, ContextVerifier};
+ 
+ pub struct MockStream {
+     pub read: Cursor<Vec<u8>>,
+     pub write: Vec<u8>,
+ }
+ 
+ impl Clone for MockStream {
+     fn clone(&self) -> MockStream {
+         MockStream {
+             read: Cursor::new(self.read.get_ref().clone()),
+             write: self.write.clone()
+         }
+     }
+ }
+ 
+ impl fmt::Debug for MockStream {
+     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+         write!(f, "MockStream {{ read: {:?}, write: {:?} }}", self.read.get_ref(), self.write)
+     }
+ }
+ 
+ impl PartialEq for MockStream {
+     fn eq(&self, other: &MockStream) -> bool {
+         self.read.get_ref() == other.read.get_ref() && self.write == other.write
+     }
+ }
+ 
+ impl MockStream {
+     pub fn new() -> MockStream {
+         MockStream {
+             read: Cursor::new(vec![]),
+             write: vec![],
+         }
+     }
+ 
+     pub fn with_input(input: &[u8]) -> MockStream {
+         MockStream {
+             read: Cursor::new(input.to_vec()),
+             write: vec![]
+         }
+     }
+ }
+ 
+ impl Read for MockStream {
+     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+         self.read.read(buf)
+     }
+ }
+ 
+ impl Write for MockStream {
+     fn write(&mut self, msg: &[u8]) -> io::Result<usize> {
+         Write::write(&mut self.write, msg)
+     }
+ 
+     fn flush(&mut self) -> io::Result<()> {
+         Ok(())
+     }
+ }
+ 
+ impl NetworkStream for MockStream {
+     fn peer_addr(&mut self) -> io::Result<SocketAddr> {
+         Ok("127.0.0.1:1337".parse().unwrap())
+     }
+ }
+ 
+ pub struct MockConnector;
+ 
+ impl NetworkConnector for MockConnector {
+     type Stream = MockStream;
+ 
+     fn connect(&mut self, _host: &str, _port: u16, _scheme: &str) -> ::Result<MockStream> {
+         Ok(MockStream::new())
+     }
++
++    fn set_ssl_verifier(&mut self, _verifier: ContextVerifier) {
++        // pass
++    }
++}
++
++/// A mock implementation of the `NetworkConnector` trait that keeps track of all calls to its
++/// methods by sending corresponding messages onto a channel.
++///
++/// Otherwise, it behaves the same as `MockConnector`.
++pub struct ChannelMockConnector {
++    calls: Sender<String>,
++}
++
++impl ChannelMockConnector {
++    pub fn new(calls: Sender<String>) -> ChannelMockConnector {
++        ChannelMockConnector { calls: calls }
++    }
++}
++
++impl NetworkConnector for ChannelMockConnector {
++    type Stream = MockStream;
++    #[inline]
++    fn connect(&mut self, _host: &str, _port: u16, _scheme: &str)
++            -> ::Result<MockStream> {
++        self.calls.send("connect".into()).unwrap();
++        Ok(MockStream::new())
++    }
++
++    #[inline]
++    fn set_ssl_verifier(&mut self, _verifier: ContextVerifier) {
++        self.calls.send("set_ssl_verifier".into()).unwrap();
++    }
+ }
+ 
+ /// new connectors must be created if you wish to intercept requests.
+ macro_rules! mock_connector (
+     ($name:ident {
+         $($url:expr => $res:expr)*
+     }) => (
+ 
+         struct $name;
+ 
+         impl ::net::NetworkConnector for $name {
+             type Stream = ::mock::MockStream;
+             fn connect(&mut self, host: &str, port: u16, scheme: &str) -> $crate::Result<::mock::MockStream> {
+                 use std::collections::HashMap;
+                 use std::io::Cursor;
+                 debug!("MockStream::connect({:?}, {:?}, {:?})", host, port, scheme);
+                 let mut map = HashMap::new();
+                 $(map.insert($url, $res);)*
+ 
+ 
+                 let key = format!("{}://{}", scheme, host);
+                 // ignore port for now
+                 match map.get(&*key) {
+                     Some(res) => Ok($crate::mock::MockStream {
+                         write: vec![],
+                         read: Cursor::new(res.to_string().into_bytes()),
+                     }),
+                     None => panic!("{:?} doesn't know url {}", stringify!($name), key)
+                 }
+             }
+ 
++            fn set_ssl_verifier(&mut self, _verifier: ::net::ContextVerifier) {
++                // pass
++            }
+         }
+ 
+     )
+ );
+ 
+diff --git a/src/net.rs b/src/net.rs
+index e5cfb121..792d0113 100644
+--- a/src/net.rs
++++ b/src/net.rs
+@@ -1,152 +1,155 @@
+ //! A collection of traits abstracting over Listeners and Streams.
+ use std::any::{Any, TypeId};
+ use std::fmt;
+ use std::io::{self, ErrorKind, Read, Write};
+ use std::net::{SocketAddr, ToSocketAddrs, TcpStream, TcpListener, Shutdown};
+ use std::mem;
+ use std::path::Path;
+ use std::sync::Arc;
+ 
+ use openssl::ssl::{Ssl, SslStream, SslContext, SSL_VERIFY_NONE};
+ use openssl::ssl::SslMethod::Sslv23;
+ use openssl::ssl::error::StreamError as SslIoError;
+ use openssl::x509::X509FileType;
+ 
+ use typeable::Typeable;
+ use {traitobject};
+ 
+ /// The write-status indicating headers have not been written.
+ pub enum Fresh {}
+ 
+ /// The write-status indicating headers have been written.
+ pub enum Streaming {}
+ 
+ /// An abstraction to listen for connections on a certain port.
+ pub trait NetworkListener: Clone {
+     /// The stream produced for each connection.
+     type Stream: NetworkStream + Send + Clone;
+     /// Listens on a socket.
+     //fn listen<To: ToSocketAddrs>(&mut self, addr: To) -> io::Result<Self::Acceptor>;
+ 
+     /// Returns an iterator of streams.
+     fn accept(&mut self) -> ::Result<Self::Stream>;
+ 
+     /// Get the address this Listener ended up listening on.
+     fn local_addr(&mut self) -> io::Result<SocketAddr>;
+ 
+     /// Closes the Acceptor, so no more incoming connections will be handled.
+ //    fn close(&mut self) -> io::Result<()>;
+ 
+     /// Returns an iterator over incoming connections.
+     fn incoming(&mut self) -> NetworkConnections<Self> {
+         NetworkConnections(self)
+     }
+ }
+ 
+ /// An iterator wrapper over a NetworkAcceptor.
+ pub struct NetworkConnections<'a, N: NetworkListener + 'a>(&'a mut N);
+ 
+ impl<'a, N: NetworkListener + 'a> Iterator for NetworkConnections<'a, N> {
+     type Item = ::Result<N::Stream>;
+     fn next(&mut self) -> Option<::Result<N::Stream>> {
+         Some(self.0.accept())
+     }
+ }
+ 
+ /// An abstraction over streams that a Server can utilize.
+ pub trait NetworkStream: Read + Write + Any + Send + Typeable {
+     /// Get the remote address of the underlying connection.
+     fn peer_addr(&mut self) -> io::Result<SocketAddr>;
+     /// This will be called when Stream should no longer be kept alive.
+     #[inline]
+     fn close(&mut self, _how: Shutdown) -> io::Result<()> {
+         Ok(())
+     }
+ }
+ 
+ /// A connector creates a NetworkStream.
+ pub trait NetworkConnector {
+     /// Type of Stream to create
+     type Stream: Into<Box<NetworkStream + Send>>;
+     /// Connect to a remote address.
+     fn connect(&mut self, host: &str, port: u16, scheme: &str) -> ::Result<Self::Stream>;
++    /// Sets the given `ContextVerifier` to be used when verifying the SSL context
++    /// on the establishment of a new connection.
++    fn set_ssl_verifier(&mut self, verifier: ContextVerifier);
+ }
+ 
+ impl<T: NetworkStream + Send> From<T> for Box<NetworkStream + Send> {
+     fn from(s: T) -> Box<NetworkStream + Send> {
+         Box::new(s)
+     }
+ }
+ 
+ impl fmt::Debug for Box<NetworkStream + Send> {
+     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+         fmt.pad("Box<NetworkStream>")
+     }
+ }
+ 
+ impl NetworkStream + Send {
+     unsafe fn downcast_ref_unchecked<T: 'static>(&self) -> &T {
+         mem::transmute(traitobject::data(self))
+     }
+ 
+     unsafe fn downcast_mut_unchecked<T: 'static>(&mut self) -> &mut T {
+         mem::transmute(traitobject::data_mut(self))
+     }
+ 
+     unsafe fn downcast_unchecked<T: 'static>(self: Box<NetworkStream + Send>) -> Box<T>  {
+         let raw: *mut NetworkStream = mem::transmute(self);
+         mem::transmute(traitobject::data_mut(raw))
+     }
+ }
+ 
+ impl NetworkStream + Send {
+     /// Is the underlying type in this trait object a T?
+     #[inline]
+     pub fn is<T: Any>(&self) -> bool {
+         (*self).get_type() == TypeId::of::<T>()
+     }
+ 
+     /// If the underlying type is T, get a reference to the contained data.
+     #[inline]
+     pub fn downcast_ref<T: Any>(&self) -> Option<&T> {
+         if self.is::<T>() {
+             Some(unsafe { self.downcast_ref_unchecked() })
+         } else {
+             None
+         }
+     }
+ 
+     /// If the underlying type is T, get a mutable reference to the contained
+     /// data.
+     #[inline]
+     pub fn downcast_mut<T: Any>(&mut self) -> Option<&mut T> {
+         if self.is::<T>() {
+             Some(unsafe { self.downcast_mut_unchecked() })
+         } else {
+             None
+         }
+     }
+ 
+     /// If the underlying type is T, extract it.
+     #[inline]
+     pub fn downcast<T: Any>(self: Box<NetworkStream + Send>)
+             -> Result<Box<T>, Box<NetworkStream + Send>> {
+         if self.is::<T>() {
+             Ok(unsafe { self.downcast_unchecked() })
+         } else {
+             Err(self)
+         }
+     }
+ }
+ 
+ /// A `NetworkListener` for `HttpStream`s.
+ pub enum HttpListener {
+     /// Http variant.
+     Http(TcpListener),
+     /// Https variant. The two paths point to the certificate and key PEM files, in that order.
+     Https(TcpListener, Arc<SslContext>)
+ }
+ 
+ impl Clone for HttpListener {
+     fn clone(&self) -> HttpListener {
+         match *self {
+@@ -267,108 +270,119 @@ impl Read for HttpStream {
+ impl Write for HttpStream {
+     #[inline]
+     fn write(&mut self, msg: &[u8]) -> io::Result<usize> {
+         match *self {
+             HttpStream::Http(ref mut inner) => inner.write(msg),
+             HttpStream::Https(ref mut inner) => inner.write(msg)
+         }
+     }
+     #[inline]
+     fn flush(&mut self) -> io::Result<()> {
+         match *self {
+             HttpStream::Http(ref mut inner) => inner.flush(),
+             HttpStream::Https(ref mut inner) => inner.flush(),
+         }
+     }
+ }
+ 
+ impl NetworkStream for HttpStream {
+     #[inline]
+     fn peer_addr(&mut self) -> io::Result<SocketAddr> {
+         match *self {
+             HttpStream::Http(ref mut inner) => inner.0.peer_addr(),
+             HttpStream::Https(ref mut inner) => inner.get_mut().0.peer_addr()
+         }
+     }
+ 
+     #[inline]
+     fn close(&mut self, how: Shutdown) -> io::Result<()> {
+         #[inline]
+         fn shutdown(tcp: &mut TcpStream, how: Shutdown) -> io::Result<()> {
+             match tcp.shutdown(how) {
+                 Ok(_) => Ok(()),
+                 // see https://github.com/hyperium/hyper/issues/508
+                 Err(ref e) if e.kind() == ErrorKind::NotConnected => Ok(()),
+                 err => err
+             }
+         }
+ 
+         match *self {
+             HttpStream::Http(ref mut inner) => shutdown(&mut inner.0, how),
+             HttpStream::Https(ref mut inner) => shutdown(&mut inner.get_mut().0, how)
+         }
+ 
+     }
+ }
+ 
+ /// A connector that will produce HttpStreams.
+ pub struct HttpConnector(pub Option<ContextVerifier>);
+ 
+ /// A method that can set verification methods on an SSL context
+ pub type ContextVerifier = Box<FnMut(&mut SslContext) -> () + Send>;
+ 
+ impl NetworkConnector for HttpConnector {
+     type Stream = HttpStream;
+ 
+     fn connect(&mut self, host: &str, port: u16, scheme: &str) -> ::Result<HttpStream> {
+         let addr = &(host, port);
+         Ok(try!(match scheme {
+             "http" => {
+                 debug!("http scheme");
+                 Ok(HttpStream::Http(CloneTcpStream(try!(TcpStream::connect(addr)))))
+             },
+             "https" => {
+                 debug!("https scheme");
+                 let stream = CloneTcpStream(try!(TcpStream::connect(addr)));
+                 let mut context = try!(SslContext::new(Sslv23));
+                 if let Some(ref mut verifier) = self.0 {
+                     verifier(&mut context);
+                 }
+                 let ssl = try!(Ssl::new(&context));
+                 try!(ssl.set_hostname(host));
+                 let stream = try!(SslStream::new(&context, stream));
+                 Ok(HttpStream::Https(stream))
+             },
+             _ => {
+                 Err(io::Error::new(io::ErrorKind::InvalidInput,
+                                 "Invalid scheme for Http"))
+             }
+         }))
+     }
++    fn set_ssl_verifier(&mut self, verifier: ContextVerifier) {
++        self.0 = Some(verifier);
++    }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use mock::MockStream;
+-    use super::NetworkStream;
++    use super::{NetworkStream, HttpConnector, NetworkConnector};
+ 
+     #[test]
+     fn test_downcast_box_stream() {
+         // FIXME: Use Type ascription
+         let stream: Box<NetworkStream + Send> = Box::new(MockStream::new());
+ 
+         let mock = stream.downcast::<MockStream>().ok().unwrap();
+         assert_eq!(mock, Box::new(MockStream::new()));
+ 
+     }
+ 
+     #[test]
+     fn test_downcast_unchecked_box_stream() {
+         // FIXME: Use Type ascription
+         let stream: Box<NetworkStream + Send> = Box::new(MockStream::new());
+ 
+         let mock = unsafe { stream.downcast_unchecked::<MockStream>() };
+         assert_eq!(mock, Box::new(MockStream::new()));
+ 
+     }
+ 
++    #[test]
++    fn test_http_connector_set_ssl_verifier() {
++        let mut connector = HttpConnector(None);
++
++        connector.set_ssl_verifier(Box::new(|_| {}));
++
++        assert!(connector.0.is_some());
++    }
+ }

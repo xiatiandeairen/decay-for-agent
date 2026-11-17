@@ -1,0 +1,44 @@
+{
+  "case_id": "hyper-3185",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "if !self.state.h1_header_read_timeout_running {",
+        "let deadline = Instant::now() + h1_header_read_timeout;",
+        "#[cfg(feature = \"server\")]\n        if !self.state.h1_header_read_timeout_running {"
+      ],
+      "rank": 1,
+      "rationale": "Timer arming moved from parse_headers (gated on bytes.is_empty early-return) to top of poll_read_head, so the deadline now starts before any IO/leading-line consumption; semantics for fresh and keep-\u2026",
+      "risk_signal": "lifecycle_ordering",
+      "subject": "src/proto/h1/conn.rs:poll_read_head",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "Poll::Ready(Err(e)) => return self.on_read_head_error(e),",
+        "self.state.h1_header_read_timeout_running = false;\n            self.state.h1_header_read_timeout_fut = None;"
+      ],
+      "rank": 2,
+      "rationale": "Successful parse explicitly clears h1_header_read_timeout_running/fut; the Err branch returns via on_read_head_error without resetting, so a stale armed timer can persist into subsequent polls on the\u2026",
+      "risk_signal": "error_propagation",
+      "subject": "src/proto/h1/conn.rs:poll_read_head",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "async fn header_read_timeout_starts_immediately()",
+        "header_read_timeout(Duration::from_secs(2))"
+      ],
+      "rank": 3,
+      "rationale": "Only the empty-connection immediate-timeout case is added; no new test exercises parse-error cleanup of the timer future or keep-alive request boundaries after the arming-site move.",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tests/server.rs:header_read_timeout_starts_immediately",
+      "value": "supporting"
+    }
+  ]
+}

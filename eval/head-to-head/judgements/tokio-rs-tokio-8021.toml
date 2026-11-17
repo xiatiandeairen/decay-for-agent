@@ -1,0 +1,17 @@
+# Generated from a judge run by judgements-from-judge-run.py.
+# ai_baseline section grades the frozen AI baseline output against ground truth.
+
+version = "ai-baseline-judgement.v1"
+case_id = "tokio-rs-tokio-8021"
+status = "complete"
+judge = "claude-opus-4-7"
+judged_at = "2026-06-08"
+ground_truth_summary = "forget_permits must preserve the CLOSED (LSB) bit in the CAS write. Previously `new << PERMIT_SHIFT` wrote 0 to LSB, silently reopening a closed semaphore. Fix ORs `curr_bits & Self::CLOSED` into the new value so closed state is sticky across forget."
+
+[ai_baseline]
+top3_total = 2
+top3_useful = 1
+actionable = true
+missed_high_risk_count = 0
+weak_only_top_risk_count = 0
+notes = "Rank-1 state_transition (direct, high) nails the mechanism: prior `new << PERMIT_SHIFT` cleared CLOSED, silently reopening on forget. Rank-2 test_gap is supporting but reasonable (concurrent CAS-retry path not exercised by new single-threaded tests)."

@@ -1,0 +1,47 @@
+{
+  "case_id": "serde-rs-json-187",
+  "refs": [
+    {
+      "detail": {
+        "body": "Currently `to_value` returns Value and panics if the conversion fails.",
+        "closedAt": "2017-01-16T07:27:17Z",
+        "comments": [
+          {
+            "author": {
+              "login": "dtolnay"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "This applies to ToJson::to_json as well.",
+            "createdAt": "2017-01-15T06:08:39Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDI3MjY3NjE2OA==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/serde-rs/json/issues/186#issuecomment-272676168",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2017-01-15T03:53:07Z",
+        "labels": [
+          {
+            "color": "e99695",
+            "description": "",
+            "id": "MDU6TGFiZWwzNzc1NTE5NzQ=",
+            "name": "breaking change"
+          }
+        ],
+        "number": 186,
+        "state": "CLOSED",
+        "title": "Return Result<Value, Error> from to_value",
+        "url": "https://github.com/serde-rs/json/issues/186"
+      },
+      "target": {
+        "number": 186,
+        "reason": "to_value panic report.",
+        "repo": "serde-rs/json",
+        "type": "issue"
+      }
+    }
+  ]
+}

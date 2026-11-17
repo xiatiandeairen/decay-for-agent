@@ -1,0 +1,91 @@
+# Task
+
+You are the semantic selection layer for decay v0.2.0 M3.1.
+Use only the fact evidence below. Do not use external APIs, web search, or unstated repository knowledge.
+
+# Output Contract
+
+Return JSON only, matching semantic-findings.v1:
+
+```json
+{"version":"semantic-findings.v1","findings":[]}
+```
+
+Each finding must include claim, supporting_facts, source_refs, confidence, limitation, and review_action.
+Every source_refs item must be an evidence id from the allowed list.
+Do not create a finding if it cannot cite at least one allowed evidence id.
+Do not promote weak-only signals: mixed_concerns, blast_radius, history-only, or pure touched_existing_risky.
+If the fact evidence is empty or weak-only, return an empty findings array.
+
+# Allowed Evidence Ids
+
+1, 2
+
+# Diff context
+
+```text
+repo_root=/private/tmp/decay-pr-eval/serde-rs-json-757/repo
+  mode=git_ref
+  base_input=9bcb08fd926c1c727cb1343363d41c25f2e6025d
+  base=9bcb08fd926c1c727cb1343363d41c25f2e6025d
+  head=c64c1d7429d32eaef3a501c730906656a9606f5d
+  changed_files=2
+```
+
+# Top risk findings
+
+```text
+1. [high] src/read.rs
+   semantic panic_to_error_propagation_changed Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint)
+   action: review malformed-input error propagation and require regression coverage
+2. [medium] src/read.rs
+   quality prod_change_with_tests
+   action: review changed behavior invariants and confirm regression tests cover the risky path
+```
+
+# Complexity impact
+
+```text
+changed_functions=1 evidence=0 partial=false diagnostics=0
+  value_note=direct for worsened/new_high_risk; touched_existing_risky is supporting context, not proof of current-diff risk
+```
+
+# Coverage impact
+
+```text
+evidence=0
+  value_note=scan coverage gaps limit decay confidence; this is tool coverage evidence, not proof of product code risk
+```
+
+# Stability impact
+
+```text
+evidence=0
+  value_note=direct for newly introduced unsafe/panic/public-api evidence; move/refactor diffs can weaken this signal
+```
+
+# Quality impact
+
+```text
+evidence=1 prod_files_changed=1 test_files_changed=1 docs_files_changed=0
+  value_note=missing-test signals are supporting evidence; broad scope signals are weak unless paired with direct diff evidence
+- id=1 category=quality kind=prod_change_with_tests subject=production code changed with test changes source=quality confidence=low value=supporting
+  file=src/read.rs
+```
+
+# Semantic impact
+
+```text
+evidence=1
+  value_note=high confidence only for explicit scanned patterns; this is not general semantic understanding
+- id=2 category=semantic kind=panic_to_error_propagation_changed subject=Err(_) => return error(self, ErrorCode::InvalidUnicodeCodePoint) source=semantic_diff confidence=high value=direct
+  file=src/read.rs
+```
+
+# History impact
+
+```text
+evidence=0
+  value_note=context only; excluded from top risk unless direct diff evidence exists
+recorded=true changeset=1 evidence_saved=2
+```

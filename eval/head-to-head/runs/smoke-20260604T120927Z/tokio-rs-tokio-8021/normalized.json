@@ -1,0 +1,5 @@
+{
+  "case_id": "tokio-rs-tokio-8021",
+  "reason": "top_risks[0].subject references unknown file 'tokio/src/sync/batch_semaphore.rs'; not in changed_files",
+  "status": "ai-baseline-failed"
+}

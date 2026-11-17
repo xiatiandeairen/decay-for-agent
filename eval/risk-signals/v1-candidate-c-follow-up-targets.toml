@@ -1,0 +1,31 @@
+# Follow-up refs for v1 candidate pool C.
+
+[[cases]]
+id = "BurntSushi-ripgrep-2000"
+refs = [
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 1911, reason = "32-bit mmap regression context." },
+]
+
+[[cases]]
+id = "BurntSushi-ripgrep-3174"
+refs = [
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 3173, reason = "Whitelisted hidden files search bug report." },
+]
+
+[[cases]]
+id = "BurntSushi-ripgrep-801"
+refs = [
+  { type = "issue", repo = "BurntSushi/ripgrep", number = 800, reason = "Custom ignore file exclusive mode report." },
+]
+
+[[cases]]
+id = "serde-rs-json-314"
+refs = [
+  { type = "issue", repo = "serde-rs/json", number = 313, reason = "Number parser compile-size/performance context." },
+]
+
+[[cases]]
+id = "tokio-rs-tokio-2804"
+refs = [
+  { type = "issue", repo = "tokio-rs/tokio", number = 2720, reason = "Concurrent block_on/basic_scheduler behavior context." },
+]

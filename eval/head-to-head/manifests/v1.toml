@@ -1,0 +1,71 @@
+# Frozen manifest for AI head-to-head baseline v1.
+#
+# WARNING: this file is the freeze contract for the AI baseline. Once committed,
+# do not edit. To change the model, prompt, or schema, open a v2 manifest
+# (`manifests/v2.toml`) referencing v2 prompt / schema files. The runner refuses
+# to execute if the on-disk prompt / schema sha256 does not match the values
+# below.
+
+version = "head-to-head-manifest.v1"
+manifest_id = "v1"
+
+# claude CLI invocation freeze.
+# The runner calls `claude -p <prompt> --model <model> --output-format json
+# --permission-mode read-only` against the case input.
+[model]
+name = "claude-opus-4-7"
+provider = "anthropic-claude-cli"
+cli_version_min = "2.1.0"
+
+# Prompt and schema file hashes. Computed via `shasum -a 256 <path>`.
+# These are the only things gating execution. Do not skip.
+[freeze]
+prompt_path = "eval/head-to-head/prompts/ai-baseline-v1.md"
+prompt_sha256 = "b662dade9e15bbfadb6bad9465c275a3fab9553295d68221c3bc1a433e7a9d09"
+schema_path = "eval/head-to-head/schemas/ai-baseline-output.schema.json"
+schema_sha256 = "d13bd46d53b6bf413acfc861ddb38071499ba3f6d23a9b71798729ac4355d060"
+frozen_by = "sprint-20260604-103433-051"
+frozen_at = "2026-06-04T00:00:00Z"
+
+# Fairness boundary. The runner enforces these allow / deny lists when
+# constructing the per-case input that is handed to claude CLI.
+[fairness]
+allowed_inputs = ["diff.patch", "changed_files.txt"]
+denied_inputs = [
+  "pr.json",
+  "pr.title",
+  "pr.body",
+  "pr.discussion",
+  "linked_issue",
+  "ci_logs",
+  "repository_source_outside_diff",
+  "follow_up_commits",
+]
+
+# "Clearly outperforms" thresholds for the head-to-head decision.
+# A run is considered to clearly outperform the AI baseline when at least
+# `required_metrics_passed` of the four metrics meet their threshold.
+[thresholds]
+required_metrics_passed = 3
+
+[thresholds.precision_at_top3]
+direction = "higher_is_better"
+min_delta_pp = 10.0
+
+[thresholds.actionable_pr_rate]
+direction = "higher_is_better"
+min_delta_pp = 10.0
+
+[thresholds.missed_high_risk_count]
+direction = "lower_is_better"
+min_delta_count = 5
+
+[thresholds.weak_only_top_risk_count]
+direction = "lower_is_better"
+min_delta_count = 5
+
+# Retry policy for transient claude CLI failures.
+[retry]
+max_attempts = 3
+initial_backoff_seconds = 4
+backoff_multiplier = 2.0

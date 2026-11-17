@@ -1,0 +1,42 @@
+{
+  "case_id": "hyper-4043",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "(Reading::KeepAlive, Poll::Ready(Some(Ok(frame))))"
+      ],
+      "rank": 1,
+      "rationale": "After receiving a trailers frame, reading state changes from Reading::Closed to Reading::KeepAlive, allowing the same connection to be reused for subsequent requests where it was previously terminate\u2026",
+      "risk_signal": "state_transition",
+      "subject": "src/proto/h1/conn.rs:poll_read_body",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "} else if frame.is_trailers() {",
+        "                            debug!(\"incoming body completed with trailers\");\n                            (Reading::KeepAlive, Poll::Ready(Some(Ok(frame))))"
+      ],
+      "rank": 2,
+      "rationale": "Transition to KeepAlive on trailers assumes decoder has fully consumed the body framing (final 0-chunk + trailers). If decoder.is_eof() is not implicitly true on trailers, leftover bytes could corrup\u2026",
+      "risk_signal": "assumption_boundary",
+      "subject": "src/proto/h1/conn.rs:poll_read_body",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "    // Second request: reuse the same connection to verify keep-alive",
+        "        Connection: close\\r\\n\\"
+      ],
+      "rank": 3,
+      "rationale": "New keep-alive test only covers happy path with valid trailers; no coverage for malformed trailers, multiple sequential chunked+trailer requests, or client-side trailer reception keep-alive.",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tests/server.rs:http1_trailer_recv_keep_alive",
+      "value": "supporting"
+    }
+  ]
+}

@@ -1,0 +1,83 @@
+round = 6
+reviewed_at = "2026-05-14"
+policy = "strict aggregation; skeptic blocker prevents freeze until follow-up context resolves it"
+
+[[cases]]
+id = "ripgrep-3185"
+ground_truth_score = 3
+signal_fit_score = 3
+skeptic_blocker = true
+final_status = "rejected"
+final_signal_ids = ["state_transition", "risk_path_test_gap"]
+decision = "Reject for this eval pack. The case is performance-shaped and lacks benchmark/repro measurements; current decay cannot validate throughput or read amortization."
+remaining_gap = "Could be reconsidered with issue #3184, executable benchmark, and before/after measurements."
+
+[[cases]]
+id = "ripgrep-2692"
+ground_truth_score = 3
+signal_fit_score = 4
+skeptic_blocker = true
+final_status = "needs_more_context"
+final_signal_ids = ["lifecycle_ordering", "assumption_boundary", "risk_path_test_gap"]
+decision = "Do not freeze yet. Reference-cycle ownership risk is plausible, but evidence is indirect."
+remaining_gap = "Fetch issue #2690, profiling/repro context, and proof that the reference cycle is covered."
+
+[[cases]]
+id = "hyperium-hyper-820"
+ground_truth_score = 1
+signal_fit_score = 3
+skeptic_blocker = true
+final_status = "rejected"
+final_signal_ids = ["external_contract", "risk_path_test_gap"]
+decision = "Reject for this eval pack. Build feature compatibility is real in principle, but the raw record only links an issue and lacks executable evidence."
+remaining_gap = "Could be reconsidered with issue #819, exact build command, error output, and CI/test proof."
+
+[[cases]]
+id = "hyperium-hyper-3394"
+ground_truth_score = 2
+signal_fit_score = 4
+skeptic_blocker = true
+final_status = "needs_more_context"
+final_signal_ids = ["assumption_boundary", "external_contract", "risk_path_test_gap"]
+decision = "Do not freeze yet. Missing Timer warning/panic is a plausible assumption-boundary signal but may be a feature-shaped contract change."
+remaining_gap = "Fetch issue #3393, trigger configuration, and tests/review evidence."
+
+[[cases]]
+id = "hyperium-hyper-310"
+ground_truth_score = 4
+signal_fit_score = 5
+skeptic_blocker = true
+final_status = "needs_more_context"
+final_signal_ids = ["lifecycle_ordering", "non_happy_path", "risk_path_test_gap"]
+decision = "Do not freeze yet. Drain-on-drop is high-value lifecycle risk, but review raised resource-exhaustion concerns that need resolution."
+remaining_gap = "Fetch issues #197/#309, patch/test hunks, and final handling of large-body drain safety."
+
+[[cases]]
+id = "hyperium-hyper-518"
+ground_truth_score = 4
+signal_fit_score = 5
+skeptic_blocker = true
+final_status = "needs_more_context"
+final_signal_ids = ["lifecycle_ordering", "external_contract"]
+decision = "Do not freeze yet. Connector preservation is a strong signal candidate, but raw context does not capture the regression-test assertion."
+remaining_gap = "Fetch issue #495 and exact test hunk; confirm bench file is valid evidence."
+
+[[cases]]
+id = "tokio-rs-tokio-7638"
+ground_truth_score = 5
+signal_fit_score = 4
+skeptic_blocker = true
+final_status = "needs_more_context"
+final_signal_ids = ["external_contract", "assumption_boundary"]
+decision = "Do not freeze yet. Macro hygiene evidence is strong, but current decay function-level scanning may not represent macro expansion scope."
+remaining_gap = "Decide whether macro compile-time contracts belong in this eval pack; fetch issue #7637 and test hunks."
+
+[[cases]]
+id = "hyperium-hyper-3290"
+ground_truth_score = 3
+signal_fit_score = 5
+skeptic_blocker = true
+final_status = "needs_more_context"
+final_signal_ids = ["concurrency_ordering", "state_transition", "risk_path_test_gap"]
+decision = "Do not freeze yet. Double-poll panic is a strong async risk, but the PR lacked reliable repro/test evidence and review questioned root-cause coverage."
+remaining_gap = "Fetch issue #3289, scheduling trigger/repro, and follow-up confirmation."

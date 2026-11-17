@@ -1,0 +1,2453 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index ed4f567..439c0b3 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,132 +1,134 @@
+ TBD
+ ===
+ Unreleased changes. Release notes have not yet been written.
+ 
+ Performance improvements:
+ 
+ * [PERF #2111](https://github.com/BurntSushi/ripgrep/issues/2111):
+   Don't resolve helper binaries on Windows when `-z/--search-zip` isn't used.
+ * [PERF #2865](https://github.com/BurntSushi/ripgrep/pull/2865):
+   Avoid using path canonicalization on Windows when emitting hyperlinks.
+ * [PERF #3184](https://github.com/BurntSushi/ripgrep/pull/3184):
+   Improve performance of large values with `-A/--after-context`.
+ 
+ Bug fixes:
+ 
+ * [BUG #829](https://github.com/BurntSushi/ripgrep/issues/829),
+   [BUG #2731](https://github.com/BurntSushi/ripgrep/issues/2731),
+   [BUG #2747](https://github.com/BurntSushi/ripgrep/issues/2747),
+   [BUG #2770](https://github.com/BurntSushi/ripgrep/issues/2770),
+   [BUG #2778](https://github.com/BurntSushi/ripgrep/issues/2778),
+   [BUG #2836](https://github.com/BurntSushi/ripgrep/issues/2836),
+   [BUG #2933](https://github.com/BurntSushi/ripgrep/pull/2933),
+   [BUG #3067](https://github.com/BurntSushi/ripgrep/pull/3067):
+   Fix bug related to gitignores from parent directories.
+ * [BUG #1332](https://github.com/BurntSushi/ripgrep/issues/1332),
+   [BUG #3001](https://github.com/BurntSushi/ripgrep/issues/3001):
+   Make `rg -vf file` where `file` is empty match everything.
+ * [BUG #2177](https://github.com/BurntSushi/ripgrep/issues/2177):
+   Ignore a UTF-8 BOM marker at the start of `.gitignore` (and similar files).
+ * [BUG #2750](https://github.com/BurntSushi/ripgrep/issues/2750):
+   Fix memory usage regression for some truly large gitignore files.
+ * [BUG #2944](https://github.com/BurntSushi/ripgrep/pull/2944):
+   Fix a bug where the "bytes searched" in `--stats` output could be incorrect.
+ * [BUG #2990](https://github.com/BurntSushi/ripgrep/issues/2990):
+   Fix a bug where ripgrep would mishandle globs that ended with a `.`.
+ * [BUG #2094](https://github.com/BurntSushi/ripgrep/issues/2094),
+   [BUG #3076](https://github.com/BurntSushi/ripgrep/issues/3076):
+   Fix bug with `-m/--max-count` and `-U/--multiline` showing too many matches.
+ * [BUG #3100](https://github.com/BurntSushi/ripgrep/pull/3100):
+   Preserve line terminators when using `-r/--replace` flag.
+ * [BUG #3108](https://github.com/BurntSushi/ripgrep/issues/3108):
+   Fix a bug where `-q --files-without-match` inverted the exit code.
+ * [BUG #3131](https://github.com/BurntSushi/ripgrep/issues/3131):
+   Document inconsistency between `-c/--count` and `--files-with-matches`.
+ * [BUG #3135](https://github.com/BurntSushi/ripgrep/issues/3135):
+   Fix rare panic for some classes of large regexes on large haystacks.
+ * [BUG #3140](https://github.com/BurntSushi/ripgrep/issues/3140):
+   Ensure hyphens in flag names are escaped in the roff text for the man page.
+ * [BUG #3155](https://github.com/BurntSushi/ripgrep/issues/3155):
+   Statically compile PCRE2 into macOS release artifacts on `aarch64`.
+ * [BUG #3173](https://github.com/BurntSushi/ripgrep/issues/3173):
+   Fix ancestor ignore filter bug when searching whitelisted hidden files.
++* [BUG #3179](https://github.com/BurntSushi/ripgrep/issues/3179):
++  Fix gitignore bug when searching absolute paths with global gitignores.
+ * [BUG #3180](https://github.com/BurntSushi/ripgrep/issues/3180):
+   Fix a panicking bug when using `-U/--multiline` and `-r/--replace`.
+ 
+ Feature enhancements:
+ 
+ * Many enhancements to the default set of file types available for filtering.
+ * [FEATURE #1872](https://github.com/BurntSushi/ripgrep/issues/1872):
+   Make `-r/--replace` work with `--json`.
+ * [FEATURE #2708](https://github.com/BurntSushi/ripgrep/pull/2708):
+   Completions for the fish shell take ripgrep's config file into account.
+ * [FEATURE #2841](https://github.com/BurntSushi/ripgrep/pull/2841):
+   Add `italic` to the list of available style attributes in `--color`.
+ * [FEATURE #2842](https://github.com/BurntSushi/ripgrep/pull/2842):
+   Directories containing `.jj` are now treated as git repositories.
+ * [FEATURE #2849](https://github.com/BurntSushi/ripgrep/pull/2849):
+   When using multithreading, schedule files to search in order given on CLI.
+ * [FEATURE #2943](https://github.com/BurntSushi/ripgrep/issues/2943):
+   Add `aarch64` release artifacts for Windows.
+ * [FEATURE #3024](https://github.com/BurntSushi/ripgrep/issues/3024):
+   Add `highlight` color type, for styling non-matching text in a matching line.
+ * [FEATURE #3048](https://github.com/BurntSushi/ripgrep/pull/3048):
+   Globs in ripgrep (and the `globset` crate) now support nested alternates.
+ * [FEATURE #3096](https://github.com/BurntSushi/ripgrep/pull/3096):
+   Improve completions for `--hyperlink-format` in bash and fish.
+ * [FEATURE #3102](https://github.com/BurntSushi/ripgrep/pull/3102):
+   Improve completions for `--hyperlink-format` in zsh.
+ * [FEATURE #3165](https://github.com/BurntSushi/ripgrep/pull/3165):
+   Add release binaries for `riscv64gc-unknown-linux-gnu`.
+ 
+ 
+ 14.1.1 (2024-09-08)
+ ===================
+ This is a minor release with a bug fix for a matching bug. In particular, a bug
+ was found that could cause ripgrep to ignore lines that should match. That is,
+ false negatives. It is difficult to characterize the specific set of regexes
+ in which this occurs as it requires multiple different optimization strategies
+ to collide and produce an incorrect result. But as one reported example, in
+ ripgrep, the regex `(?i:e.x|ex)` does not match `e-x` when it should. (This
+ bug is a result of an inner literal optimization performed in the `grep-regex`
+ crate and not in the `regex` crate.)
+ 
+ Bug fixes:
+ 
+ * [BUG #2884](https://github.com/BurntSushi/ripgrep/issues/2884):
+   Fix bug where ripgrep could miss some matches that it should report.
+ 
+ Miscellaneous:
+ 
+ * [MISC #2748](https://github.com/BurntSushi/ripgrep/issues/2748):
+   Remove ripgrep's `simd-accel` feature because it was frequently broken.
+ 
+ 
+ 14.1.0 (2024-01-06)
+ ===================
+ This is a minor release with a few small new features and bug fixes. This
+ release contains a bug fix for unbounded memory growth while walking a
+ directory tree. This release also includes improvements to the completions for
+ the `fish` shell, and release binaries for several additional ARM targets.
+ 
+ Bug fixes:
+ 
+ * [BUG #2664](https://github.com/BurntSushi/ripgrep/issues/2690):
+   Fix unbounded memory growth in the `ignore` crate.
+ 
+ Feature enhancements:
+ 
+ * Added or improved file type filtering for Lean and Meson.
+ * [FEATURE #2684](https://github.com/BurntSushi/ripgrep/issues/2684):
+   Improve completions for the `fish` shell.
+ * [FEATURE #2702](https://github.com/BurntSushi/ripgrep/pull/2702):
+   Add release binaries for `armv7-unknown-linux-gnueabihf`,
+   `armv7-unknown-linux-musleabihf` and `armv7-unknown-linux-musleabi`.
+ 
+ 
+ 14.0.3 (2023-11-28)
+ ===================
+ This is a patch release with a bug fix for the `--sortr` flag.
+ 
+ Bug fixes:
+ 
+diff --git a/crates/core/flags/hiargs.rs b/crates/core/flags/hiargs.rs
+index a98bde2..526c91e 100644
+--- a/crates/core/flags/hiargs.rs
++++ b/crates/core/flags/hiargs.rs
+@@ -1,127 +1,128 @@
+ /*!
+ Provides the definition of high level arguments from CLI flags.
+ */
+ 
+ use std::{
+     collections::HashSet,
+     path::{Path, PathBuf},
+ };
+ 
+ use {
+     bstr::BString,
+     grep::printer::{ColorSpecs, SummaryKind},
+ };
+ 
+ use crate::{
+     flags::lowargs::{
+         BinaryMode, BoundaryMode, BufferMode, CaseMode, ColorChoice,
+         ContextMode, ContextSeparator, EncodingMode, EngineChoice,
+         FieldContextSeparator, FieldMatchSeparator, LowArgs, MmapMode, Mode,
+         PatternSource, SearchMode, SortMode, SortModeKind, TypeChange,
+     },
+     haystack::{Haystack, HaystackBuilder},
+     search::{PatternMatcher, Printer, SearchWorker, SearchWorkerBuilder},
+ };
+ 
+ /// A high level representation of CLI arguments.
+ ///
+ /// The distinction between low and high level arguments is somewhat arbitrary
+ /// and wishy washy. The main idea here is that high level arguments generally
+ /// require all of CLI parsing to be finished. For example, one cannot
+ /// construct a glob matcher until all of the glob patterns are known.
+ ///
+ /// So while low level arguments are collected during parsing itself, high
+ /// level arguments aren't created until parsing has completely finished.
+ #[derive(Debug)]
+ pub(crate) struct HiArgs {
+     binary: BinaryDetection,
+     boundary: Option<BoundaryMode>,
+     buffer: BufferMode,
+     byte_offset: bool,
+     case: CaseMode,
+     color: ColorChoice,
+     colors: grep::printer::ColorSpecs,
+     column: bool,
+     context: ContextMode,
+     context_separator: ContextSeparator,
+     crlf: bool,
++    cwd: PathBuf,
+     dfa_size_limit: Option<usize>,
+     encoding: EncodingMode,
+     engine: EngineChoice,
+     field_context_separator: FieldContextSeparator,
+     field_match_separator: FieldMatchSeparator,
+     file_separator: Option<Vec<u8>>,
+     fixed_strings: bool,
+     follow: bool,
+     globs: ignore::overrides::Override,
+     heading: bool,
+     hidden: bool,
+     hyperlink_config: grep::printer::HyperlinkConfig,
+     ignore_file_case_insensitive: bool,
+     ignore_file: Vec<PathBuf>,
+     include_zero: bool,
+     invert_match: bool,
+     is_terminal_stdout: bool,
+     line_number: bool,
+     max_columns: Option<u64>,
+     max_columns_preview: bool,
+     max_count: Option<u64>,
+     max_depth: Option<usize>,
+     max_filesize: Option<u64>,
+     mmap_choice: grep::searcher::MmapChoice,
+     mode: Mode,
+     multiline: bool,
+     multiline_dotall: bool,
+     no_ignore_dot: bool,
+     no_ignore_exclude: bool,
+     no_ignore_files: bool,
+     no_ignore_global: bool,
+     no_ignore_parent: bool,
+     no_ignore_vcs: bool,
+     no_require_git: bool,
+     no_unicode: bool,
+     null_data: bool,
+     one_file_system: bool,
+     only_matching: bool,
+     path_separator: Option<u8>,
+     paths: Paths,
+     path_terminator: Option<u8>,
+     patterns: Patterns,
+     pre: Option<PathBuf>,
+     pre_globs: ignore::overrides::Override,
+     quiet: bool,
+     quit_after_match: bool,
+     regex_size_limit: Option<usize>,
+     replace: Option<BString>,
+     search_zip: bool,
+     sort: Option<SortMode>,
+     stats: Option<grep::printer::Stats>,
+     stop_on_nonmatch: bool,
+     threads: usize,
+     trim: bool,
+     types: ignore::types::Types,
+     vimgrep: bool,
+     with_filename: bool,
+ }
+ 
+ impl HiArgs {
+     /// Convert low level arguments into high level arguments.
+     ///
+     /// This process can fail for a variety of reasons. For example, invalid
+     /// globs or some kind of environment issue.
+     pub(crate) fn from_low_args(mut low: LowArgs) -> anyhow::Result<HiArgs> {
+         // Callers should not be trying to convert low-level arguments when
+         // a short-circuiting special mode is present.
+         assert_eq!(None, low.special, "special mode demands short-circuiting");
+         // If the sorting mode isn't supported, then we bail loudly. I'm not
+         // sure if this is the right thing to do. We could silently "not sort"
+         // as well. If we wanted to go that route, then we could just set
+         // `low.sort = None` if `supported()` returns an error.
+         if let Some(ref sort) = low.sort {
+             sort.supported()?;
+         }
+ 
+         // We modify the mode in-place on `low` so that subsequent conversions
+         // see the correct mode.
+         match low.mode {
+             Mode::Search(ref mut mode) => match *mode {
+@@ -185,160 +186,161 @@ impl HiArgs {
+                     if before > 0 || after > 0 {
+                         low.context_separator.clone().into_bytes()
+                     } else {
+                         None
+                     }
+                 } else {
+                     None
+                 }
+             }
+             _ => None,
+         };
+ 
+         let line_number = low.line_number.unwrap_or_else(|| {
+             if low.quiet {
+                 return false;
+             }
+             let Mode::Search(ref search_mode) = low.mode else { return false };
+             match *search_mode {
+                 SearchMode::FilesWithMatches
+                 | SearchMode::FilesWithoutMatch
+                 | SearchMode::Count
+                 | SearchMode::CountMatches => return false,
+                 SearchMode::JSON => return true,
+                 SearchMode::Standard => {
+                     // A few things can imply counting line numbers. In
+                     // particular, we generally want to show line numbers by
+                     // default when printing to a tty for human consumption,
+                     // except for one interesting case: when we're only
+                     // searching stdin. This makes pipelines work as expected.
+                     (state.is_terminal_stdout && !paths.is_only_stdin())
+                         || column
+                         || low.vimgrep
+                 }
+             }
+         });
+ 
+         let mmap_choice = {
+             // SAFETY: Memory maps are difficult to impossible to encapsulate
+             // safely in a portable way that doesn't simultaneously negate some
+             // of the benfits of using memory maps. For ripgrep's use, we never
+             // mutate a memory map and generally never store the contents of
+             // memory map in a data structure that depends on immutability.
+             // Generally speaking, the worst thing that can happen is a SIGBUS
+             // (if the underlying file is truncated while reading it), which
+             // will cause ripgrep to abort. This reasoning should be treated as
+             // suspect.
+             let maybe = unsafe { grep::searcher::MmapChoice::auto() };
+             let never = grep::searcher::MmapChoice::never();
+             match low.mmap {
+                 MmapMode::Auto => {
+                     if paths.paths.len() <= 10
+                         && paths.paths.iter().all(|p| p.is_file())
+                     {
+                         // If we're only searching a few paths and all of them
+                         // are files, then memory maps are probably faster.
+                         maybe
+                     } else {
+                         never
+                     }
+                 }
+                 MmapMode::AlwaysTryMmap => maybe,
+                 MmapMode::Never => never,
+             }
+         };
+ 
+         Ok(HiArgs {
+             mode: low.mode,
+             patterns,
+             paths,
+             binary,
+             boundary: low.boundary,
+             buffer: low.buffer,
+             byte_offset: low.byte_offset,
+             case: low.case,
+             color,
+             colors,
+             column,
+             context: low.context,
+             context_separator: low.context_separator,
+             crlf: low.crlf,
++            cwd: state.cwd,
+             dfa_size_limit: low.dfa_size_limit,
+             encoding: low.encoding,
+             engine: low.engine,
+             field_context_separator: low.field_context_separator,
+             field_match_separator: low.field_match_separator,
+             file_separator,
+             fixed_strings: low.fixed_strings,
+             follow: low.follow,
+             heading,
+             hidden: low.hidden,
+             hyperlink_config,
+             ignore_file: low.ignore_file,
+             ignore_file_case_insensitive: low.ignore_file_case_insensitive,
+             include_zero: low.include_zero,
+             invert_match: low.invert_match,
+             is_terminal_stdout: state.is_terminal_stdout,
+             line_number,
+             max_columns: low.max_columns,
+             max_columns_preview: low.max_columns_preview,
+             max_count: low.max_count,
+             max_depth: low.max_depth,
+             max_filesize: low.max_filesize,
+             mmap_choice,
+             multiline: low.multiline,
+             multiline_dotall: low.multiline_dotall,
+             no_ignore_dot: low.no_ignore_dot,
+             no_ignore_exclude: low.no_ignore_exclude,
+             no_ignore_files: low.no_ignore_files,
+             no_ignore_global: low.no_ignore_global,
+             no_ignore_parent: low.no_ignore_parent,
+             no_ignore_vcs: low.no_ignore_vcs,
+             no_require_git: low.no_require_git,
+             no_unicode: low.no_unicode,
+             null_data: low.null_data,
+             one_file_system: low.one_file_system,
+             only_matching: low.only_matching,
+             globs,
+             path_separator: low.path_separator,
+             path_terminator,
+             pre: low.pre,
+             pre_globs,
+             quiet: low.quiet,
+             quit_after_match,
+             regex_size_limit: low.regex_size_limit,
+             replace: low.replace,
+             search_zip: low.search_zip,
+             sort: low.sort,
+             stats,
+             stop_on_nonmatch: low.stop_on_nonmatch,
+             threads,
+             trim: low.trim,
+             types,
+             vimgrep: low.vimgrep,
+             with_filename,
+         })
+     }
+ 
+     /// Returns a writer for printing buffers to stdout.
+     ///
+     /// This is intended to be used from multiple threads. Namely, a buffer
+     /// writer can create new buffers that are sent to threads. Threads can
+     /// then independently write to the buffers. Once a unit of work is
+     /// complete, a buffer can be given to the buffer writer to write to
+     /// stdout.
+     pub(crate) fn buffer_writer(&self) -> termcolor::BufferWriter {
+         let mut wtr =
+             termcolor::BufferWriter::stdout(self.color.to_termcolor());
+         wtr.separator(self.file_separator.clone());
+         wtr
+     }
+ 
+     /// Returns true when ripgrep had to guess to search the current working
+     /// directory. That is, it's true when ripgrep is called without any file
+     /// paths or directories to search.
+     ///
+     /// Other than changing how file paths are printed (i.e., without the
+     /// leading `./`), it's also useful to know for diagnostic reasons. For
+     /// example, ripgrep will print an error message when nothing is searched
+     /// since it's possible the ignore rules in play are too aggressive. But
+     /// this warning is only emitted when ripgrep was called without any
+@@ -820,214 +822,217 @@ impl HiArgs {
+     pub(crate) fn stats(&self) -> Option<grep::printer::Stats> {
+         self.stats.clone()
+     }
+ 
+     /// Returns a color-enabled writer for stdout.
+     ///
+     /// The writer returned is also configured to do either line or block
+     /// buffering, based on either explicit configuration from the user via CLI
+     /// flags, or automatically based on whether stdout is connected to a tty.
+     pub(crate) fn stdout(&self) -> grep::cli::StandardStream {
+         let color = self.color.to_termcolor();
+         match self.buffer {
+             BufferMode::Auto => {
+                 if self.is_terminal_stdout {
+                     grep::cli::stdout_buffered_line(color)
+                 } else {
+                     grep::cli::stdout_buffered_block(color)
+                 }
+             }
+             BufferMode::Line => grep::cli::stdout_buffered_line(color),
+             BufferMode::Block => grep::cli::stdout_buffered_block(color),
+         }
+     }
+ 
+     /// Returns the total number of threads ripgrep should use to execute a
+     /// search.
+     ///
+     /// This number is the result of reasoning about both heuristics (like
+     /// the available number of cores) and whether ripgrep's mode supports
+     /// parallelism. It is intended that this number be used to directly
+     /// determine how many threads to spawn.
+     pub(crate) fn threads(&self) -> usize {
+         self.threads
+     }
+ 
+     /// Returns the file type matcher that was built.
+     ///
+     /// The matcher includes both the default rules and any rules added by the
+     /// user for this specific invocation.
+     pub(crate) fn types(&self) -> &ignore::types::Types {
+         &self.types
+     }
+ 
+     /// Create a new builder for recursive directory traversal.
+     ///
+     /// The builder returned can be used to start a single threaded or multi
+     /// threaded directory traversal. For multi threaded traversal, the number
+     /// of threads configured is equivalent to `HiArgs::threads`.
+     ///
+     /// If `HiArgs::threads` is equal to `1`, then callers should generally
+     /// choose to explicitly use single threaded traversal since it won't have
+     /// the unnecessary overhead of synchronization.
+     pub(crate) fn walk_builder(&self) -> anyhow::Result<ignore::WalkBuilder> {
+         let mut builder = ignore::WalkBuilder::new(&self.paths.paths[0]);
+         for path in self.paths.paths.iter().skip(1) {
+             builder.add(path);
+         }
+         if !self.no_ignore_files {
+             for path in self.ignore_file.iter() {
+                 if let Some(err) = builder.add_ignore(path) {
+                     ignore_message!("{err}");
+                 }
+             }
+         }
+         builder
+             .max_depth(self.max_depth)
+             .follow_links(self.follow)
+             .max_filesize(self.max_filesize)
+             .threads(self.threads)
+             .same_file_system(self.one_file_system)
+             .skip_stdout(matches!(self.mode, Mode::Search(_)))
+             .overrides(self.globs.clone())
+             .types(self.types.clone())
+             .hidden(!self.hidden)
+             .parents(!self.no_ignore_parent)
+             .ignore(!self.no_ignore_dot)
+             .git_global(!self.no_ignore_vcs && !self.no_ignore_global)
+             .git_ignore(!self.no_ignore_vcs)
+             .git_exclude(!self.no_ignore_vcs && !self.no_ignore_exclude)
+             .require_git(!self.no_require_git)
+-            .ignore_case_insensitive(self.ignore_file_case_insensitive);
++            .ignore_case_insensitive(self.ignore_file_case_insensitive)
++            .current_dir(&self.cwd);
+         if !self.no_ignore_dot {
+             builder.add_custom_ignore_filename(".rgignore");
+         }
+         // When we want to sort paths lexicographically in ascending order,
+         // then we can actually do this during directory traversal itself.
+         // Otherwise, sorting is done by collecting all paths, sorting them and
+         // then searching them.
+         if let Some(ref sort) = self.sort {
+             assert_eq!(1, self.threads, "sorting implies single threaded");
+             if !sort.reverse && matches!(sort.kind, SortModeKind::Path) {
+                 builder.sort_by_file_name(|a, b| a.cmp(b));
+             }
+         }
+         Ok(builder)
+     }
+ }
+ 
+ /// State that only needs to be computed once during argument parsing.
+ ///
+ /// This state is meant to be somewhat generic and shared across multiple
+ /// low->high argument conversions. The state can even be mutated by various
+ /// conversions as a way to communicate changes to other conversions. For
+ /// example, reading patterns might consume from stdin. If we know stdin
+ /// has been consumed and no other file paths have been given, then we know
+ /// for sure that we should search the CWD. In this way, a state change
+ /// when reading the patterns can impact how the file paths are ultimately
+ /// generated.
+ #[derive(Debug)]
+ struct State {
+     /// Whether it's believed that tty is connected to stdout. Note that on
+     /// unix systems, this is always correct. On Windows, heuristics are used
+     /// by Rust's standard library, particularly for cygwin/MSYS environments.
+     is_terminal_stdout: bool,
+     /// Whether stdin has already been consumed. This is useful to know and for
+     /// providing good error messages when the user has tried to read from stdin
+     /// in two different places. For example, `rg -f - -`.
+     stdin_consumed: bool,
+     /// The current working directory.
+     cwd: PathBuf,
+ }
+ 
+ impl State {
+     /// Initialize state to some sensible defaults.
+     ///
+     /// Note that the state values may change throughout the lifetime of
+     /// argument parsing.
+     fn new() -> anyhow::Result<State> {
+         use std::io::IsTerminal;
+ 
++        let cwd = current_dir()?;
++        log::debug!("read CWD from environment: {}", cwd.display());
+         Ok(State {
+             is_terminal_stdout: std::io::stdout().is_terminal(),
+             stdin_consumed: false,
+-            cwd: current_dir()?,
++            cwd,
+         })
+     }
+ }
+ 
+ /// The disjunction of patterns to search for.
+ ///
+ /// The number of patterns can be empty, e.g., via `-f /dev/null`.
+ #[derive(Debug)]
+ struct Patterns {
+     /// The actual patterns to match.
+     patterns: Vec<String>,
+ }
+ 
+ impl Patterns {
+     /// Pulls the patterns out of the low arguments.
+     ///
+     /// This includes collecting patterns from -e/--regexp and -f/--file.
+     ///
+     /// If the invocation implies that the first positional argument is a
+     /// pattern (the common case), then the first positional argument is
+     /// extracted as well.
+     fn from_low_args(
+         state: &mut State,
+         low: &mut LowArgs,
+     ) -> anyhow::Result<Patterns> {
+         // The first positional is only a pattern when ripgrep is instructed to
+         // search and neither -e/--regexp nor -f/--file is given. Basically,
+         // the first positional is a pattern only when a pattern hasn't been
+         // given in some other way.
+ 
+         // No search means no patterns. Even if -e/--regexp or -f/--file is
+         // given, we know we won't use them so don't bother collecting them.
+         if !matches!(low.mode, Mode::Search(_)) {
+             return Ok(Patterns { patterns: vec![] });
+         }
+         // If we got nothing from -e/--regexp and -f/--file, then the first
+         // positional is a pattern.
+         if low.patterns.is_empty() {
+             anyhow::ensure!(
+                 !low.positional.is_empty(),
+                 "ripgrep requires at least one pattern to execute a search"
+             );
+             let ospat = low.positional.remove(0);
+             let Ok(pat) = ospat.into_string() else {
+                 anyhow::bail!("pattern given is not valid UTF-8")
+             };
+             return Ok(Patterns { patterns: vec![pat] });
+         }
+         // Otherwise, we need to slurp up our patterns from -e/--regexp and
+         // -f/--file. We de-duplicate as we go. If we don't de-duplicate,
+         // then it can actually lead to major slow downs for sloppy inputs.
+         // This might be surprising, and the regex engine will eventually
+         // de-duplicate duplicative branches in a single regex (maybe), but
+         // not until after it has gone through parsing and some other layers.
+         // If there are a lot of duplicates, then that can lead to a sizeable
+         // extra cost. It is lamentable that we pay the extra cost here to
+         // de-duplicate for a likely uncommon case, but I've seen this have a
+         // big impact on real world data.
+         let mut seen = HashSet::new();
+         let mut patterns = Vec::with_capacity(low.patterns.len());
+         let mut add = |pat: String| {
+             if !seen.contains(&pat) {
+                 seen.insert(pat.clone());
+                 patterns.push(pat);
+             }
+         };
+         for source in low.patterns.drain(..) {
+             match source {
+                 PatternSource::Regexp(pat) => add(pat),
+                 PatternSource::File(path) => {
+                     if path == Path::new("-") {
+                         anyhow::ensure!(
+                             !state.stdin_consumed,
+                             "error reading -f/--file from stdin: stdin \
+                              has already been consumed"
+                         );
+                         for pat in grep::cli::patterns_from_stdin()? {
+                             add(pat);
+                         }
+                         state.stdin_consumed = true;
+diff --git a/crates/ignore/src/default_types.rs b/crates/ignore/src/default_types.rs
+index 4e060b7..528415a 100644
+--- a/crates/ignore/src/default_types.rs
++++ b/crates/ignore/src/default_types.rs
+@@ -142,161 +142,161 @@ pub(crate) const DEFAULT_TYPES: &[(&[&str], &[&str])] = &[
+         // Other license-specific (APACHE-2.0.txt, etc.)
+         "AGPL-*[0-9]*",
+         "APACHE-*[0-9]*",
+         "BSD-*[0-9]*",
+         "CC-BY-*",
+         "GFDL-*[0-9]*",
+         "GNU-*[0-9]*",
+         "GPL-*[0-9]*",
+         "LGPL-*[0-9]*",
+         "MIT-*[0-9]*",
+         "MPL-*[0-9]*",
+         "OFL-*[0-9]*",
+     ]),
+     (&["lilypond"], &["*.ly", "*.ily"]),
+     (&["lisp"], &["*.el", "*.jl", "*.lisp", "*.lsp", "*.sc", "*.scm"]),
+     (&["llvm"], &["*.ll"]),
+     (&["lock"], &["*.lock", "package-lock.json"]),
+     (&["log"], &["*.log"]),
+     (&["lua"], &["*.lua"]),
+     (&["lz4"], &["*.lz4"]),
+     (&["lzma"], &["*.lzma"]),
+     (&["m4"], &["*.ac", "*.m4"]),
+     (&["make"], &[
+         "[Gg][Nn][Uu]makefile", "[Mm]akefile",
+         "[Gg][Nn][Uu]makefile.am", "[Mm]akefile.am",
+         "[Gg][Nn][Uu]makefile.in", "[Mm]akefile.in",
+         "Makefile.*",
+         "*.mk", "*.mak"
+     ]),
+     (&["mako"], &["*.mako", "*.mao"]),
+     (&["man"], &["*.[0-9lnpx]", "*.[0-9][cEFMmpSx]"]),
+     (&["markdown", "md"], &[
+         "*.markdown",
+         "*.md",
+         "*.mdown",
+         "*.mdwn",
+         "*.mkd",
+         "*.mkdn",
+         "*.mdx",
+     ]),
+     (&["matlab"], &["*.m"]),
+     (&["meson"], &["meson.build", "meson_options.txt", "meson.options"]),
+     (&["minified"], &["*.min.html", "*.min.css", "*.min.js"]),
+     (&["mint"], &["*.mint"]),
+     (&["mk"], &["mkfile"]),
+     (&["ml"], &["*.ml"]),
+     (&["motoko"], &["*.mo"]),
+     (&["msbuild"], &[
+         "*.csproj", "*.fsproj", "*.vcxproj", "*.proj", "*.props", "*.targets",
+         "*.sln", "*.slnf"
+     ]),
+     (&["nim"], &["*.nim", "*.nimf", "*.nimble", "*.nims"]),
+     (&["nix"], &["*.nix"]),
+     (&["objc"], &["*.h", "*.m"]),
+     (&["objcpp"], &["*.h", "*.mm"]),
+     (&["ocaml"], &["*.ml", "*.mli", "*.mll", "*.mly"]),
+     (&["org"], &["*.org", "*.org_archive"]),
+     (&["pants"], &["BUILD"]),
+     (&["pascal"], &["*.pas", "*.dpr", "*.lpr", "*.pp", "*.inc"]),
+     (&["pdf"], &["*.pdf"]),
+     (&["perl"], &["*.perl", "*.pl", "*.PL", "*.plh", "*.plx", "*.pm", "*.t"]),
+     (&["php"], &[
+         // note that PHP 6 doesn't exist
+         // See: https://wiki.php.net/rfc/php6
+         "*.php", "*.php3", "*.php4", "*.php5", "*.php7", "*.php8",
+         "*.pht", "*.phtml"
+     ]),
+     (&["po"], &["*.po"]),
+     (&["pod"], &["*.pod"]),
+     (&["postscript"], &["*.eps", "*.ps"]),
+     (&["prolog"], &["*.pl", "*.pro", "*.prolog", "*.P"]),
+     (&["protobuf"], &["*.proto"]),
+     (&["ps"], &["*.cdxml", "*.ps1", "*.ps1xml", "*.psd1", "*.psm1"]),
+     (&["puppet"], &["*.epp", "*.erb", "*.pp", "*.rb"]),
+     (&["purs"], &["*.purs"]),
+     (&["py", "python"], &["*.py", "*.pyi"]),
+     (&["qmake"], &["*.pro", "*.pri", "*.prf"]),
+     (&["qml"], &["*.qml"]),
+     (&["qrc"], &["*.qrc"]),
+     (&["qui"], &["*.ui"]),
+-    (&["r"], &["*.R", "*.r", "*.Rmd", "*.rmd", "*.Rnw", "*.rnw"]),
++    (&["r"], &["*.R", "*.r", "*.Rmd", "*.Rnw"]),
+     (&["racket"], &["*.rkt"]),
+     (&["raku"], &[
+         "*.raku", "*.rakumod", "*.rakudoc", "*.rakutest",
+         "*.p6", "*.pl6", "*.pm6"
+     ]),
+     (&["rdoc"], &["*.rdoc"]),
+     (&["readme"], &["README*", "*README"]),
+     (&["reasonml"], &["*.re", "*.rei"]),
+     (&["red"], &["*.r", "*.red", "*.reds"]),
+     (&["rescript"], &["*.res", "*.resi"]),
+     (&["robot"], &["*.robot"]),
+     (&["rst"], &["*.rst"]),
+     (&["ruby"], &[
+         // Idiomatic files
+         "config.ru", "Gemfile", ".irbrc", "Rakefile",
+         // Extensions
+         "*.gemspec", "*.rb", "*.rbw", "*.rake"
+     ]),
+     (&["rust"], &["*.rs"]),
+     (&["sass"], &["*.sass", "*.scss"]),
+     (&["scala"], &["*.scala", "*.sbt"]),
+     (&["scdoc"], &["*.scd", "*.scdoc"]),
+     (&["seed7"], &["*.sd7", "*.s7i"]),
+     (&["sh"], &[
+         // Portable/misc. init files
+         ".env", ".login", ".logout", ".profile", "profile",
+         // bash-specific init files
+         ".bash_login", "bash_login",
+         ".bash_logout", "bash_logout",
+         ".bash_profile", "bash_profile",
+         ".bashrc", "bashrc", "*.bashrc",
+         // csh-specific init files
+         ".cshrc", "*.cshrc",
+         // ksh-specific init files
+         ".kshrc", "*.kshrc",
+         // tcsh-specific init files
+         ".tcshrc",
+         // zsh-specific init files
+         ".zshenv", "zshenv",
+         ".zlogin", "zlogin",
+         ".zlogout", "zlogout",
+         ".zprofile", "zprofile",
+         ".zshrc", "zshrc",
+         // Extensions
+         "*.bash", "*.csh", "*.env", "*.ksh", "*.sh", "*.tcsh", "*.zsh",
+     ]),
+     (&["slim"], &["*.skim", "*.slim", "*.slime"]),
+     (&["smarty"], &["*.tpl"]),
+     (&["sml"], &["*.sml", "*.sig"]),
+     (&["solidity"], &["*.sol"]),
+     (&["soy"], &["*.soy"]),
+     (&["spark"], &["*.spark"]),
+     (&["spec"], &["*.spec"]),
+     (&["sql"], &["*.sql", "*.psql"]),
+     (&["stylus"], &["*.styl"]),
+     (&["sv"], &["*.v", "*.vg", "*.sv", "*.svh", "*.h"]),
+     (&["svelte"], &["*.svelte", "*.svelte.ts"]),
+     (&["svg"], &["*.svg"]),
+     (&["swift"], &["*.swift"]),
+     (&["swig"], &["*.def", "*.i"]),
+     (&["systemd"], &[
+         "*.automount", "*.conf", "*.device", "*.link", "*.mount", "*.path",
+         "*.scope", "*.service", "*.slice", "*.socket", "*.swap", "*.target",
+         "*.timer",
+     ]),
+     (&["taskpaper"], &["*.taskpaper"]),
+     (&["tcl"], &["*.tcl"]),
+     (&["tex"], &["*.tex", "*.ltx", "*.cls", "*.sty", "*.bib", "*.dtx", "*.ins"]),
+     (&["texinfo"], &["*.texi"]),
+     (&["textile"], &["*.textile"]),
+     (&["tf"], &[
+         "*.tf", "*.tf.json", "*.tfvars", "*.tfvars.json",
+         "*.terraformrc", "terraform.rc", "*.tfrc", "*.terraform.lock.hcl",
+     ]),
+     (&["thrift"], &["*.thrift"]),
+     (&["toml"], &["*.toml", "Cargo.lock"]),
+     (&["ts", "typescript"], &["*.ts", "*.tsx", "*.cts", "*.mts"]),
+     (&["twig"], &["*.twig"]),
+     (&["txt"], &["*.txt"]),
+     (&["typoscript"], &["*.typoscript", "*.ts"]),
+diff --git a/crates/ignore/src/dir.rs b/crates/ignore/src/dir.rs
+index 8c1434a..2591771 100644
+--- a/crates/ignore/src/dir.rs
++++ b/crates/ignore/src/dir.rs
+@@ -41,160 +41,172 @@ pub(crate) struct IgnoreMatch<'a>(IgnoreMatchInner<'a>);
+ /// This is private to allow expansion to more matchers in the future.
+ #[derive(Clone, Debug)]
+ #[allow(dead_code)]
+ enum IgnoreMatchInner<'a> {
+     Override(overrides::Glob<'a>),
+     Gitignore(&'a gitignore::Glob),
+     Types(types::Glob<'a>),
+     Hidden,
+ }
+ 
+ impl<'a> IgnoreMatch<'a> {
+     fn overrides(x: overrides::Glob<'a>) -> IgnoreMatch<'a> {
+         IgnoreMatch(IgnoreMatchInner::Override(x))
+     }
+ 
+     fn gitignore(x: &'a gitignore::Glob) -> IgnoreMatch<'a> {
+         IgnoreMatch(IgnoreMatchInner::Gitignore(x))
+     }
+ 
+     fn types(x: types::Glob<'a>) -> IgnoreMatch<'a> {
+         IgnoreMatch(IgnoreMatchInner::Types(x))
+     }
+ 
+     fn hidden() -> IgnoreMatch<'static> {
+         IgnoreMatch(IgnoreMatchInner::Hidden)
+     }
+ }
+ 
+ /// Options for the ignore matcher, shared between the matcher itself and the
+ /// builder.
+ #[derive(Clone, Copy, Debug)]
+ struct IgnoreOptions {
+     /// Whether to ignore hidden file paths or not.
+     hidden: bool,
+     /// Whether to read .ignore files.
+     ignore: bool,
+     /// Whether to respect any ignore files in parent directories.
+     parents: bool,
+     /// Whether to read git's global gitignore file.
+     git_global: bool,
+     /// Whether to read .gitignore files.
+     git_ignore: bool,
+     /// Whether to read .git/info/exclude files.
+     git_exclude: bool,
+     /// Whether to ignore files case insensitively
+     ignore_case_insensitive: bool,
+     /// Whether a git repository must be present in order to apply any
+     /// git-related ignore rules.
+     require_git: bool,
+ }
+ 
+ /// Ignore is a matcher useful for recursively walking one or more directories.
+ #[derive(Clone, Debug)]
+ pub(crate) struct Ignore(Arc<IgnoreInner>);
+ 
+ #[derive(Clone, Debug)]
+ struct IgnoreInner {
+     /// A map of all existing directories that have already been
+     /// compiled into matchers.
+     ///
+     /// Note that this is never used during matching, only when adding new
+     /// parent directory matchers. This avoids needing to rebuild glob sets for
+     /// parent directories if many paths are being searched.
+     compiled: Arc<RwLock<HashMap<OsString, Weak<IgnoreInner>>>>,
+     /// The path to the directory that this matcher was built from.
+     dir: PathBuf,
+     /// An override matcher (default is empty).
+     overrides: Arc<Override>,
+     /// A file type matcher.
+     types: Arc<Types>,
+     /// The parent directory to match next.
+     ///
+     /// If this is the root directory or there are otherwise no more
+     /// directories to match, then `parent` is `None`.
+     parent: Option<Ignore>,
+     /// Whether this is an absolute parent matcher, as added by add_parent.
+     is_absolute_parent: bool,
+     /// The absolute base path of this matcher. Populated only if parent
+     /// directories are added.
+     absolute_base: Option<Arc<PathBuf>>,
++    /// The directory that gitignores should be interpreted relative to.
++    ///
++    /// Usually this is the directory containing the gitignore file. But in
++    /// some cases, like for global gitignores or for gitignores specified
++    /// explicitly, this should generally be set to the current working
++    /// directory. This is only used for global gitignores or "explicit"
++    /// gitignores.
++    ///
++    /// When `None`, this means the CWD could not be determined or is unknown.
++    /// In this case, global gitignore files are ignored because they otherwise
++    /// cannot be matched correctly.
++    global_gitignores_relative_to: Option<PathBuf>,
+     /// Explicit global ignore matchers specified by the caller.
+     explicit_ignores: Arc<Vec<Gitignore>>,
+     /// Ignore files used in addition to `.ignore`
+     custom_ignore_filenames: Arc<Vec<OsString>>,
+     /// The matcher for custom ignore files
+     custom_ignore_matcher: Gitignore,
+     /// The matcher for .ignore files.
+     ignore_matcher: Gitignore,
+     /// A global gitignore matcher, usually from $XDG_CONFIG_HOME/git/ignore.
+     git_global_matcher: Arc<Gitignore>,
+     /// The matcher for .gitignore files.
+     git_ignore_matcher: Gitignore,
+     /// Special matcher for `.git/info/exclude` files.
+     git_exclude_matcher: Gitignore,
+     /// Whether this directory contains a .git sub-directory.
+     has_git: bool,
+     /// Ignore config.
+     opts: IgnoreOptions,
+ }
+ 
+ impl Ignore {
+     /// Return the directory path of this matcher.
+     pub(crate) fn path(&self) -> &Path {
+         &self.0.dir
+     }
+ 
+     /// Return true if this matcher has no parent.
+     pub(crate) fn is_root(&self) -> bool {
+         self.0.parent.is_none()
+     }
+ 
+     /// Returns true if this matcher was added via the `add_parents` method.
+     pub(crate) fn is_absolute_parent(&self) -> bool {
+         self.0.is_absolute_parent
+     }
+ 
+     /// Return this matcher's parent, if one exists.
+     pub(crate) fn parent(&self) -> Option<Ignore> {
+         self.0.parent.clone()
+     }
+ 
+     /// Create a new `Ignore` matcher with the parent directories of `dir`.
+     ///
+     /// Note that this can only be called on an `Ignore` matcher with no
+     /// parents (i.e., `is_root` returns `true`). This will panic otherwise.
+     pub(crate) fn add_parents<P: AsRef<Path>>(
+         &self,
+         path: P,
+     ) -> (Ignore, Option<Error>) {
+         if !self.0.opts.parents
+             && !self.0.opts.git_ignore
+             && !self.0.opts.git_exclude
+             && !self.0.opts.git_global
+         {
+             // If we never need info from parent directories, then don't do
+             // anything.
+             return (self.clone(), None);
+         }
+         if !self.is_root() {
+             panic!("Ignore::add_parents called on non-root matcher");
+         }
+         let absolute_base = match path.as_ref().canonicalize() {
+             Ok(path) => Arc::new(path),
+             Err(_) => {
+                 // There's not much we can do here, so just return our
+                 // existing matcher. We drop the error to be consistent
+                 // with our general pattern of ignoring I/O errors when
+                 // processing ignore files.
+                 return (self.clone(), None);
+             }
+         };
+         // List of parents, from child to root.
+         let mut parents = vec![];
+         let mut path = &**absolute_base;
+         while let Some(parent) = path.parent() {
+             parents.push(parent);
+             path = parent;
+         }
+         let mut errs = PartialErrorBuilder::default();
+         let mut ig = self.clone();
+@@ -242,160 +254,164 @@ impl Ignore {
+         (Ignore(Arc::new(ig)), err)
+     }
+ 
+     /// Like add_child, but takes a full path and returns an IgnoreInner.
+     fn add_child_path(&self, dir: &Path) -> (IgnoreInner, Option<Error>) {
+         let git_type = if self.0.opts.require_git
+             && (self.0.opts.git_ignore || self.0.opts.git_exclude)
+         {
+             dir.join(".git").metadata().ok().map(|md| md.file_type())
+         } else {
+             None
+         };
+         let has_git = git_type.is_some() || dir.join(".jj").exists();
+ 
+         let mut errs = PartialErrorBuilder::default();
+         let custom_ig_matcher = if self.0.custom_ignore_filenames.is_empty() {
+             Gitignore::empty()
+         } else {
+             let (m, err) = create_gitignore(
+                 &dir,
+                 &dir,
+                 &self.0.custom_ignore_filenames,
+                 self.0.opts.ignore_case_insensitive,
+             );
+             errs.maybe_push(err);
+             m
+         };
+         let ig_matcher = if !self.0.opts.ignore {
+             Gitignore::empty()
+         } else {
+             let (m, err) = create_gitignore(
+                 &dir,
+                 &dir,
+                 &[".ignore"],
+                 self.0.opts.ignore_case_insensitive,
+             );
+             errs.maybe_push(err);
+             m
+         };
+         let gi_matcher = if !self.0.opts.git_ignore {
+             Gitignore::empty()
+         } else {
+             let (m, err) = create_gitignore(
+                 &dir,
+                 &dir,
+                 &[".gitignore"],
+                 self.0.opts.ignore_case_insensitive,
+             );
+             errs.maybe_push(err);
+             m
+         };
+ 
+         let gi_exclude_matcher = if !self.0.opts.git_exclude {
+             Gitignore::empty()
+         } else {
+             match resolve_git_commondir(dir, git_type) {
+                 Ok(git_dir) => {
+                     let (m, err) = create_gitignore(
+                         &dir,
+                         &git_dir,
+                         &["info/exclude"],
+                         self.0.opts.ignore_case_insensitive,
+                     );
+                     errs.maybe_push(err);
+                     m
+                 }
+                 Err(err) => {
+                     errs.maybe_push(err);
+                     Gitignore::empty()
+                 }
+             }
+         };
+         let ig = IgnoreInner {
+             compiled: self.0.compiled.clone(),
+             dir: dir.to_path_buf(),
+             overrides: self.0.overrides.clone(),
+             types: self.0.types.clone(),
+             parent: Some(self.clone()),
+             is_absolute_parent: false,
+             absolute_base: self.0.absolute_base.clone(),
++            global_gitignores_relative_to: self
++                .0
++                .global_gitignores_relative_to
++                .clone(),
+             explicit_ignores: self.0.explicit_ignores.clone(),
+             custom_ignore_filenames: self.0.custom_ignore_filenames.clone(),
+             custom_ignore_matcher: custom_ig_matcher,
+             ignore_matcher: ig_matcher,
+             git_global_matcher: self.0.git_global_matcher.clone(),
+             git_ignore_matcher: gi_matcher,
+             git_exclude_matcher: gi_exclude_matcher,
+             has_git,
+             opts: self.0.opts,
+         };
+         (ig, errs.into_error_option())
+     }
+ 
+     /// Returns true if at least one type of ignore rule should be matched.
+     fn has_any_ignore_rules(&self) -> bool {
+         let opts = self.0.opts;
+         let has_custom_ignore_files =
+             !self.0.custom_ignore_filenames.is_empty();
+         let has_explicit_ignores = !self.0.explicit_ignores.is_empty();
+ 
+         opts.ignore
+             || opts.git_global
+             || opts.git_ignore
+             || opts.git_exclude
+             || has_custom_ignore_files
+             || has_explicit_ignores
+     }
+ 
+     /// Like `matched`, but works with a directory entry instead.
+     pub(crate) fn matched_dir_entry<'a>(
+         &'a self,
+         dent: &DirEntry,
+     ) -> Match<IgnoreMatch<'a>> {
+         let m = self.matched(dent.path(), dent.is_dir());
+         if m.is_none() && self.0.opts.hidden && is_hidden(dent) {
+             return Match::Ignore(IgnoreMatch::hidden());
+         }
+         m
+     }
+ 
+     /// Returns a match indicating whether the given file path should be
+     /// ignored or not.
+     ///
+     /// The match contains information about its origin.
+     fn matched<'a, P: AsRef<Path>>(
+         &'a self,
+         path: P,
+         is_dir: bool,
+     ) -> Match<IgnoreMatch<'a>> {
+         // We need to be careful with our path. If it has a leading ./, then
+         // strip it because it causes nothing but trouble.
+         let mut path = path.as_ref();
+         if let Some(p) = strip_prefix("./", path) {
+             path = p;
+         }
+         // Match against the override patterns. If an override matches
+         // regardless of whether it's whitelist/ignore, then we quit and
+         // return that result immediately. Overrides have the highest
+         // precedence.
+         if !self.0.overrides.is_empty() {
+             let mat = self
+                 .0
+                 .overrides
+                 .matched(path, is_dir)
+                 .map(IgnoreMatch::overrides);
+             if !mat.is_none() {
+                 return mat;
+             }
+         }
+         let mut whitelisted = Match::None;
+         if self.has_any_ignore_rules() {
+             let mat = self.matched_ignore(path, is_dir);
+             if mat.is_ignore() {
+                 return mat;
+             } else if mat.is_whitelist() {
+                 whitelisted = mat;
+             }
+         }
+         if !self.0.types.is_empty() {
+             let mat =
+@@ -505,230 +521,267 @@ impl Ignore {
+                                 .matched(&path, is_dir)
+                                 .map(IgnoreMatch::gitignore);
+                     }
+                     if any_git && !saw_git && m_gi_exclude.is_none() {
+                         m_gi_exclude =
+                             ig.0.git_exclude_matcher
+                                 .matched(&path, is_dir)
+                                 .map(IgnoreMatch::gitignore);
+                     }
+                     saw_git = saw_git || ig.0.has_git;
+                 }
+             }
+         }
+         for gi in self.0.explicit_ignores.iter().rev() {
+             if !m_explicit.is_none() {
+                 break;
+             }
+             m_explicit = gi.matched(&path, is_dir).map(IgnoreMatch::gitignore);
+         }
+         let m_global = if any_git {
+             self.0
+                 .git_global_matcher
+                 .matched(&path, is_dir)
+                 .map(IgnoreMatch::gitignore)
+         } else {
+             Match::None
+         };
+ 
+         m_custom_ignore
+             .or(m_ignore)
+             .or(m_gi)
+             .or(m_gi_exclude)
+             .or(m_global)
+             .or(m_explicit)
+     }
+ 
+     /// Returns an iterator over parent ignore matchers, including this one.
+     pub(crate) fn parents(&self) -> Parents<'_> {
+         Parents(Some(self))
+     }
+ 
+     /// Returns the first absolute path of the first absolute parent, if
+     /// one exists.
+     fn absolute_base(&self) -> Option<&Path> {
+         self.0.absolute_base.as_ref().map(|p| &***p)
+     }
+ }
+ 
+ /// An iterator over all parents of an ignore matcher, including itself.
+ ///
+ /// The lifetime `'a` refers to the lifetime of the initial `Ignore` matcher.
+ pub(crate) struct Parents<'a>(Option<&'a Ignore>);
+ 
+ impl<'a> Iterator for Parents<'a> {
+     type Item = &'a Ignore;
+ 
+     fn next(&mut self) -> Option<&'a Ignore> {
+         match self.0.take() {
+             None => None,
+             Some(ig) => {
+                 self.0 = ig.0.parent.as_ref();
+                 Some(ig)
+             }
+         }
+     }
+ }
+ 
+ /// A builder for creating an Ignore matcher.
+ #[derive(Clone, Debug)]
+ pub(crate) struct IgnoreBuilder {
+     /// The root directory path for this ignore matcher.
+     dir: PathBuf,
+     /// An override matcher (default is empty).
+     overrides: Arc<Override>,
+     /// A type matcher (default is empty).
+     types: Arc<Types>,
+     /// Explicit global ignore matchers.
+     explicit_ignores: Vec<Gitignore>,
+     /// Ignore files in addition to .ignore.
+     custom_ignore_filenames: Vec<OsString>,
++    /// The directory that gitignores should be interpreted relative to.
++    ///
++    /// Usually this is the directory containing the gitignore file. But in
++    /// some cases, like for global gitignores or for gitignores specified
++    /// explicitly, this should generally be set to the current working
++    /// directory. This is only used for global gitignores or "explicit"
++    /// gitignores.
++    ///
++    /// When `None`, global gitignores are ignored.
++    global_gitignores_relative_to: Option<PathBuf>,
+     /// Ignore config.
+     opts: IgnoreOptions,
+ }
+ 
+ impl IgnoreBuilder {
+     /// Create a new builder for an `Ignore` matcher.
+     ///
+-    /// All relative file paths are resolved with respect to the current
+-    /// working directory.
++    /// It is likely a bug to use this without also calling `current_dir()`
++    /// outside of tests. This isn't made mandatory because this is an internal
++    /// abstraction and it's annoying to update tests.
+     pub(crate) fn new() -> IgnoreBuilder {
+         IgnoreBuilder {
+             dir: Path::new("").to_path_buf(),
+             overrides: Arc::new(Override::empty()),
+             types: Arc::new(Types::empty()),
+             explicit_ignores: vec![],
+             custom_ignore_filenames: vec![],
++            global_gitignores_relative_to: None,
+             opts: IgnoreOptions {
+                 hidden: true,
+                 ignore: true,
+                 parents: true,
+                 git_global: true,
+                 git_ignore: true,
+                 git_exclude: true,
+                 ignore_case_insensitive: false,
+                 require_git: true,
+             },
+         }
+     }
+ 
+     /// Builds a new `Ignore` matcher.
+     ///
+     /// The matcher returned won't match anything until ignore rules from
+     /// directories are added to it.
+     pub(crate) fn build(&self) -> Ignore {
++        self.build_with_cwd(None)
++    }
++
++    /// Builds a new `Ignore` matcher using the given CWD directory.
++    ///
++    /// The matcher returned won't match anything until ignore rules from
++    /// directories are added to it.
++    pub(crate) fn build_with_cwd(&self, cwd: Option<PathBuf>) -> Ignore {
++        let global_gitignores_relative_to =
++            cwd.or_else(|| self.global_gitignores_relative_to.clone());
+         let git_global_matcher = if !self.opts.git_global {
+             Gitignore::empty()
+-        } else {
+-            let mut builder = GitignoreBuilder::new("");
++        } else if let Some(ref cwd) = global_gitignores_relative_to {
++            let mut builder = GitignoreBuilder::new(cwd);
+             builder
+                 .case_insensitive(self.opts.ignore_case_insensitive)
+                 .unwrap();
+             let (gi, err) = builder.build_global();
+             if let Some(err) = err {
+                 log::debug!("{}", err);
+             }
+             gi
++        } else {
++            log::debug!(
++                "ignoring global gitignore file because CWD is not known"
++            );
++            Gitignore::empty()
+         };
+ 
+         Ignore(Arc::new(IgnoreInner {
+             compiled: Arc::new(RwLock::new(HashMap::new())),
+             dir: self.dir.clone(),
+             overrides: self.overrides.clone(),
+             types: self.types.clone(),
+             parent: None,
+             is_absolute_parent: true,
+             absolute_base: None,
++            global_gitignores_relative_to,
+             explicit_ignores: Arc::new(self.explicit_ignores.clone()),
+             custom_ignore_filenames: Arc::new(
+                 self.custom_ignore_filenames.clone(),
+             ),
+             custom_ignore_matcher: Gitignore::empty(),
+             ignore_matcher: Gitignore::empty(),
+             git_global_matcher: Arc::new(git_global_matcher),
+             git_ignore_matcher: Gitignore::empty(),
+             git_exclude_matcher: Gitignore::empty(),
+             has_git: false,
+             opts: self.opts,
+         }))
+     }
+ 
++    /// Set the current directory used for matching global gitignores.
++    pub(crate) fn current_dir(
++        &mut self,
++        cwd: impl Into<PathBuf>,
++    ) -> &mut IgnoreBuilder {
++        self.global_gitignores_relative_to = Some(cwd.into());
++        self
++    }
++
+     /// Add an override matcher.
+     ///
+     /// By default, no override matcher is used.
+     ///
+     /// This overrides any previous setting.
+     pub(crate) fn overrides(
+         &mut self,
+         overrides: Override,
+     ) -> &mut IgnoreBuilder {
+         self.overrides = Arc::new(overrides);
+         self
+     }
+ 
+     /// Add a file type matcher.
+     ///
+     /// By default, no file type matcher is used.
+     ///
+     /// This overrides any previous setting.
+     pub(crate) fn types(&mut self, types: Types) -> &mut IgnoreBuilder {
+         self.types = Arc::new(types);
+         self
+     }
+ 
+     /// Adds a new global ignore matcher from the ignore file path given.
+     pub(crate) fn add_ignore(&mut self, ig: Gitignore) -> &mut IgnoreBuilder {
+         self.explicit_ignores.push(ig);
+         self
+     }
+ 
+     /// Add a custom ignore file name
+     ///
+     /// These ignore files have higher precedence than all other ignore files.
+     ///
+     /// When specifying multiple names, earlier names have lower precedence than
+     /// later names.
+     pub(crate) fn add_custom_ignore_filename<S: AsRef<OsStr>>(
+         &mut self,
+         file_name: S,
+     ) -> &mut IgnoreBuilder {
+         self.custom_ignore_filenames.push(file_name.as_ref().to_os_string());
+         self
+     }
+ 
+     /// Enables ignoring hidden files.
+     ///
+     /// This is enabled by default.
+     pub(crate) fn hidden(&mut self, yes: bool) -> &mut IgnoreBuilder {
+         self.opts.hidden = yes;
+         self
+     }
+ 
+     /// Enables reading `.ignore` files.
+     ///
+     /// `.ignore` files have the same semantics as `gitignore` files and are
+     /// supported by search tools such as ripgrep and The Silver Searcher.
+     ///
+     /// This is enabled by default.
+     pub(crate) fn ignore(&mut self, yes: bool) -> &mut IgnoreBuilder {
+         self.opts.ignore = yes;
+         self
+     }
+ 
+     /// Enables reading ignore files from parent directories.
+     ///
+     /// If this is enabled, then .gitignore files in parent directories of each
+     /// file path given are respected. Otherwise, they are ignored.
+     ///
+     /// This is enabled by default.
+     pub(crate) fn parents(&mut self, yes: bool) -> &mut IgnoreBuilder {
+         self.opts.parents = yes;
+         self
+     }
+ 
+     /// Add a global gitignore matcher.
+     ///
+     /// Its precedence is lower than both normal `.gitignore` files and
+     /// `.git/info/exclude` files.
+     ///
+     /// This overwrites any previous global gitignore setting.
+     ///
+diff --git a/crates/ignore/src/gitignore.rs b/crates/ignore/src/gitignore.rs
+index 17eb3bd..e3c604f 100644
+--- a/crates/ignore/src/gitignore.rs
++++ b/crates/ignore/src/gitignore.rs
+@@ -51,161 +51,164 @@ impl Glob {
+     /// The original glob as it was defined in a gitignore file.
+     pub fn original(&self) -> &str {
+         &self.original
+     }
+ 
+     /// The actual glob that was compiled to respect gitignore
+     /// semantics.
+     pub fn actual(&self) -> &str {
+         &self.actual
+     }
+ 
+     /// Whether this was a whitelisted glob or not.
+     pub fn is_whitelist(&self) -> bool {
+         self.is_whitelist
+     }
+ 
+     /// Whether this glob must match a directory or not.
+     pub fn is_only_dir(&self) -> bool {
+         self.is_only_dir
+     }
+ 
+     /// Returns true if and only if this glob has a `**/` prefix.
+     fn has_doublestar_prefix(&self) -> bool {
+         self.actual.starts_with("**/") || self.actual == "**"
+     }
+ }
+ 
+ /// Gitignore is a matcher for the globs in one or more gitignore files
+ /// in the same directory.
+ #[derive(Clone, Debug)]
+ pub struct Gitignore {
+     set: GlobSet,
+     root: PathBuf,
+     globs: Vec<Glob>,
+     num_ignores: u64,
+     num_whitelists: u64,
+     matches: Option<Arc<Pool<Vec<usize>>>>,
+ }
+ 
+ impl Gitignore {
+     /// Creates a new gitignore matcher from the gitignore file path given.
+     ///
+     /// If it's desirable to include multiple gitignore files in a single
+     /// matcher, or read gitignore globs from a different source, then
+     /// use `GitignoreBuilder`.
+     ///
+     /// This always returns a valid matcher, even if it's empty. In particular,
+     /// a Gitignore file can be partially valid, e.g., when one glob is invalid
+     /// but the rest aren't.
+     ///
+     /// Note that I/O errors are ignored. For more granular control over
+     /// errors, use `GitignoreBuilder`.
+     pub fn new<P: AsRef<Path>>(
+         gitignore_path: P,
+     ) -> (Gitignore, Option<Error>) {
+         let path = gitignore_path.as_ref();
+         let parent = path.parent().unwrap_or(Path::new("/"));
+         let mut builder = GitignoreBuilder::new(parent);
+         let mut errs = PartialErrorBuilder::default();
+         errs.maybe_push_ignore_io(builder.add(path));
+         match builder.build() {
+             Ok(gi) => (gi, errs.into_error_option()),
+             Err(err) => {
+                 errs.push(err);
+                 (Gitignore::empty(), errs.into_error_option())
+             }
+         }
+     }
+ 
+     /// Creates a new gitignore matcher from the global ignore file, if one
+     /// exists.
+     ///
+     /// The global config file path is specified by git's `core.excludesFile`
+     /// config option.
+     ///
+     /// Git's config file location is `$HOME/.gitconfig`. If `$HOME/.gitconfig`
+     /// does not exist or does not specify `core.excludesFile`, then
+     /// `$XDG_CONFIG_HOME/git/ignore` is read. If `$XDG_CONFIG_HOME` is not
+     /// set or is empty, then `$HOME/.config/git/ignore` is used instead.
+     pub fn global() -> (Gitignore, Option<Error>) {
+-        GitignoreBuilder::new("").build_global()
++        match std::env::current_dir() {
++            Ok(cwd) => GitignoreBuilder::new(cwd).build_global(),
++            Err(err) => (Gitignore::empty(), Some(err.into())),
++        }
+     }
+ 
+     /// Creates a new empty gitignore matcher that never matches anything.
+     ///
+     /// Its path is empty.
+     pub fn empty() -> Gitignore {
+         Gitignore {
+             set: GlobSet::empty(),
+             root: PathBuf::from(""),
+             globs: vec![],
+             num_ignores: 0,
+             num_whitelists: 0,
+             matches: None,
+         }
+     }
+ 
+     /// Returns the directory containing this gitignore matcher.
+     ///
+     /// All matches are done relative to this path.
+     pub fn path(&self) -> &Path {
+         &*self.root
+     }
+ 
+     /// Returns true if and only if this gitignore has zero globs, and
+     /// therefore never matches any file path.
+     pub fn is_empty(&self) -> bool {
+         self.set.is_empty()
+     }
+ 
+     /// Returns the total number of globs, which should be equivalent to
+     /// `num_ignores + num_whitelists`.
+     pub fn len(&self) -> usize {
+         self.set.len()
+     }
+ 
+     /// Returns the total number of ignore globs.
+     pub fn num_ignores(&self) -> u64 {
+         self.num_ignores
+     }
+ 
+     /// Returns the total number of whitelisted globs.
+     pub fn num_whitelists(&self) -> u64 {
+         self.num_whitelists
+     }
+ 
+     /// Returns whether the given path (file or directory) matched a pattern in
+     /// this gitignore matcher.
+     ///
+     /// `is_dir` should be true if the path refers to a directory and false
+     /// otherwise.
+     ///
+     /// The given path is matched relative to the path given when building
+     /// the matcher. Specifically, before matching `path`, its prefix (as
+     /// determined by a common suffix of the directory containing this
+     /// gitignore) is stripped. If there is no common suffix/prefix overlap,
+     /// then `path` is assumed to be relative to this matcher.
+     pub fn matched<P: AsRef<Path>>(
+         &self,
+         path: P,
+         is_dir: bool,
+     ) -> Match<&Glob> {
+         if self.is_empty() {
+             return Match::None;
+         }
+         self.matched_stripped(self.strip(path.as_ref()), is_dir)
+     }
+ 
+     /// Returns whether the given path (file or directory, and expected to be
+     /// under the root) or any of its parent directories (up to the root)
+     /// matched a pattern in this gitignore matcher.
+     ///
+     /// NOTE: This method is more expensive than walking the directory hierarchy
+     /// top-to-bottom and matching the entries. But, is easier to use in cases
+     /// when a list of paths are available without a hierarchy.
+     ///
+     /// `is_dir` should be true if the path refers to a directory and false
+     /// otherwise.
+     ///
+     /// The given path is matched relative to the path given when building
+     /// the matcher. Specifically, before matching `path`, its prefix (as
+diff --git a/crates/ignore/src/walk.rs b/crates/ignore/src/walk.rs
+index 3e06fb3..f697c50 100644
+--- a/crates/ignore/src/walk.rs
++++ b/crates/ignore/src/walk.rs
+@@ -1,88 +1,88 @@
+ use std::{
+     cmp::Ordering,
+     ffi::OsStr,
+     fs::{self, FileType, Metadata},
+     io,
+     path::{Path, PathBuf},
+-    sync::Arc,
+     sync::atomic::{AtomicBool, AtomicUsize, Ordering as AtomicOrdering},
++    sync::{Arc, OnceLock},
+ };
+ 
+ use {
+     crossbeam_deque::{Stealer, Worker as Deque},
+     same_file::Handle,
+     walkdir::WalkDir,
+ };
+ 
+ use crate::{
+     Error, PartialErrorBuilder,
+     dir::{Ignore, IgnoreBuilder},
+     gitignore::GitignoreBuilder,
+     overrides::Override,
+     types::Types,
+ };
+ 
+ /// A directory entry with a possible error attached.
+ ///
+ /// The error typically refers to a problem parsing ignore files in a
+ /// particular directory.
+ #[derive(Clone, Debug)]
+ pub struct DirEntry {
+     dent: DirEntryInner,
+     err: Option<Error>,
+ }
+ 
+ impl DirEntry {
+     /// The full path that this entry represents.
+     pub fn path(&self) -> &Path {
+         self.dent.path()
+     }
+ 
+     /// The full path that this entry represents.
+     /// Analogous to [`DirEntry::path`], but moves ownership of the path.
+     pub fn into_path(self) -> PathBuf {
+         self.dent.into_path()
+     }
+ 
+     /// Whether this entry corresponds to a symbolic link or not.
+     pub fn path_is_symlink(&self) -> bool {
+         self.dent.path_is_symlink()
+     }
+ 
+     /// Returns true if and only if this entry corresponds to stdin.
+     ///
+     /// i.e., The entry has depth 0 and its file name is `-`.
+     pub fn is_stdin(&self) -> bool {
+         self.dent.is_stdin()
+     }
+ 
+     /// Return the metadata for the file that this entry points to.
+     pub fn metadata(&self) -> Result<Metadata, Error> {
+         self.dent.metadata()
+     }
+ 
+     /// Return the file type for the file that this entry points to.
+     ///
+     /// This entry doesn't have a file type if it corresponds to stdin.
+     pub fn file_type(&self) -> Option<FileType> {
+         self.dent.file_type()
+     }
+ 
+     /// Return the file name of this entry.
+     ///
+     /// If this entry has no file name (e.g., `/`), then the full path is
+     /// returned.
+     pub fn file_name(&self) -> &OsStr {
+         self.dent.file_name()
+     }
+ 
+     /// Returns the depth at which this entry was created relative to the root.
+     pub fn depth(&self) -> usize {
+         self.dent.depth()
+     }
+ 
+     /// Returns the underlying inode number if one exists.
+     ///
+     /// If this entry doesn't have an inode number, then `None` is returned.
+     #[cfg(unix)]
+     pub fn ino(&self) -> Option<u64> {
+@@ -415,353 +415,393 @@ impl DirEntryRaw {
+             ino: md.ino(),
+         })
+     }
+ 
+     // Placeholder implementation to allow compiling on non-standard platforms
+     // (e.g. wasm32).
+     #[cfg(not(any(windows, unix)))]
+     fn from_path(
+         depth: usize,
+         pb: PathBuf,
+         link: bool,
+     ) -> Result<DirEntryRaw, Error> {
+         Err(Error::Io(io::Error::new(
+             io::ErrorKind::Other,
+             "unsupported platform",
+         )))
+     }
+ }
+ 
+ /// WalkBuilder builds a recursive directory iterator.
+ ///
+ /// The builder supports a large number of configurable options. This includes
+ /// specific glob overrides, file type matching, toggling whether hidden
+ /// files are ignored or not, and of course, support for respecting gitignore
+ /// files.
+ ///
+ /// By default, all ignore files found are respected. This includes `.ignore`,
+ /// `.gitignore`, `.git/info/exclude` and even your global gitignore
+ /// globs, usually found in `$XDG_CONFIG_HOME/git/ignore`.
+ ///
+ /// Some standard recursive directory options are also supported, such as
+ /// limiting the recursive depth or whether to follow symbolic links (disabled
+ /// by default).
+ ///
+ /// # Ignore rules
+ ///
+ /// There are many rules that influence whether a particular file or directory
+ /// is skipped by this iterator. Those rules are documented here. Note that
+ /// the rules assume a default configuration.
+ ///
+ /// * First, glob overrides are checked. If a path matches a glob override,
+ /// then matching stops. The path is then only skipped if the glob that matched
+ /// the path is an ignore glob. (An override glob is a whitelist glob unless it
+ /// starts with a `!`, in which case it is an ignore glob.)
+ /// * Second, ignore files are checked. Ignore files currently only come from
+ /// git ignore files (`.gitignore`, `.git/info/exclude` and the configured
+ /// global gitignore file), plain `.ignore` files, which have the same format
+ /// as gitignore files, or explicitly added ignore files. The precedence order
+ /// is: `.ignore`, `.gitignore`, `.git/info/exclude`, global gitignore and
+ /// finally explicitly added ignore files. Note that precedence between
+ /// different types of ignore files is not impacted by the directory hierarchy;
+ /// any `.ignore` file overrides all `.gitignore` files. Within each precedence
+ /// level, more nested ignore files have a higher precedence than less nested
+ /// ignore files.
+ /// * Third, if the previous step yields an ignore match, then all matching
+ /// is stopped and the path is skipped. If it yields a whitelist match, then
+ /// matching continues. A whitelist match can be overridden by a later matcher.
+ /// * Fourth, unless the path is a directory, the file type matcher is run on
+ /// the path. As above, if it yields an ignore match, then all matching is
+ /// stopped and the path is skipped. If it yields a whitelist match, then
+ /// matching continues.
+ /// * Fifth, if the path hasn't been whitelisted and it is hidden, then the
+ /// path is skipped.
+ /// * Sixth, unless the path is a directory, the size of the file is compared
+ /// against the max filesize limit. If it exceeds the limit, it is skipped.
+ /// * Seventh, if the path has made it this far then it is yielded in the
+ /// iterator.
+ #[derive(Clone)]
+ pub struct WalkBuilder {
+     paths: Vec<PathBuf>,
+     ig_builder: IgnoreBuilder,
+     max_depth: Option<usize>,
+     min_depth: Option<usize>,
+     max_filesize: Option<u64>,
+     follow_links: bool,
+     same_file_system: bool,
+     sorter: Option<Sorter>,
+     threads: usize,
+     skip: Option<Arc<Handle>>,
+     filter: Option<Filter>,
++    /// The directory that gitignores should be interpreted relative to.
++    ///
++    /// Usually this is the directory containing the gitignore file. But in
++    /// some cases, like for global gitignores or for gitignores specified
++    /// explicitly, this should generally be set to the current working
++    /// directory. This is only used for global gitignores or "explicit"
++    /// gitignores.
++    ///
++    /// When `None`, the CWD is fetched from `std::env::current_dir()`. If
++    /// that fails, then global gitignores are ignored (an error is logged).
++    global_gitignores_relative_to:
++        OnceLock<Result<PathBuf, Arc<std::io::Error>>>,
+ }
+ 
+ #[derive(Clone)]
+ enum Sorter {
+     ByName(Arc<dyn Fn(&OsStr, &OsStr) -> Ordering + Send + Sync + 'static>),
+     ByPath(Arc<dyn Fn(&Path, &Path) -> Ordering + Send + Sync + 'static>),
+ }
+ 
+ #[derive(Clone)]
+ struct Filter(Arc<dyn Fn(&DirEntry) -> bool + Send + Sync + 'static>);
+ 
+ impl std::fmt::Debug for WalkBuilder {
+     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+         f.debug_struct("WalkBuilder")
+             .field("paths", &self.paths)
+             .field("ig_builder", &self.ig_builder)
+             .field("max_depth", &self.max_depth)
+             .field("min_depth", &self.min_depth)
+             .field("max_filesize", &self.max_filesize)
+             .field("follow_links", &self.follow_links)
++            .field("same_file_system", &self.same_file_system)
++            .field("sorter", &"<...>")
+             .field("threads", &self.threads)
+             .field("skip", &self.skip)
++            .field("filter", &"<...>")
++            .field(
++                "global_gitignores_relative_to",
++                &self.global_gitignores_relative_to,
++            )
+             .finish()
+     }
+ }
+ 
+ impl WalkBuilder {
+     /// Create a new builder for a recursive directory iterator for the
+     /// directory given.
+     ///
+     /// Note that if you want to traverse multiple different directories, it
+     /// is better to call `add` on this builder than to create multiple
+     /// `Walk` values.
+     pub fn new<P: AsRef<Path>>(path: P) -> WalkBuilder {
+         WalkBuilder {
+             paths: vec![path.as_ref().to_path_buf()],
+             ig_builder: IgnoreBuilder::new(),
+             max_depth: None,
+             min_depth: None,
+             max_filesize: None,
+             follow_links: false,
+             same_file_system: false,
+             sorter: None,
+             threads: 0,
+             skip: None,
+             filter: None,
++            global_gitignores_relative_to: OnceLock::new(),
+         }
+     }
+ 
+     /// Build a new `Walk` iterator.
+     pub fn build(&self) -> Walk {
+         let follow_links = self.follow_links;
+         let max_depth = self.max_depth;
+         let min_depth = self.min_depth;
+         let sorter = self.sorter.clone();
+         let its = self
+             .paths
+             .iter()
+             .map(move |p| {
+                 if p == Path::new("-") {
+                     (p.to_path_buf(), None)
+                 } else {
+                     let mut wd = WalkDir::new(p);
+                     wd = wd.follow_links(follow_links || p.is_file());
+                     wd = wd.same_file_system(self.same_file_system);
+                     if let Some(max_depth) = max_depth {
+                         wd = wd.max_depth(max_depth);
+                     }
+                     if let Some(min_depth) = min_depth {
+                         wd = wd.min_depth(min_depth);
+                     }
+                     if let Some(ref sorter) = sorter {
+                         match sorter.clone() {
+                             Sorter::ByName(cmp) => {
+                                 wd = wd.sort_by(move |a, b| {
+                                     cmp(a.file_name(), b.file_name())
+                                 });
+                             }
+                             Sorter::ByPath(cmp) => {
+                                 wd = wd.sort_by(move |a, b| {
+                                     cmp(a.path(), b.path())
+                                 });
+                             }
+                         }
+                     }
+                     (p.to_path_buf(), Some(WalkEventIter::from(wd)))
+                 }
+             })
+             .collect::<Vec<_>>()
+             .into_iter();
+-        let ig_root = self.ig_builder.build();
++        let ig_root = self
++            .get_or_set_current_dir()
++            .map(|cwd| self.ig_builder.build_with_cwd(Some(cwd.to_path_buf())))
++            .unwrap_or_else(|| self.ig_builder.build());
+         Walk {
+             its,
+             it: None,
+             ig_root: ig_root.clone(),
+             ig: ig_root.clone(),
+             max_filesize: self.max_filesize,
+             skip: self.skip.clone(),
+             filter: self.filter.clone(),
+         }
+     }
+ 
+     /// Build a new `WalkParallel` iterator.
+     ///
+     /// Note that this *doesn't* return something that implements `Iterator`.
+     /// Instead, the returned value must be run with a closure. e.g.,
+     /// `builder.build_parallel().run(|| |path| { println!("{path:?}"); WalkState::Continue })`.
+     pub fn build_parallel(&self) -> WalkParallel {
++        let ig_root = self
++            .get_or_set_current_dir()
++            .map(|cwd| self.ig_builder.build_with_cwd(Some(cwd.to_path_buf())))
++            .unwrap_or_else(|| self.ig_builder.build());
+         WalkParallel {
+             paths: self.paths.clone().into_iter(),
+-            ig_root: self.ig_builder.build(),
++            ig_root,
+             max_depth: self.max_depth,
+             min_depth: self.min_depth,
+             max_filesize: self.max_filesize,
+             follow_links: self.follow_links,
+             same_file_system: self.same_file_system,
+             threads: self.threads,
+             skip: self.skip.clone(),
+             filter: self.filter.clone(),
+         }
+     }
+ 
+     /// Add a file path to the iterator.
+     ///
+     /// Each additional file path added is traversed recursively. This should
+     /// be preferred over building multiple `Walk` iterators since this
+     /// enables reusing resources across iteration.
+     pub fn add<P: AsRef<Path>>(&mut self, path: P) -> &mut WalkBuilder {
+         self.paths.push(path.as_ref().to_path_buf());
+         self
+     }
+ 
+     /// The maximum depth to recurse.
+     ///
+     /// The default, `None`, imposes no depth restriction.
+     pub fn max_depth(&mut self, depth: Option<usize>) -> &mut WalkBuilder {
+         self.max_depth = depth;
+         if self.min_depth.is_some()
+             && self.max_depth.is_some()
+             && self.max_depth < self.min_depth
+         {
+             self.max_depth = self.min_depth;
+         }
+         self
+     }
+ 
+     /// The minimum depth to recurse.
+     ///
+     /// The default, `None`, imposes no minimum depth restriction.
+     pub fn min_depth(&mut self, depth: Option<usize>) -> &mut WalkBuilder {
+         self.min_depth = depth;
+         if self.max_depth.is_some()
+             && self.min_depth.is_some()
+             && self.min_depth > self.max_depth
+         {
+             self.min_depth = self.max_depth;
+         }
+         self
+     }
+ 
+     /// Whether to follow symbolic links or not.
+     pub fn follow_links(&mut self, yes: bool) -> &mut WalkBuilder {
+         self.follow_links = yes;
+         self
+     }
+ 
+     /// Whether to ignore files above the specified limit.
+     pub fn max_filesize(&mut self, filesize: Option<u64>) -> &mut WalkBuilder {
+         self.max_filesize = filesize;
+         self
+     }
+ 
+     /// The number of threads to use for traversal.
+     ///
+     /// Note that this only has an effect when using `build_parallel`.
+     ///
+     /// The default setting is `0`, which chooses the number of threads
+     /// automatically using heuristics.
+     pub fn threads(&mut self, n: usize) -> &mut WalkBuilder {
+         self.threads = n;
+         self
+     }
+ 
+     /// Add a global ignore file to the matcher.
+     ///
+     /// This has lower precedence than all other sources of ignore rules.
+     ///
++    /// # Errors
++    ///
+     /// If there was a problem adding the ignore file, then an error is
+     /// returned. Note that the error may indicate *partial* failure. For
+     /// example, if an ignore file contains an invalid glob, all other globs
+     /// are still applied.
++    ///
++    /// An error will also occur if this walker could not get the current
++    /// working directory (and `WalkBuilder::current_dir` isn't set).
+     pub fn add_ignore<P: AsRef<Path>>(&mut self, path: P) -> Option<Error> {
+-        let mut builder = GitignoreBuilder::new("");
++        let path = path.as_ref();
++        let Some(cwd) = self.get_or_set_current_dir() else {
++            let err = std::io::Error::other(format!(
++                "CWD is not known, ignoring global gitignore {}",
++                path.display()
++            ));
++            return Some(err.into());
++        };
++        let mut builder = GitignoreBuilder::new(cwd);
+         let mut errs = PartialErrorBuilder::default();
+         errs.maybe_push(builder.add(path));
+         match builder.build() {
+             Ok(gi) => {
+                 self.ig_builder.add_ignore(gi);
+             }
+             Err(err) => {
+                 errs.push(err);
+             }
+         }
+         errs.into_error_option()
+     }
+ 
+     /// Add a custom ignore file name
+     ///
+     /// These ignore files have higher precedence than all other ignore files.
+     ///
+     /// When specifying multiple names, earlier names have lower precedence than
+     /// later names.
+     pub fn add_custom_ignore_filename<S: AsRef<OsStr>>(
+         &mut self,
+         file_name: S,
+     ) -> &mut WalkBuilder {
+         self.ig_builder.add_custom_ignore_filename(file_name);
+         self
+     }
+ 
+     /// Add an override matcher.
+     ///
+     /// By default, no override matcher is used.
+     ///
+     /// This overrides any previous setting.
+     pub fn overrides(&mut self, overrides: Override) -> &mut WalkBuilder {
+         self.ig_builder.overrides(overrides);
+         self
+     }
+ 
+     /// Add a file type matcher.
+     ///
+     /// By default, no file type matcher is used.
+     ///
+     /// This overrides any previous setting.
+     pub fn types(&mut self, types: Types) -> &mut WalkBuilder {
+         self.ig_builder.types(types);
+         self
+     }
+ 
+     /// Enables all the standard ignore filters.
+     ///
+     /// This toggles, as a group, all the filters that are enabled by default:
+     ///
+     /// - [hidden()](#method.hidden)
+     /// - [parents()](#method.parents)
+     /// - [ignore()](#method.ignore)
+     /// - [git_ignore()](#method.git_ignore)
+     /// - [git_global()](#method.git_global)
+     /// - [git_exclude()](#method.git_exclude)
+     ///
+     /// They may still be toggled individually after calling this function.
+     ///
+     /// This is (by definition) enabled by default.
+     pub fn standard_filters(&mut self, yes: bool) -> &mut WalkBuilder {
+         self.hidden(yes)
+             .parents(yes)
+             .ignore(yes)
+             .git_ignore(yes)
+             .git_global(yes)
+             .git_exclude(yes)
+     }
+ 
+     /// Enables ignoring hidden files.
+     ///
+     /// This is enabled by default.
+     pub fn hidden(&mut self, yes: bool) -> &mut WalkBuilder {
+         self.ig_builder.hidden(yes);
+         self
+     }
+ 
+     /// Enables reading ignore files from parent directories.
+     ///
+@@ -860,160 +900,209 @@ impl WalkBuilder {
+     pub fn sort_by_file_path<F>(&mut self, cmp: F) -> &mut WalkBuilder
+     where
+         F: Fn(&Path, &Path) -> Ordering + Send + Sync + 'static,
+     {
+         self.sorter = Some(Sorter::ByPath(Arc::new(cmp)));
+         self
+     }
+ 
+     /// Set a function for sorting directory entries by file name.
+     ///
+     /// If a compare function is set, the resulting iterator will return all
+     /// paths in sorted order. The compare function will be called to compare
+     /// names from entries from the same directory using only the name of the
+     /// entry.
+     ///
+     /// This method will override any previous sorter set by this method or
+     /// by `sort_by_file_path`.
+     ///
+     /// Note that this is not used in the parallel iterator.
+     pub fn sort_by_file_name<F>(&mut self, cmp: F) -> &mut WalkBuilder
+     where
+         F: Fn(&OsStr, &OsStr) -> Ordering + Send + Sync + 'static,
+     {
+         self.sorter = Some(Sorter::ByName(Arc::new(cmp)));
+         self
+     }
+ 
+     /// Do not cross file system boundaries.
+     ///
+     /// When this option is enabled, directory traversal will not descend into
+     /// directories that are on a different file system from the root path.
+     ///
+     /// Currently, this option is only supported on Unix and Windows. If this
+     /// option is used on an unsupported platform, then directory traversal
+     /// will immediately return an error and will not yield any entries.
+     pub fn same_file_system(&mut self, yes: bool) -> &mut WalkBuilder {
+         self.same_file_system = yes;
+         self
+     }
+ 
+     /// Do not yield directory entries that are believed to correspond to
+     /// stdout.
+     ///
+     /// This is useful when a command is invoked via shell redirection to a
+     /// file that is also being read. For example, `grep -r foo ./ > results`
+     /// might end up trying to search `results` even though it is also writing
+     /// to it, which could cause an unbounded feedback loop. Setting this
+     /// option prevents this from happening by skipping over the `results`
+     /// file.
+     ///
+     /// This is disabled by default.
+     pub fn skip_stdout(&mut self, yes: bool) -> &mut WalkBuilder {
+         if yes {
+             self.skip = stdout_handle().map(Arc::new);
+         } else {
+             self.skip = None;
+         }
+         self
+     }
+ 
+     /// Yields only entries which satisfy the given predicate and skips
+     /// descending into directories that do not satisfy the given predicate.
+     ///
+     /// The predicate is applied to all entries. If the predicate is
+     /// true, iteration carries on as normal. If the predicate is false, the
+     /// entry is ignored and if it is a directory, it is not descended into.
+     ///
+     /// Note that the errors for reading entries that may not satisfy the
+     /// predicate will still be yielded.
+     ///
+     /// Note also that only one filter predicate can be applied to a
+     /// `WalkBuilder`. Calling this subsequent times overrides previous filter
+     /// predicates.
+     pub fn filter_entry<P>(&mut self, filter: P) -> &mut WalkBuilder
+     where
+         P: Fn(&DirEntry) -> bool + Send + Sync + 'static,
+     {
+         self.filter = Some(Filter(Arc::new(filter)));
+         self
+     }
++
++    /// Set the current working directory used for matching global gitignores.
++    ///
++    /// If this is not set, then this walker will attempt to discover the
++    /// correct path from the environment's current working directory. If
++    /// that fails, then global gitignore files will be ignored.
++    ///
++    /// Global gitignore files come from things like a user's git configuration
++    /// or from gitignore files added via [`WalkBuilder::add_ignore`].
++    pub fn current_dir(
++        &mut self,
++        cwd: impl Into<PathBuf>,
++    ) -> &mut WalkBuilder {
++        let cwd = cwd.into();
++        self.ig_builder.current_dir(cwd.clone());
++        if let Err(cwd) = self.global_gitignores_relative_to.set(Ok(cwd)) {
++            // OK because `Err` from `set` implies a value exists.
++            *self.global_gitignores_relative_to.get_mut().unwrap() = cwd;
++        }
++        self
++    }
++
++    /// Gets the currently configured CWD on this walk builder.
++    ///
++    /// This is "lazy." That is, we only ask for the CWD from the environment
++    /// if `WalkBuilder::current_dir` hasn't been called yet. And we ensure
++    /// that we only do it once.
++    fn get_or_set_current_dir(&self) -> Option<&Path> {
++        let result = self.global_gitignores_relative_to.get_or_init(|| {
++            let result = std::env::current_dir().map_err(Arc::new);
++            match result {
++                Ok(ref path) => {
++                    log::trace!(
++                        "automatically discovered CWD: {}",
++                        path.display()
++                    );
++                }
++                Err(ref err) => {
++                    log::debug!(
++                        "failed to find CWD \
++                         (global gitignores will be ignored): \
++                         {err}"
++                    );
++                }
++            }
++            result
++        });
++        result.as_ref().ok().map(|path| &**path)
++    }
+ }
+ 
+ /// Walk is a recursive directory iterator over file paths in one or more
+ /// directories.
+ ///
+ /// Only file and directory paths matching the rules are returned. By default,
+ /// ignore files like `.gitignore` are respected. The precise matching rules
+ /// and precedence is explained in the documentation for `WalkBuilder`.
+ pub struct Walk {
+     its: std::vec::IntoIter<(PathBuf, Option<WalkEventIter>)>,
+     it: Option<WalkEventIter>,
+     ig_root: Ignore,
+     ig: Ignore,
+     max_filesize: Option<u64>,
+     skip: Option<Arc<Handle>>,
+     filter: Option<Filter>,
+ }
+ 
+ impl Walk {
+     /// Creates a new recursive directory iterator for the file path given.
+     ///
+     /// Note that this uses default settings, which include respecting
+     /// `.gitignore` files. To configure the iterator, use `WalkBuilder`
+     /// instead.
+     pub fn new<P: AsRef<Path>>(path: P) -> Walk {
+         WalkBuilder::new(path).build()
+     }
+ 
+     fn skip_entry(&self, ent: &DirEntry) -> Result<bool, Error> {
+         if ent.depth() == 0 {
+             return Ok(false);
+         }
+         // We ensure that trivial skipping is done before any other potentially
+         // expensive operations (stat, filesystem other) are done. This seems
+         // like an obvious optimization but becomes critical when filesystem
+         // operations even as simple as stat can result in significant
+         // overheads; an example of this was a bespoke filesystem layer in
+         // Windows that hosted files remotely and would download them on-demand
+         // when particular filesystem operations occurred. Users of this system
+         // who ensured correct file-type filters were being used could still
+         // get unnecessary file access resulting in large downloads.
+         if should_skip_entry(&self.ig, ent) {
+             return Ok(true);
+         }
+         if let Some(ref stdout) = self.skip {
+             if path_equals(ent, stdout)? {
+                 return Ok(true);
+             }
+         }
+         if self.max_filesize.is_some() && !ent.is_dir() {
+             return Ok(skip_filesize(
+                 self.max_filesize.unwrap(),
+                 ent.path(),
+                 &ent.metadata().ok(),
+             ));
+         }
+         if let Some(Filter(filter)) = &self.filter {
+             if !filter(ent) {
+                 return Ok(true);
+             }
+         }
+         Ok(false)
+     }
+ }
+ 
+ impl Iterator for Walk {
+     type Item = Result<DirEntry, Error>;
+ 
+     #[inline(always)]
+     fn next(&mut self) -> Option<Result<DirEntry, Error>> {
+         loop {
+             let ev = match self.it.as_mut().and_then(|it| it.next()) {
+                 Some(ev) => ev,
+                 None => {
+                     match self.its.next() {
+                         None => return None,
+                         Some((_, None)) => {
+                             return Some(Ok(DirEntry::new_stdin()));
+                         }
+                         Some((path, Some(it))) => {
+diff --git a/tests/regression.rs b/tests/regression.rs
+index 93e4ba6..a196b40 100644
+--- a/tests/regression.rs
++++ b/tests/regression.rs
+@@ -1578,92 +1578,142 @@ rgtest!(
+ 
+         let got = cmd.args(&["--files"]).stdout();
+         eqnice!("test\n", got);
+     }
+ );
+ 
+ // See: https://github.com/BurntSushi/ripgrep/issues/3127
+ rgtest!(
+     r3127_glob_flag_not_allow_unclosed_class,
+     |dir: Dir, mut cmd: TestCommand| {
+         dir.create("[abc", "");
+         dir.create("test", "");
+ 
+         cmd.args(&["--files", "-g", "[abc"]).assert_err();
+     }
+ );
+ 
+ // See: https://github.com/BurntSushi/ripgrep/issues/3139
+ rgtest!(
+     r3139_multiline_lookahead_files_with_matches,
+     |dir: Dir, _cmd: TestCommand| {
+         // Only PCRE2 supports look-around.
+         if !dir.is_pcre2() {
+             return;
+         }
+         dir.create(
+             "test",
+             "\
+ Start \n   \n\n   \
+ XXXXXXXXXXXXXXXXXXXXXXXXXX\n   \
+ YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY\n   \
+ \n      thing2 \n\n",
+         );
+ 
+         let got = dir
+             .command()
+             .args(&[
+                 "--multiline",
+                 "--pcre2",
+                 r"(?s)Start(?=.*thing2)",
+                 "test",
+             ])
+             .stdout();
+         eqnice!("Start \n", got);
+ 
+         let got = dir
+             .command()
+             .args(&[
+                 "--multiline",
+                 "--pcre2",
+                 "--files-with-matches",
+                 r"(?s)Start(?=.*thing2)",
+                 "test",
+             ])
+             .stdout();
+         eqnice!("test\n", got);
+     }
+ );
+ 
+ // See: https://github.com/BurntSushi/ripgrep/issues/3173
+ rgtest!(r3173_hidden_whitelist_only_dot, |dir: Dir, _: TestCommand| {
+     dir.create_dir("subdir");
+     dir.create("subdir/.foo.txt", "text");
+     dir.create(".ignore", "!.foo.txt");
+ 
+     let cmd = || dir.command();
+     eqnice!(cmd().args(&["--files"]).stdout(), "subdir/.foo.txt\n");
+     eqnice!(cmd().args(&["--files", "."]).stdout(), "./subdir/.foo.txt\n");
+     eqnice!(cmd().args(&["--files", "./"]).stdout(), "./subdir/.foo.txt\n");
+ 
+     let cmd = || {
+         let mut cmd = dir.command();
+         cmd.current_dir("subdir");
+         cmd
+     };
+     eqnice!(cmd().args(&["--files"]).stdout(), ".foo.txt\n");
+     eqnice!(cmd().args(&["--files", "."]).stdout(), "./.foo.txt\n");
+     eqnice!(cmd().args(&["--files", "./"]).stdout(), "./.foo.txt\n");
+ });
+ 
++// See: https://github.com/BurntSushi/ripgrep/issues/3179
++rgtest!(r3179_global_gitignore_cwd, |dir: Dir, mut cmd: TestCommand| {
++    dir.create_dir("a/b/c");
++    dir.create("a/b/c/haystack", "");
++    dir.create(".test.gitignore", "/haystack");
++
++    // I'm not sure in which cases this can fail. If it
++    // does and it's unavoidable, feel free to submit a
++    // patch that skips this test when this canonicalization
++    // fails.
++    //
++    // The reason we canonicalize here is strange, and it is
++    // perhaps papering over a bug in ripgrep. But on macOS,
++    // `TMPDIR` is set to `/var/blah/blah`. However, `/var`
++    // is symlinked to `/private/var`. So the CWD detected by
++    // the process is `/private/var`. So it turns out that the
++    // CWD is not a proper prefix of `dir.path()` here. So we
++    // cheat around this by forcing our path to be canonicalized
++    // so it's `/private/var` everywhere.
++    //
++    // Arguably, ripgrep should still work here without
++    // canonicalization. But it's not actually quite clear
++    // to me how to do it. I *believe* the solution here is
++    // that gitignore matching should be relative to the directory
++    // path given to `WalkBuider::{add,new}`, and *not* to the
++    // CWD. But this is a very big change to how `ignore` works
++    // I think. At least conceptually. So that will need to be
++    // something we do when we rewrite `ignore`. Sigh.
++    //
++    // ...  but, on Windows, path canonicalization seems to
++    // totally fuck things up, so skip it there. HEAVY sigh.
++    let dir_path = if cfg!(windows) {
++        dir.path().to_path_buf()
++    } else {
++        dir.path().canonicalize().unwrap()
++    };
++    let ignore_file_path = dir_path.join(".test.gitignore");
++    cmd.current_dir("a/b/c")
++        .arg("--files")
++        .arg("--ignore-file")
++        .arg(ignore_file_path.display().to_string())
++        // This is a key part of the reproduction. When just providing `.`
++        // to ignore's walker (as ripgrep does when a path to search isn't
++        // provided), then everything works as one expects. Because there's
++        // nothing to strip off of the paths being searched. But when one
++        // provides an absolute path, the stripping didn't work.
++        .arg(&dir_path)
++        .assert_err();
++});
++
+ // See: https://github.com/BurntSushi/ripgrep/issues/3180
+ rgtest!(r3180_look_around_panic, |dir: Dir, mut cmd: TestCommand| {
+     dir.create("haystack", " b b b b b b b b\nc\n");
+ 
+     let got = cmd
+         .arg(r#"(^|[^a-z])((([a-z]+)?)\s)?b(\s([a-z]+)?)($|[^a-z])"#)
+         .arg("haystack")
+         .arg("-U")
+         .arg("-rx")
+         .stdout();
+     eqnice!("xbxbx\n", got);
+ });

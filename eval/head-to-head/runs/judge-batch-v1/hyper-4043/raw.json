@@ -1,0 +1,12 @@
+{
+  "case_id": "hyper-4043",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "{\"case_id\":\"hyper-4043\",\"model\":\"claude-opus-4-7\",\"manifest_hash\":\"06fded2d3bdaa2ea0f56c69fb45f4c064d4e8ecda149efee7ffad41f57149208\",\"ground_truth_draft\":{\"high_value\":true,\"primary_signal_ids\":[\"state_transition\"],\"subject_files\":[\"src/proto/h1/conn.rs\"],\"expected_behavior\":\"When poll_read_body decodes a trailers frame on a chunked request body, the reading state should transition to Reading::KeepAlive (body completed) instead of Reading::Closed, allowing the HTTP/1 connection to be reused for subsequent requests.\",\"rationale_from_pr_metadata\":\"PR title 'fix(http1): allow keep-alive for chunked requests with trailers' and body state: 'poll_read_body in conn.rs incorrectly transitioned to Reading::Closed instead of Reading::KeepAlive, preventing connection reuse. Trailers signal body completion (same as a final data frame at EOF), so the connection should remain eligible for keep-alive.' Regression test http1_trailer_recv_keep_alive verifies second request succeeds on same TCP stream; maintainer approved as a simple fix.\"},\"judgement_drafts\":{\"fact_only\":{\"top3_total\":2,\"top3_useful\":0,\"actionable\":false,\"missed_high_risk_count\":1,\"weak_only_top_risk_count\":1,\"notes\":\"Both items are value=context/supporting on the right function/file but neither names the state_transition mechanism (Reading::Closed vs KeepAlive on trailers). Generic 'review complexity / confirm regression tests' is not actionable.\"},\"semantic_filtered\":{\"top3_total\":0,\"top3_useful\":0,\"actionable\":false,\"missed_high_risk_count\":1,\"weak_only_top_risk_count\":0,\"notes\":\"semantic-findings.json is empty; no findings surfaced for a real state-machine bug fix.\"},\"ai_baseline\":{\"top3_total\":3,\"top3_useful\":1,\"actionable\":true,\"missed_high_risk_count\":0,\"weak_only_top_risk_count\":0,\"notes\":\"Rank 1 nails the exact mechanism: state_transition on poll_read_body, value=direct, citing the Reading::KeepAlive change. Rank 2 raises a plausible assumption_boundary concern on same function. Rank 3 is supporting test-gap context.\"}}\n",
+      "stderr_tail": ""
+    }
+  ]
+}

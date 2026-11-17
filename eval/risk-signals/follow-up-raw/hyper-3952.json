@@ -1,0 +1,268 @@
+{
+  "case_id": "hyper-3952",
+  "refs": [
+    {
+      "detail": {
+        "baseRefName": "master",
+        "baseRefOid": "dbe6f25ba2933b883bd8ea1eddc9662c9c816978",
+        "body": "This reverts commit 2377b893f6e64ca9878e4f25d1472b96baa7e3ea.\r\n\r\nReports in #3976 suggest this is consuming a lot of CPU.",
+        "comments": [],
+        "files": [
+          {
+            "additions": 0,
+            "changeType": "MODIFIED",
+            "deletions": 5,
+            "path": "Cargo.toml"
+          },
+          {
+            "additions": 2,
+            "changeType": "MODIFIED",
+            "deletions": 15,
+            "path": "src/proto/h1/dispatch.rs"
+          },
+          {
+            "additions": 0,
+            "changeType": "DELETED",
+            "deletions": 234,
+            "path": "tests/ready_stream.rs"
+          }
+        ],
+        "headRefName": "push-znprolwpnptt",
+        "headRefOid": "4068487539c155c5c6ea7ced7c2969ce29b5e8e7",
+        "labels": [],
+        "mergedAt": "2025-11-13T21:11:36Z",
+        "number": 3977,
+        "reviewDecision": "REVIEW_REQUIRED",
+        "reviews": [],
+        "state": "MERGED",
+        "title": "Revert \"fix(http1): fix rare missed write wakeup on connections (#3952)\"",
+        "url": "https://github.com/hyperium/hyper/pull/3977"
+      },
+      "target": {
+        "number": 3977,
+        "reason": "Follow-up revert of the original missed-wakeup fix.",
+        "repo": "hyperium/hyper",
+        "type": "pr"
+      }
+    },
+    {
+      "detail": {
+        "body": "**Version**\n1.8.0\n\n**Platform**\nLinux x86_64\n\n**Description**\nI have a video file forwarding tool that uses the `requests+salvo` libraries to directly pass the stream obtained via `request` into the response stream of `salvo`. However, after upgrading `hyper` to version 1.8.0, the CPU usage spikes to 100% regardless of how many tokio worker threads I enable. When I revert to version 1.7.0, the CPU usage returns to normal, stabilizing below 10%. In the test environment, the tool was handling approximately 300 concurrent user requests at the time.\n\nI also tested the same functionality using a pure hyper server and client with tokio, and observed the same 100% CPU utilization in 1.8.0.\n\nThis issue only seems to occur when forwarding large files, another function, which is only used for JSON responses, is unaffected.  \n\n[short summary of the bug]\n\nI tried this code:\n\n[code sample that causes the bug]\n\nI expected to see this happen: [explanation]\n\nInstead, this happened: [explanation]\n",
+        "closedAt": "2025-11-14T15:19:08Z",
+        "comments": [
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Thanks for the report! Hm, looking at the changes, the relevant one looks like https://github.com/hyperium/hyper/pull/3952\n\ncc @lthiery, if you have a moment to look.",
+            "createdAt": "2025-11-13T18:08:46Z",
+            "id": "IC_kwDOAWaYQc7SWWBj",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3976#issuecomment-3529072739",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "mattklein123"
+            },
+            "authorAssociation": "NONE",
+            "body": "Pretty sure I'm hitting this also. I would recommend yanking 1.8.0 until this is sorted. Thank you.",
+            "createdAt": "2025-11-13T19:51:54Z",
+            "id": "IC_kwDOAWaYQc7SX2WZ",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/3976#issuecomment-3529467289",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "shikhar"
+            },
+            "authorAssociation": "NONE",
+            "body": "We also hit this and reverted back to 1.7.0",
+            "createdAt": "2025-11-13T20:55:40Z",
+            "id": "IC_kwDOAWaYQc7SYpw-",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/3976#issuecomment-3529677886",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "v1.8.1 has been published with that change reverted.",
+            "createdAt": "2025-11-13T21:14:59Z",
+            "id": "IC_kwDOAWaYQc7SY5Fl",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "HEART",
+                "users": {
+                  "totalCount": 3
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/3976#issuecomment-3529740645",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "lthiery"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "@seanmonstar I'm so sorry about this! I'm going to look into it. \n\nMy best guess is that I botched some coordination between our readiness to write a body and the Writers ability to be written to and it's somehow hot polling. What I don't understand though is why the backing out after 16 loops isn't protecting something this severe from happening...\n\nIf @mattklein123 @18o @mattklein123 or @shikhar can provide a minimum repro based off of 1.8.0 that would be a huge help.\n\nAnd just to clarify, your server is sending down a large stream, correct?\n\nIs everyone using Tokio? Any other details would helpful even if you can't provide a repro.\n\nThanks! ",
+            "createdAt": "2025-11-14T05:21:07Z",
+            "id": "IC_kwDOAWaYQc7SdPCn",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "HEART",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/3976#issuecomment-3530879143",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "18o"
+            },
+            "authorAssociation": "NONE",
+            "body": "> [@seanmonstar](https://github.com/seanmonstar) I'm so sorry about this! I'm going to look into it.\n> \n> My best guess is that I botched some coordination between our readiness to write a body and the Writers ability to be written to and it's somehow hot polling. What I don't understand though is why the backing out after 16 loops isn't protecting something this severe from happening...\n> \n> If [@mattklein123](https://github.com/mattklein123) [@18o](https://github.com/18o) [@mattklein123](https://github.com/mattklein123) or [@shikhar](https://github.com/shikhar) can provide a minimum repro based off of 1.8.0 that would be a huge help.\n> \n> And just to clarify, your server is sending down a large stream, correct?\n> \n> Is everyone using Tokio? Any other details would helpful even if you can't provide a repro.\n> \n> Thanks!\n\nYes, I'm using Tokio as the runtime. My scenario doesn't involve handling a single large stream; instead, I'm processing 300 streams simultaneously, each around 100MB in size.  The issue was resolved once hyper was updated to version 1.8.1.  \n\nFor example, a minimal example like this:\n\n```\nuse reqwest::Client;\nuse salvo::prelude::Stream;\nuse reqwest::header::{CONTENT_DISPOSITION, CONTENT_TYPE};\n\npub async fn download_and_stream(url: &str, res: &mut salvo::Response) -> Result<(), String> {\n    let client = Client::new();\n    let response = client.get(url).send().await.map_err(|e| format!(\"Request failed: {}\", e))?;\n\n    if response.status().as_u16() != 200 {\n        return Err(format!(\"HTTP error: {}\", response.status()));\n    }\n\n    let content_type = response\n        .headers()\n        .get(CONTENT_TYPE)\n        .and_then(|v| v.to_str().ok())\n        .unwrap_or(\"application/octet-stream\");\n\n    let content_length = response.content_length().unwrap_or(0);\n\n    res.headers_mut().insert(CONTENT_TYPE, content_type.parse().unwrap());\n    if content_length > 0 {\n        res.headers_mut().insert(\"Content-Length\", content_length.into());\n    }\n    res.headers_mut().insert(\n        CONTENT_DISPOSITION,\n        \"attachment; filename=download\".parse().unwrap()\n    );\n\n    res.stream(response.bytes_stream());\n\n    Ok(())\n}\n```",
+            "createdAt": "2025-11-14T05:56:08Z",
+            "id": "IC_kwDOAWaYQc7Sdjau",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "HEART",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/3976#issuecomment-3530962606",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "seanmonstar"
+            },
+            "authorAssociation": "MEMBER",
+            "body": "Thanks for the confirmation! I'm going to close this since the new release fixed it.\n\n@lthiery please don't stress, it was easy to resolve, and the code is complicated. ❤️ ",
+            "createdAt": "2025-11-14T15:19:08Z",
+            "id": "IC_kwDOAWaYQc7SmTRb",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "HEART",
+                "users": {
+                  "totalCount": 1
+                }
+              }
+            ],
+            "url": "https://github.com/hyperium/hyper/issues/3976#issuecomment-3533255771",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "mattklein123"
+            },
+            "authorAssociation": "NONE",
+            "body": "Sorry I don't have any specific repro. I deployed this change to canary on our edge fleet and CPU went to 100%. ",
+            "createdAt": "2025-11-14T16:59:48Z",
+            "id": "IC_kwDOAWaYQc7SoBmf",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3976#issuecomment-3533707679",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "lthiery"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "I looked into this a bit and I cannot find any polling bugs from my suggested change. I ran a few different configurations and it seems to yield when needed.\n\nWhat I think is happening is that the loop is simply pushing more writes whereas before it would return and some flush or read waker would eventually get it rescheduled. So it should be going faster now? But perhaps other connections are being starved because of the 16 iterations hard coded in the loop.\n\nDoes that sound feasible? Can anyone share more about their service configuration? Have you changed the default buffer size for hyper? How big is each buffer that you are streaming down?",
+            "createdAt": "2025-11-18T07:24:47Z",
+            "id": "IC_kwDOAWaYQc7TWZwE",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3976#issuecomment-3545865220",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "lthiery"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "Oh I think I figured it out 🤦‍♂️\n\nI hadn't considered the case where flush is Ready but write is Pending. In that case, we would be stuck looping here!\n\nI'll take another crack at this soon ",
+            "createdAt": "2025-11-21T09:38:58Z",
+            "id": "IC_kwDOAWaYQc7UUr7s",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/hyperium/hyper/issues/3976#issuecomment-3562192620",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2025-11-13T17:47:00Z",
+        "labels": [
+          {
+            "color": "d93f0b",
+            "description": "Category: bug. Something is wrong. This is bad!",
+            "id": "MDU6TGFiZWwxMjU3MTAxOTc=",
+            "name": "C-bug"
+          }
+        ],
+        "number": 3976,
+        "state": "CLOSED",
+        "title": "1.8.0 concurrent downloading of large files exhausts all CPU resources",
+        "url": "https://github.com/hyperium/hyper/issues/3976"
+      },
+      "target": {
+        "number": 3976,
+        "reason": "CPU report that made the original wakeup fix risky.",
+        "repo": "hyperium/hyper",
+        "type": "issue"
+      }
+    }
+  ]
+}

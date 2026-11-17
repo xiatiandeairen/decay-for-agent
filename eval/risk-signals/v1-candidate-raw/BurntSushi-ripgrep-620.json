@@ -1,0 +1,63 @@
+{
+  "candidate": {
+    "id": "BurntSushi-ripgrep-620",
+    "repo": "BurntSushi/ripgrep",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/620"
+  },
+  "pr": {
+    "baseRefName": "master",
+    "baseRefOid": "214f2bef666efd686b1be250fc8e9f54a2cebb0f",
+    "body": "Print the context if there's a context left to be printed after returning early from a search (because of `--max-count`).\r\n\r\nFixes #402.",
+    "comments": [
+      {
+        "author": {
+          "login": "Detegr"
+        },
+        "authorAssociation": "CONTRIBUTOR",
+        "body": "Added a couple of test cases as well that now work the same way as `grep` does.",
+        "createdAt": "2017-10-01T17:03:33Z",
+        "id": "MDEyOklzc3VlQ29tbWVudDMzMzM5MDkwOA==",
+        "includesCreatedEdit": false,
+        "isMinimized": false,
+        "minimizedReason": "",
+        "reactionGroups": [],
+        "url": "https://github.com/BurntSushi/ripgrep/pull/620#issuecomment-333390908",
+        "viewerDidAuthor": false
+      }
+    ],
+    "files": [
+      {
+        "additions": 43,
+        "changeType": "MODIFIED",
+        "deletions": 0,
+        "path": "src/search_stream.rs"
+      }
+    ],
+    "headRefName": "master",
+    "headRefOid": "47d0ea5a3b3dd764faad703cfe8f342dc88568a0",
+    "labels": [],
+    "mergedAt": "2017-10-08T12:10:36Z",
+    "number": 620,
+    "reviewDecision": "APPROVED",
+    "reviews": [
+      {
+        "author": {
+          "login": "BurntSushi"
+        },
+        "authorAssociation": "OWNER",
+        "body": "Nice find and fix! Thanks for the regression tests too, much appreciated. :-)",
+        "commit": {
+          "oid": "47d0ea5a3b3dd764faad703cfe8f342dc88568a0"
+        },
+        "id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3Njc4NTU3NDA=",
+        "includesCreatedEdit": false,
+        "reactionGroups": [],
+        "state": "APPROVED",
+        "submittedAt": "2017-10-08T12:10:25Z"
+      }
+    ],
+    "state": "MERGED",
+    "title": "Fix printing context after an early return from a search",
+    "url": "https://github.com/BurntSushi/ripgrep/pull/620"
+  }
+}

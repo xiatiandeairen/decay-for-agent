@@ -1,0 +1,73 @@
+version = "lifecycle-ordering-gate.v1"
+risk_item = "lifecycle_ordering_change"
+
+[gates]
+raw_contract_valid_rate_min = 1.0
+detection_precision_min = 1.0
+detection_recall_min = 1.0
+review_worthy_precision_min = 1.0
+boundary_honesty_rate_min = 1.0
+duplicate_wrapper_case_count_max = 0
+
+[[cases]]
+id = "hyperium-hyper-3616"
+role = "high_value_positive"
+expected_detection = "detect"
+expected_judgement = "review_worthy_lifecycle_ordering_change"
+max_wrapper_count = 1
+ground_truth_summary = "Calling graceful_shutdown after an upgraded HTTP/1 connection must not panic on a missing inner connection."
+why_high_value = "Upgrade and shutdown ordering is a caller-visible terminal lifecycle path with panic risk."
+
+[[cases]]
+id = "hyperium-hyper-3261"
+role = "high_value_positive"
+expected_detection = "detect"
+expected_judgement = "review_worthy_lifecycle_ordering_change"
+max_wrapper_count = 1
+ground_truth_summary = "Graceful shutdown before the first request must close the HTTP/1 server connection instead of hanging in the initial state."
+why_high_value = "Pre-I/O shutdown ordering is a low-frequency but high-impact server lifecycle path."
+
+[[cases]]
+id = "hyper-4042"
+role = "boundary_positive"
+expected_detection = "detect"
+expected_judgement = "needs_more_context_before_review_claim"
+max_wrapper_count = 1
+ground_truth_summary = "Dropping the response future changes cancel/reset cleanup ordering for an HTTP/2 stream."
+why_high_value = "Cancel/reset cleanup is caller-visible and operationally important, but the wrapper should stay conservative on async interleavings."
+
+[[cases]]
+id = "hyperium-hyper-4069"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "This is a drop-path error propagation case and should stay under error_propagation, not lifecycle_ordering."
+why_high_value = "Lifecycle wrapper must not absorb incomplete-body error surfacing cases."
+
+[[cases]]
+id = "tokio-rs-tokio-8021"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "This is a terminal-state preservation case, not a lifecycle-ordering case."
+why_high_value = "Lifecycle wrapper should stay silent on state-only semaphore invariants."
+
+[[cases]]
+id = "hyper-4056"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "This is an integer-boundary case, not a lifecycle-ordering case."
+why_high_value = "Lifecycle wrapper should not absorb pointer-sized arithmetic fixes."
+
+[[cases]]
+id = "serde-rs-json-757"
+role = "negative_control"
+expected_detection = "suppress"
+expected_judgement = "none"
+max_wrapper_count = 0
+ground_truth_summary = "This is malformed-input error propagation, not lifecycle ordering."
+why_high_value = "Lifecycle wrapper should stay silent on panic-to-error fixes."

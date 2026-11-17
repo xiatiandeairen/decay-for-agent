@@ -1,0 +1,45 @@
+{
+  "case_id": "hyperium-hyper-3275",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "Some(h2::Reason::NO_ERROR) | Some(h2::Reason::CANCEL) => {",
+        "// These reasons should cause the body reading to stop, but not fail it."
+      ],
+      "rank": 1,
+      "rationale": "H2 stream errors with reason NO_ERROR or CANCEL are now silently mapped to end-of-stream (Poll::Ready(None)) instead of being surfaced as crate::Error::new_body, changing observable error semantics f\u2026",
+      "risk_signal": "error_propagation",
+      "subject": "src/body/incoming.rs:poll_frame",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "Some(h2::Reason::NO_ERROR) | Some(h2::Reason::CANCEL) => {",
+        "                                    Poll::Ready(None)",
+        "                                }",
+        "                                _ => Poll::Ready(Some(Err(crate::Error::new_body(e)))),"
+      ],
+      "rank": 2,
+      "rationale": "On NO_ERROR/CANCEL the function returns None directly without setting *data_done = true or falling through to poll_trailers, diverging from the normal data-exhaustion path that checks trailers.",
+      "risk_signal": "non_happy_path",
+      "subject": "src/body/incoming.rs:poll_frame",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "async fn http2_responds_before_consuming_request_body() {",
+        "// These reasons should cause the body reading to stop, but not fail it."
+      ],
+      "rank": 3,
+      "rationale": "New test exercises a server early-response scenario but does not explicitly assert which h2 Reason (NO_ERROR vs CANCEL) is triggered, nor cover other stream-reset reasons that must still surface as e\u2026",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tests/client.rs:http2_responds_before_consuming_request_body",
+      "value": "supporting"
+    }
+  ]
+}

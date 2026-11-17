@@ -1,0 +1,2458 @@
+diff --git a/src/proto/h1/conn.rs b/src/proto/h1/conn.rs
+index 88b17720..744e1b2a 100644
+--- a/src/proto/h1/conn.rs
++++ b/src/proto/h1/conn.rs
+@@ -1,87 +1,89 @@
+ use std::fmt;
++#[cfg(feature = "server")]
++use std::future::Future;
+ use std::io;
+ use std::marker::{PhantomData, Unpin};
+ use std::pin::Pin;
+ use std::task::{Context, Poll};
+ #[cfg(feature = "server")]
+-use std::time::Duration;
++use std::time::{Duration, Instant};
+ 
+ use crate::rt::{Read, Write};
+ use bytes::{Buf, Bytes};
+ use futures_util::ready;
+ use http::header::{HeaderValue, CONNECTION, TE};
+ use http::{HeaderMap, Method, Version};
+ use http_body::Frame;
+ use httparse::ParserConfig;
+ 
+ use super::io::Buffered;
+ use super::{Decoder, Encode, EncodedBuf, Encoder, Http1Transaction, ParseContext, Wants};
+ use crate::body::DecodedLength;
+ #[cfg(feature = "server")]
+ use crate::common::time::Time;
+ use crate::headers::connection_keep_alive;
+ use crate::proto::{BodyLength, MessageHead};
+ #[cfg(feature = "server")]
+ use crate::rt::Sleep;
+ 
+ const H2_PREFACE: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+ 
+ /// This handles a connection, which will have been established over an
+ /// `Read + Write` (like a socket), and will likely include multiple
+ /// `Transaction`s over HTTP.
+ ///
+ /// The connection will determine when a message begins and ends as well as
+ /// determine if this connection can be kept alive after the message,
+ /// or if it is complete.
+ pub(crate) struct Conn<I, B, T> {
+     io: Buffered<I, EncodedBuf<B>>,
+     state: State,
+     _marker: PhantomData<fn(T)>,
+ }
+ 
+ impl<I, B, T> Conn<I, B, T>
+ where
+     I: Read + Write + Unpin,
+     B: Buf,
+     T: Http1Transaction,
+ {
+     pub(crate) fn new(io: I) -> Conn<I, B, T> {
+         Conn {
+             io: Buffered::new(io),
+             state: State {
+                 allow_half_close: false,
+                 cached_headers: None,
+                 error: None,
+                 keep_alive: KA::Busy,
+                 method: None,
+                 h1_parser_config: ParserConfig::default(),
+                 h1_max_headers: None,
+                 #[cfg(feature = "server")]
+                 h1_header_read_timeout: None,
+                 #[cfg(feature = "server")]
+                 h1_header_read_timeout_fut: None,
+                 #[cfg(feature = "server")]
+                 h1_header_read_timeout_running: false,
+                 #[cfg(feature = "server")]
+                 date_header: true,
+                 #[cfg(feature = "server")]
+                 timer: Time::Empty,
+                 preserve_header_case: false,
+                 #[cfg(feature = "ffi")]
+                 preserve_header_order: false,
+                 title_case_headers: false,
+                 h09_responses: false,
+                 #[cfg(feature = "ffi")]
+                 on_informational: None,
+                 notify_read: false,
+                 reading: Reading::Init,
+                 writing: Writing::Init,
+                 upgrade: None,
+                 // We assume a modern world where the remote speaks HTTP/1.1.
+                 // If they tell us otherwise, we'll downgrade in `read_head`.
+                 version: Version::HTTP_11,
+                 allow_trailer_fields: false,
+             },
+             _marker: PhantomData,
+         }
+     }
+@@ -132,187 +134,221 @@ where
+     }
+ 
+     #[cfg(feature = "client")]
+     pub(crate) fn set_h09_responses(&mut self) {
+         self.state.h09_responses = true;
+     }
+ 
+     pub(crate) fn set_http1_max_headers(&mut self, val: usize) {
+         self.state.h1_max_headers = Some(val);
+     }
+ 
+     #[cfg(feature = "server")]
+     pub(crate) fn set_http1_header_read_timeout(&mut self, val: Duration) {
+         self.state.h1_header_read_timeout = Some(val);
+     }
+ 
+     #[cfg(feature = "server")]
+     pub(crate) fn set_allow_half_close(&mut self) {
+         self.state.allow_half_close = true;
+     }
+ 
+     pub(crate) fn into_inner(self) -> (I, Bytes) {
+         self.io.into_inner()
+     }
+ 
+     pub(crate) fn pending_upgrade(&mut self) -> Option<crate::upgrade::Pending> {
+         self.state.upgrade.take()
+     }
+ 
+     pub(crate) fn is_read_closed(&self) -> bool {
+         self.state.is_read_closed()
+     }
+ 
+     pub(crate) fn is_write_closed(&self) -> bool {
+         self.state.is_write_closed()
+     }
+ 
+     pub(crate) fn can_read_head(&self) -> bool {
+         if !matches!(self.state.reading, Reading::Init) {
+             return false;
+         }
+ 
+         if T::should_read_first() {
+             return true;
+         }
+ 
+         !matches!(self.state.writing, Writing::Init)
+     }
+ 
+     pub(crate) fn can_read_body(&self) -> bool {
+         matches!(
+             self.state.reading,
+             Reading::Body(..) | Reading::Continue(..)
+         )
+     }
+ 
+     #[cfg(feature = "server")]
+     pub(crate) fn has_initial_read_write_state(&self) -> bool {
+         matches!(self.state.reading, Reading::Init)
+             && matches!(self.state.writing, Writing::Init)
+             && self.io.read_buf().is_empty()
+     }
+ 
+     fn should_error_on_eof(&self) -> bool {
+         // If we're idle, it's probably just the connection closing gracefully.
+         T::should_error_on_parse_eof() && !self.state.is_idle()
+     }
+ 
+     fn has_h2_prefix(&self) -> bool {
+         let read_buf = self.io.read_buf();
+         read_buf.len() >= 24 && read_buf[..24] == *H2_PREFACE
+     }
+ 
+     pub(super) fn poll_read_head(
+         &mut self,
+         cx: &mut Context<'_>,
+     ) -> Poll<Option<crate::Result<(MessageHead<T::Incoming>, DecodedLength, Wants)>>> {
+         debug_assert!(self.can_read_head());
+         trace!("Conn::read_head");
+ 
+-        let msg = match ready!(self.io.parse::<T>(
++        #[cfg(feature = "server")]
++        if !self.state.h1_header_read_timeout_running {
++            if let Some(h1_header_read_timeout) = self.state.h1_header_read_timeout {
++                let deadline = Instant::now() + h1_header_read_timeout;
++                self.state.h1_header_read_timeout_running = true;
++                match self.state.h1_header_read_timeout_fut {
++                    Some(ref mut h1_header_read_timeout_fut) => {
++                        trace!("resetting h1 header read timeout timer");
++                        self.state.timer.reset(h1_header_read_timeout_fut, deadline);
++                    }
++                    None => {
++                        trace!("setting h1 header read timeout timer");
++                        self.state.h1_header_read_timeout_fut =
++                            Some(self.state.timer.sleep_until(deadline));
++                    }
++                }
++            }
++        }
++
++        let msg = match self.io.parse::<T>(
+             cx,
+             ParseContext {
+                 cached_headers: &mut self.state.cached_headers,
+                 req_method: &mut self.state.method,
+                 h1_parser_config: self.state.h1_parser_config.clone(),
+                 h1_max_headers: self.state.h1_max_headers,
+-                #[cfg(feature = "server")]
+-                h1_header_read_timeout: self.state.h1_header_read_timeout,
+-                #[cfg(feature = "server")]
+-                h1_header_read_timeout_fut: &mut self.state.h1_header_read_timeout_fut,
+-                #[cfg(feature = "server")]
+-                h1_header_read_timeout_running: &mut self.state.h1_header_read_timeout_running,
+-                #[cfg(feature = "server")]
+-                timer: self.state.timer.clone(),
+                 preserve_header_case: self.state.preserve_header_case,
+                 #[cfg(feature = "ffi")]
+                 preserve_header_order: self.state.preserve_header_order,
+                 h09_responses: self.state.h09_responses,
+                 #[cfg(feature = "ffi")]
+                 on_informational: &mut self.state.on_informational,
++            },
++        ) {
++            Poll::Ready(Ok(msg)) => msg,
++            Poll::Ready(Err(e)) => return self.on_read_head_error(e),
++            Poll::Pending => {
++                #[cfg(feature = "server")]
++                if self.state.h1_header_read_timeout_running {
++                    if let Some(ref mut h1_header_read_timeout_fut) =
++                        self.state.h1_header_read_timeout_fut
++                    {
++                        if Pin::new(h1_header_read_timeout_fut).poll(cx).is_ready() {
++                            self.state.h1_header_read_timeout_running = false;
++
++                            warn!("read header from client timeout");
++                            return Poll::Ready(Some(Err(crate::Error::new_header_timeout())));
++                        }
++                    }
++                }
++
++                return Poll::Pending;
+             }
+-        )) {
+-            Ok(msg) => msg,
+-            Err(e) => return self.on_read_head_error(e),
+         };
+ 
++        #[cfg(feature = "server")]
++        {
++            self.state.h1_header_read_timeout_running = false;
++            self.state.h1_header_read_timeout_fut = None;
++        }
++
+         // Note: don't deconstruct `msg` into local variables, it appears
+         // the optimizer doesn't remove the extra copies.
+ 
+         debug!("incoming body is {}", msg.decode);
+ 
+         // Prevent accepting HTTP/0.9 responses after the initial one, if any.
+         self.state.h09_responses = false;
+ 
+         // Drop any OnInformational callbacks, we're done there!
+         #[cfg(feature = "ffi")]
+         {
+             self.state.on_informational = None;
+         }
+ 
+         self.state.busy();
+         self.state.keep_alive &= msg.keep_alive;
+         self.state.version = msg.head.version;
+ 
+         let mut wants = if msg.wants_upgrade {
+             Wants::UPGRADE
+         } else {
+             Wants::EMPTY
+         };
+ 
+         if msg.decode == DecodedLength::ZERO {
+             if msg.expect_continue {
+                 debug!("ignoring expect-continue since body is empty");
+             }
+             self.state.reading = Reading::KeepAlive;
+             if !T::should_read_first() {
+                 self.try_keep_alive(cx);
+             }
+         } else if msg.expect_continue && msg.head.version.gt(&Version::HTTP_10) {
+             let h1_max_header_size = None; // TODO: remove this when we land h1_max_header_size support
+             self.state.reading = Reading::Continue(Decoder::new(
+                 msg.decode,
+                 self.state.h1_max_headers,
+                 h1_max_header_size,
+             ));
+             wants = wants.add(Wants::EXPECT);
+         } else {
+             let h1_max_header_size = None; // TODO: remove this when we land h1_max_header_size support
+             self.state.reading = Reading::Body(Decoder::new(
+                 msg.decode,
+                 self.state.h1_max_headers,
+                 h1_max_header_size,
+             ));
+         }
+ 
+         self.state.allow_trailer_fields = msg
+             .head
+             .headers
+             .get(TE)
+             .map_or(false, |te_header| te_header == "trailers");
+ 
+         Poll::Ready(Some(Ok((msg.head, msg.decode, wants))))
+     }
+ 
+     fn on_read_head_error<Z>(&mut self, e: crate::Error) -> Poll<Option<crate::Result<Z>>> {
+         // If we are currently waiting on a message, then an empty
+         // message should be reported as an error. If not, it is just
+         // the connection closing gracefully.
+         let must_error = self.should_error_on_eof();
+         self.close_read();
+         self.io.consume_leading_lines();
+         let was_mid_parse = e.is_parse() || !self.io.read_buf().is_empty();
+         if was_mid_parse || must_error {
+             // We check if the buf contains the h2 Preface
+             debug!(
+                 "parse error ({}) with {} bytes",
+                 e,
+                 self.io.read_buf().len()
+             );
+             match self.on_parse_error(e) {
+                 Ok(()) => Poll::Pending, // XXX: wat?
+                 Err(e) => Poll::Ready(Some(Err(e))),
+             }
+         } else {
+             debug!("read eof");
+             self.close_write();
+diff --git a/src/proto/h1/io.rs b/src/proto/h1/io.rs
+index 34eb477f..4ad2fca1 100644
+--- a/src/proto/h1/io.rs
++++ b/src/proto/h1/io.rs
+@@ -1,84 +1,82 @@
+ use std::cmp;
+ use std::fmt;
+-#[cfg(feature = "server")]
+-use std::future::Future;
+ use std::io::{self, IoSlice};
+ use std::pin::Pin;
+ use std::task::{Context, Poll};
+ 
+ use crate::rt::{Read, ReadBuf, Write};
+ use bytes::{Buf, BufMut, Bytes, BytesMut};
+ use futures_util::ready;
+ 
+ use super::{Http1Transaction, ParseContext, ParsedMessage};
+ use crate::common::buf::BufList;
+ 
+ /// The initial buffer size allocated before trying to read from IO.
+ pub(crate) const INIT_BUFFER_SIZE: usize = 8192;
+ 
+ /// The minimum value that can be set to max buffer size.
+ pub(crate) const MINIMUM_MAX_BUFFER_SIZE: usize = INIT_BUFFER_SIZE;
+ 
+ /// The default maximum read buffer size. If the buffer gets this big and
+ /// a message is still not complete, a `TooLarge` error is triggered.
+ // Note: if this changes, update server::conn::Http::max_buf_size docs.
+ pub(crate) const DEFAULT_MAX_BUFFER_SIZE: usize = 8192 + 4096 * 100;
+ 
+ /// The maximum number of distinct `Buf`s to hold in a list before requiring
+ /// a flush. Only affects when the buffer strategy is to queue buffers.
+ ///
+ /// Note that a flush can happen before reaching the maximum. This simply
+ /// forces a flush if the queue gets this big.
+ const MAX_BUF_LIST_BUFFERS: usize = 16;
+ 
+ pub(crate) struct Buffered<T, B> {
+     flush_pipeline: bool,
+     io: T,
+     read_blocked: bool,
+     read_buf: BytesMut,
+     read_buf_strategy: ReadStrategy,
+     write_buf: WriteBuf<B>,
+ }
+ 
+ impl<T, B> fmt::Debug for Buffered<T, B>
+ where
+     B: Buf,
+ {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         f.debug_struct("Buffered")
+             .field("read_buf", &self.read_buf)
+             .field("write_buf", &self.write_buf)
+             .finish()
+     }
+ }
+ 
+ impl<T, B> Buffered<T, B>
+ where
+     T: Read + Write + Unpin,
+     B: Buf,
+ {
+     pub(crate) fn new(io: T) -> Buffered<T, B> {
+         let strategy = if io.is_write_vectored() {
+             WriteStrategy::Queue
+         } else {
+             WriteStrategy::Flatten
+         };
+         let write_buf = WriteBuf::new(strategy);
+         Buffered {
+             flush_pipeline: false,
+             io,
+             read_blocked: false,
+             read_buf: BytesMut::with_capacity(0),
+             read_buf_strategy: ReadStrategy::default(),
+             write_buf,
+         }
+     }
+ 
+     #[cfg(feature = "server")]
+     pub(crate) fn set_flush_pipeline(&mut self, enabled: bool) {
+         debug_assert!(!self.write_buf.has_remaining());
+         self.flush_pipeline = enabled;
+         if enabled {
+             self.set_write_strategy_flatten();
+         }
+     }
+@@ -106,206 +104,178 @@ where
+     }
+ 
+     pub(crate) fn set_write_strategy_queue(&mut self) {
+         // this should always be called only at construction time,
+         // so this assert is here to catch myself
+         debug_assert!(self.write_buf.queue.bufs_cnt() == 0);
+         self.write_buf.set_strategy(WriteStrategy::Queue);
+     }
+ 
+     pub(crate) fn read_buf(&self) -> &[u8] {
+         self.read_buf.as_ref()
+     }
+ 
+     #[cfg(test)]
+     #[cfg(feature = "nightly")]
+     pub(super) fn read_buf_mut(&mut self) -> &mut BytesMut {
+         &mut self.read_buf
+     }
+ 
+     /// Return the "allocated" available space, not the potential space
+     /// that could be allocated in the future.
+     fn read_buf_remaining_mut(&self) -> usize {
+         self.read_buf.capacity() - self.read_buf.len()
+     }
+ 
+     /// Return whether we can append to the headers buffer.
+     ///
+     /// Reasons we can't:
+     /// - The write buf is in queue mode, and some of the past body is still
+     ///   needing to be flushed.
+     pub(crate) fn can_headers_buf(&self) -> bool {
+         !self.write_buf.queue.has_remaining()
+     }
+ 
+     pub(crate) fn headers_buf(&mut self) -> &mut Vec<u8> {
+         let buf = self.write_buf.headers_mut();
+         &mut buf.bytes
+     }
+ 
+     pub(super) fn write_buf(&mut self) -> &mut WriteBuf<B> {
+         &mut self.write_buf
+     }
+ 
+     pub(crate) fn buffer<BB: Buf + Into<B>>(&mut self, buf: BB) {
+         self.write_buf.buffer(buf)
+     }
+ 
+     pub(crate) fn can_buffer(&self) -> bool {
+         self.flush_pipeline || self.write_buf.can_buffer()
+     }
+ 
+     pub(crate) fn consume_leading_lines(&mut self) {
+         if !self.read_buf.is_empty() {
+             let mut i = 0;
+             while i < self.read_buf.len() {
+                 match self.read_buf[i] {
+                     b'\r' | b'\n' => i += 1,
+                     _ => break,
+                 }
+             }
+             self.read_buf.advance(i);
+         }
+     }
+ 
+     pub(super) fn parse<S>(
+         &mut self,
+         cx: &mut Context<'_>,
+         parse_ctx: ParseContext<'_>,
+     ) -> Poll<crate::Result<ParsedMessage<S::Incoming>>>
+     where
+         S: Http1Transaction,
+     {
+         loop {
+             match super::role::parse_headers::<S>(
+                 &mut self.read_buf,
+                 ParseContext {
+                     cached_headers: parse_ctx.cached_headers,
+                     req_method: parse_ctx.req_method,
+                     h1_parser_config: parse_ctx.h1_parser_config.clone(),
+                     h1_max_headers: parse_ctx.h1_max_headers,
+-                    #[cfg(feature = "server")]
+-                    h1_header_read_timeout: parse_ctx.h1_header_read_timeout,
+-                    #[cfg(feature = "server")]
+-                    h1_header_read_timeout_fut: parse_ctx.h1_header_read_timeout_fut,
+-                    #[cfg(feature = "server")]
+-                    h1_header_read_timeout_running: parse_ctx.h1_header_read_timeout_running,
+-                    #[cfg(feature = "server")]
+-                    timer: parse_ctx.timer.clone(),
+                     preserve_header_case: parse_ctx.preserve_header_case,
+                     #[cfg(feature = "ffi")]
+                     preserve_header_order: parse_ctx.preserve_header_order,
+                     h09_responses: parse_ctx.h09_responses,
+                     #[cfg(feature = "ffi")]
+                     on_informational: parse_ctx.on_informational,
+                 },
+             )? {
+                 Some(msg) => {
+                     debug!("parsed {} headers", msg.head.headers.len());
+-
+-                    #[cfg(feature = "server")]
+-                    {
+-                        *parse_ctx.h1_header_read_timeout_running = false;
+-                        parse_ctx.h1_header_read_timeout_fut.take();
+-                    }
+                     return Poll::Ready(Ok(msg));
+                 }
+                 None => {
+                     let max = self.read_buf_strategy.max();
+                     if self.read_buf.len() >= max {
+                         debug!("max_buf_size ({}) reached, closing", max);
+                         return Poll::Ready(Err(crate::Error::new_too_large()));
+                     }
+-
+-                    #[cfg(feature = "server")]
+-                    if *parse_ctx.h1_header_read_timeout_running {
+-                        if let Some(h1_header_read_timeout_fut) =
+-                            parse_ctx.h1_header_read_timeout_fut
+-                        {
+-                            if Pin::new(h1_header_read_timeout_fut).poll(cx).is_ready() {
+-                                *parse_ctx.h1_header_read_timeout_running = false;
+-
+-                                warn!("read header from client timeout");
+-                                return Poll::Ready(Err(crate::Error::new_header_timeout()));
+-                            }
+-                        }
+-                    }
+                 }
+             }
+             if ready!(self.poll_read_from_io(cx)).map_err(crate::Error::new_io)? == 0 {
+                 trace!("parse eof");
+                 return Poll::Ready(Err(crate::Error::new_incomplete()));
+             }
+         }
+     }
+ 
+     pub(crate) fn poll_read_from_io(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
+         self.read_blocked = false;
+         let next = self.read_buf_strategy.next();
+         if self.read_buf_remaining_mut() < next {
+             self.read_buf.reserve(next);
+         }
+ 
+         // SAFETY: ReadBuf and poll_read promise not to set any uninitialized
+         // bytes onto `dst`.
+         let dst = unsafe { self.read_buf.chunk_mut().as_uninit_slice_mut() };
+         let mut buf = ReadBuf::uninit(dst);
+         match Pin::new(&mut self.io).poll_read(cx, buf.unfilled()) {
+             Poll::Ready(Ok(_)) => {
+                 let n = buf.filled().len();
+                 trace!("received {} bytes", n);
+                 unsafe {
+                     // Safety: we just read that many bytes into the
+                     // uninitialized part of the buffer, so this is okay.
+                     // @tokio pls give me back `poll_read_buf` thanks
+                     self.read_buf.advance_mut(n);
+                 }
+                 self.read_buf_strategy.record(n);
+                 Poll::Ready(Ok(n))
+             }
+             Poll::Pending => {
+                 self.read_blocked = true;
+                 Poll::Pending
+             }
+             Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
+         }
+     }
+ 
+     pub(crate) fn into_inner(self) -> (T, Bytes) {
+         (self.io, self.read_buf.freeze())
+     }
+ 
+     pub(crate) fn io_mut(&mut self) -> &mut T {
+         &mut self.io
+     }
+ 
+     pub(crate) fn is_read_blocked(&self) -> bool {
+         self.read_blocked
+     }
+ 
+     pub(crate) fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+         if self.flush_pipeline && !self.read_buf.is_empty() {
+             Poll::Ready(Ok(()))
+         } else if self.write_buf.remaining() == 0 {
+             Pin::new(&mut self.io).poll_flush(cx)
+         } else {
+             if let WriteStrategy::Flatten = self.write_buf.strategy {
+                 return self.poll_flush_flattened(cx);
+             }
+ 
+             const MAX_WRITEV_BUFS: usize = 64;
+             loop {
+                 let n = {
+                     let mut iovs = [IoSlice::new(&[]); MAX_WRITEV_BUFS];
+                     let len = self.write_buf.chunks_vectored(&mut iovs);
+                     ready!(Pin::new(&mut self.io).poll_write_vectored(cx, &iovs[..len]))?
+                 };
+                 // TODO(eliza): we have to do this manually because
+                 // `poll_write_buf` doesn't exist in Tokio 0.3 yet...when
+                 // `poll_write_buf` comes back, the manual advance will need to leave!
+                 self.write_buf.advance(n);
+                 debug!("flushed {} bytes", n);
+                 if self.write_buf.remaining() == 0 {
+                     break;
+                 } else if n == 0 {
+                     trace!(
+                         "write returned zero, but {} bytes remaining",
+@@ -583,230 +553,224 @@ where
+                 trace!(
+                     self.len = self.remaining(),
+                     buf.len = buf.remaining(),
+                     "buffer.queue"
+                 );
+                 self.queue.push(buf.into());
+             }
+         }
+     }
+ 
+     fn can_buffer(&self) -> bool {
+         match self.strategy {
+             WriteStrategy::Flatten => self.remaining() < self.max_buf_size,
+             WriteStrategy::Queue => {
+                 self.queue.bufs_cnt() < MAX_BUF_LIST_BUFFERS && self.remaining() < self.max_buf_size
+             }
+         }
+     }
+ 
+     fn headers_mut(&mut self) -> &mut Cursor<Vec<u8>> {
+         debug_assert!(!self.queue.has_remaining());
+         &mut self.headers
+     }
+ }
+ 
+ impl<B: Buf> fmt::Debug for WriteBuf<B> {
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         f.debug_struct("WriteBuf")
+             .field("remaining", &self.remaining())
+             .field("strategy", &self.strategy)
+             .finish()
+     }
+ }
+ 
+ impl<B: Buf> Buf for WriteBuf<B> {
+     #[inline]
+     fn remaining(&self) -> usize {
+         self.headers.remaining() + self.queue.remaining()
+     }
+ 
+     #[inline]
+     fn chunk(&self) -> &[u8] {
+         let headers = self.headers.chunk();
+         if !headers.is_empty() {
+             headers
+         } else {
+             self.queue.chunk()
+         }
+     }
+ 
+     #[inline]
+     fn advance(&mut self, cnt: usize) {
+         let hrem = self.headers.remaining();
+ 
+         match hrem.cmp(&cnt) {
+             cmp::Ordering::Equal => self.headers.reset(),
+             cmp::Ordering::Greater => self.headers.advance(cnt),
+             cmp::Ordering::Less => {
+                 let qcnt = cnt - hrem;
+                 self.headers.reset();
+                 self.queue.advance(qcnt);
+             }
+         }
+     }
+ 
+     #[inline]
+     fn chunks_vectored<'t>(&'t self, dst: &mut [IoSlice<'t>]) -> usize {
+         let n = self.headers.chunks_vectored(dst);
+         self.queue.chunks_vectored(&mut dst[n..]) + n
+     }
+ }
+ 
+ #[derive(Debug)]
+ enum WriteStrategy {
+     Flatten,
+     Queue,
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+-    use crate::common::io::Compat;
+-    use crate::common::time::Time;
+-
+     use super::*;
++    use crate::common::io::Compat;
+     use std::time::Duration;
+ 
+     use tokio_test::io::Builder as Mock;
+ 
+     // #[cfg(feature = "nightly")]
+     // use test::Bencher;
+ 
+     /*
+     impl<T: Read> MemRead for AsyncIo<T> {
+         fn read_mem(&mut self, len: usize) -> Poll<Bytes, io::Error> {
+             let mut v = vec![0; len];
+             let n = try_nb!(self.read(v.as_mut_slice()));
+             Ok(Async::Ready(BytesMut::from(&v[..n]).freeze()))
+         }
+     }
+     */
+ 
+     #[tokio::test]
+     #[ignore]
+     async fn iobuf_write_empty_slice() {
+         // TODO(eliza): can i have writev back pls T_T
+         // // First, let's just check that the Mock would normally return an
+         // // error on an unexpected write, even if the buffer is empty...
+         // let mut mock = Mock::new().build();
+         // futures_util::future::poll_fn(|cx| {
+         //     Pin::new(&mut mock).poll_write_buf(cx, &mut Cursor::new(&[]))
+         // })
+         // .await
+         // .expect_err("should be a broken pipe");
+ 
+         // // underlying io will return the logic error upon write,
+         // // so we are testing that the io_buf does not trigger a write
+         // // when there is nothing to flush
+         // let mock = Mock::new().build();
+         // let mut io_buf = Buffered::<_, Cursor<Vec<u8>>>::new(mock);
+         // io_buf.flush().await.expect("should short-circuit flush");
+     }
+ 
+     #[cfg(not(miri))]
+     #[tokio::test]
+     async fn parse_reads_until_blocked() {
+         use crate::proto::h1::ClientTransaction;
+ 
+         let _ = pretty_env_logger::try_init();
+         let mock = Mock::new()
+             // Split over multiple reads will read all of it
+             .read(b"HTTP/1.1 200 OK\r\n")
+             .read(b"Server: hyper\r\n")
+             // missing last line ending
+             .wait(Duration::from_secs(1))
+             .build();
+ 
+         let mut buffered = Buffered::<_, Cursor<Vec<u8>>>::new(Compat::new(mock));
+ 
+         // We expect a `parse` to be not ready, and so can't await it directly.
+         // Rather, this `poll_fn` will wrap the `Poll` result.
+         futures_util::future::poll_fn(|cx| {
+             let parse_ctx = ParseContext {
+                 cached_headers: &mut None,
+                 req_method: &mut None,
+                 h1_parser_config: Default::default(),
+                 h1_max_headers: None,
+-                h1_header_read_timeout: None,
+-                h1_header_read_timeout_fut: &mut None,
+-                h1_header_read_timeout_running: &mut false,
+-                timer: Time::Empty,
+                 preserve_header_case: false,
+                 #[cfg(feature = "ffi")]
+                 preserve_header_order: false,
+                 h09_responses: false,
+                 #[cfg(feature = "ffi")]
+                 on_informational: &mut None,
+             };
+             assert!(buffered
+                 .parse::<ClientTransaction>(cx, parse_ctx)
+                 .is_pending());
+             Poll::Ready(())
+         })
+         .await;
+ 
+         assert_eq!(
+             buffered.read_buf,
+             b"HTTP/1.1 200 OK\r\nServer: hyper\r\n"[..]
+         );
+     }
+ 
+     #[test]
+     fn read_strategy_adaptive_increments() {
+         let mut strategy = ReadStrategy::default();
+         assert_eq!(strategy.next(), 8192);
+ 
+         // Grows if record == next
+         strategy.record(8192);
+         assert_eq!(strategy.next(), 16384);
+ 
+         strategy.record(16384);
+         assert_eq!(strategy.next(), 32768);
+ 
+         // Enormous records still increment at same rate
+         strategy.record(usize::MAX);
+         assert_eq!(strategy.next(), 65536);
+ 
+         let max = strategy.max();
+         while strategy.next() < max {
+             strategy.record(max);
+         }
+ 
+         assert_eq!(strategy.next(), max, "never goes over max");
+         strategy.record(max + 1);
+         assert_eq!(strategy.next(), max, "never goes over max");
+     }
+ 
+     #[test]
+     fn read_strategy_adaptive_decrements() {
+         let mut strategy = ReadStrategy::default();
+         strategy.record(8192);
+         assert_eq!(strategy.next(), 16384);
+ 
+         strategy.record(1);
+         assert_eq!(
+             strategy.next(),
+             16384,
+             "first smaller record doesn't decrement yet"
+         );
+         strategy.record(8192);
+         assert_eq!(strategy.next(), 16384, "record was with range");
+ 
+         strategy.record(1);
+         assert_eq!(
+             strategy.next(),
+             16384,
+             "in-range record should make this the 'first' again"
+         );
+ 
+         strategy.record(1);
+         assert_eq!(strategy.next(), 8192, "second smaller record decrements");
+ 
+         strategy.record(1);
+         assert_eq!(strategy.next(), 8192, "first doesn't decrement");
+         strategy.record(1);
+         assert_eq!(strategy.next(), 8192, "doesn't decrement under minimum");
+     }
+ 
+     #[test]
+     fn read_strategy_adaptive_stays_the_same() {
+         let mut strategy = ReadStrategy::default();
+diff --git a/src/proto/h1/mod.rs b/src/proto/h1/mod.rs
+index 074d0b88..fe397d24 100644
+--- a/src/proto/h1/mod.rs
++++ b/src/proto/h1/mod.rs
+@@ -1,127 +1,112 @@
+-#[cfg(feature = "server")]
+-use std::{pin::Pin, time::Duration};
+-
+ use bytes::BytesMut;
+ use http::{HeaderMap, Method};
+ use httparse::ParserConfig;
+ 
+ use crate::body::DecodedLength;
+-#[cfg(feature = "server")]
+-use crate::common::time::Time;
+ use crate::proto::{BodyLength, MessageHead};
+-#[cfg(feature = "server")]
+-use crate::rt::Sleep;
+ 
+ pub(crate) use self::conn::Conn;
+ pub(crate) use self::decode::Decoder;
+ pub(crate) use self::dispatch::Dispatcher;
+ pub(crate) use self::encode::{EncodedBuf, Encoder};
+ //TODO: move out of h1::io
+ pub(crate) use self::io::MINIMUM_MAX_BUFFER_SIZE;
+ 
+ mod conn;
+ mod decode;
+ pub(crate) mod dispatch;
+ mod encode;
+ mod io;
+ mod role;
+ 
+ cfg_client! {
+     pub(crate) type ClientTransaction = role::Client;
+ }
+ 
+ cfg_server! {
+     pub(crate) type ServerTransaction = role::Server;
+ }
+ 
+ pub(crate) trait Http1Transaction {
+     type Incoming;
+     type Outgoing: Default;
+     const LOG: &'static str;
+     fn parse(bytes: &mut BytesMut, ctx: ParseContext<'_>) -> ParseResult<Self::Incoming>;
+     fn encode(enc: Encode<'_, Self::Outgoing>, dst: &mut Vec<u8>) -> crate::Result<Encoder>;
+ 
+     fn on_error(err: &crate::Error) -> Option<MessageHead<Self::Outgoing>>;
+ 
+     fn is_client() -> bool {
+         !Self::is_server()
+     }
+ 
+     fn is_server() -> bool {
+         !Self::is_client()
+     }
+ 
+     fn should_error_on_parse_eof() -> bool {
+         Self::is_client()
+     }
+ 
+     fn should_read_first() -> bool {
+         Self::is_server()
+     }
+ 
+     fn update_date() {}
+ }
+ 
+ /// Result newtype for Http1Transaction::parse.
+ pub(crate) type ParseResult<T> = Result<Option<ParsedMessage<T>>, crate::error::Parse>;
+ 
+ #[derive(Debug)]
+ pub(crate) struct ParsedMessage<T> {
+     head: MessageHead<T>,
+     decode: DecodedLength,
+     expect_continue: bool,
+     keep_alive: bool,
+     wants_upgrade: bool,
+ }
+ 
+ pub(crate) struct ParseContext<'a> {
+     cached_headers: &'a mut Option<HeaderMap>,
+     req_method: &'a mut Option<Method>,
+     h1_parser_config: ParserConfig,
+     h1_max_headers: Option<usize>,
+-    #[cfg(feature = "server")]
+-    h1_header_read_timeout: Option<Duration>,
+-    #[cfg(feature = "server")]
+-    h1_header_read_timeout_fut: &'a mut Option<Pin<Box<dyn Sleep>>>,
+-    #[cfg(feature = "server")]
+-    h1_header_read_timeout_running: &'a mut bool,
+-    #[cfg(feature = "server")]
+-    timer: Time,
+     preserve_header_case: bool,
+     #[cfg(feature = "ffi")]
+     preserve_header_order: bool,
+     h09_responses: bool,
+     #[cfg(feature = "ffi")]
+     on_informational: &'a mut Option<crate::ffi::OnInformational>,
+ }
+ 
+ /// Passed to Http1Transaction::encode
+ pub(crate) struct Encode<'a, T> {
+     head: &'a mut MessageHead<T>,
+     body: Option<BodyLength>,
+     #[cfg(feature = "server")]
+     keep_alive: bool,
+     req_method: &'a mut Option<Method>,
+     title_case_headers: bool,
+     #[cfg(feature = "server")]
+     date_header: bool,
+ }
+ 
+ /// Extra flags that a request "wants", like expect-continue or upgrades.
+ #[derive(Clone, Copy, Debug)]
+ struct Wants(u8);
+ 
+ impl Wants {
+     const EMPTY: Wants = Wants(0b00);
+     const EXPECT: Wants = Wants(0b01);
+     const UPGRADE: Wants = Wants(0b10);
+ 
+     #[must_use]
+     fn add(self, other: Wants) -> Wants {
+         Wants(self.0 | other.0)
+     }
+ 
+     fn contains(&self, other: Wants) -> bool {
+         (self.0 & other.0) == other.0
+     }
+ }
+diff --git a/src/proto/h1/role.rs b/src/proto/h1/role.rs
+index 847453a0..26be74d8 100644
+--- a/src/proto/h1/role.rs
++++ b/src/proto/h1/role.rs
+@@ -1,180 +1,160 @@
+ use std::mem::MaybeUninit;
+ 
+ #[cfg(feature = "client")]
+ use std::fmt::{self, Write as _};
+-#[cfg(feature = "server")]
+-use std::time::Instant;
+ 
+ use bytes::Bytes;
+ use bytes::BytesMut;
+ #[cfg(feature = "client")]
+ use http::header::Entry;
+ #[cfg(feature = "server")]
+ use http::header::ValueIter;
+ use http::header::{self, HeaderMap, HeaderName, HeaderValue};
+ use http::{Method, StatusCode, Version};
+ use smallvec::{smallvec, smallvec_inline, SmallVec};
+ 
+ use crate::body::DecodedLength;
+ #[cfg(feature = "server")]
+ use crate::common::date;
+ use crate::error::Parse;
+ use crate::ext::HeaderCaseMap;
+ #[cfg(feature = "ffi")]
+ use crate::ext::OriginalHeaderOrder;
+ use crate::headers;
+ use crate::proto::h1::{
+     Encode, Encoder, Http1Transaction, ParseContext, ParseResult, ParsedMessage,
+ };
+ #[cfg(feature = "client")]
+ use crate::proto::RequestHead;
+ use crate::proto::{BodyLength, MessageHead, RequestLine};
+ 
+ pub(crate) const DEFAULT_MAX_HEADERS: usize = 100;
+ const AVERAGE_HEADER_SIZE: usize = 30; // totally scientific
+ #[cfg(feature = "server")]
+ const MAX_URI_LEN: usize = (u16::MAX - 1) as usize;
+ 
+ macro_rules! header_name {
+     ($bytes:expr) => {{
+         {
+             match HeaderName::from_bytes($bytes) {
+                 Ok(name) => name,
+                 Err(e) => maybe_panic!(e),
+             }
+         }
+     }};
+ }
+ 
+ macro_rules! header_value {
+     ($bytes:expr) => {{
+         {
+             unsafe { HeaderValue::from_maybe_shared_unchecked($bytes) }
+         }
+     }};
+ }
+ 
+ macro_rules! maybe_panic {
+     ($($arg:tt)*) => ({
+         let _err = ($($arg)*);
+         if cfg!(debug_assertions) {
+             panic!("{:?}", _err);
+         } else {
+             error!("Internal Hyper error, please report {:?}", _err);
+             return Err(Parse::Internal)
+         }
+     })
+ }
+ 
+ pub(super) fn parse_headers<T>(
+     bytes: &mut BytesMut,
+     ctx: ParseContext<'_>,
+ ) -> ParseResult<T::Incoming>
+ where
+     T: Http1Transaction,
+ {
+     // If the buffer is empty, don't bother entering the span, it's just noise.
+     if bytes.is_empty() {
+         return Ok(None);
+     }
+ 
+     let _entered = trace_span!("parse_headers");
+ 
+-    #[cfg(feature = "server")]
+-    if !*ctx.h1_header_read_timeout_running {
+-        if let Some(h1_header_read_timeout) = ctx.h1_header_read_timeout {
+-            let deadline = Instant::now() + h1_header_read_timeout;
+-            *ctx.h1_header_read_timeout_running = true;
+-            match ctx.h1_header_read_timeout_fut {
+-                Some(h1_header_read_timeout_fut) => {
+-                    debug!("resetting h1 header read timeout timer");
+-                    ctx.timer.reset(h1_header_read_timeout_fut, deadline);
+-                }
+-                None => {
+-                    debug!("setting h1 header read timeout timer");
+-                    *ctx.h1_header_read_timeout_fut = Some(ctx.timer.sleep_until(deadline));
+-                }
+-            }
+-        }
+-    }
+-
+     T::parse(bytes, ctx)
+ }
+ 
+ pub(super) fn encode_headers<T>(
+     enc: Encode<'_, T::Outgoing>,
+     dst: &mut Vec<u8>,
+ ) -> crate::Result<Encoder>
+ where
+     T: Http1Transaction,
+ {
+     let _entered = trace_span!("encode_headers");
+     T::encode(enc, dst)
+ }
+ 
+ // There are 2 main roles, Client and Server.
+ 
+ #[cfg(feature = "client")]
+ pub(crate) enum Client {}
+ 
+ #[cfg(feature = "server")]
+ pub(crate) enum Server {}
+ 
+ #[cfg(feature = "server")]
+ impl Http1Transaction for Server {
+     type Incoming = RequestLine;
+     type Outgoing = StatusCode;
+     const LOG: &'static str = "{role=server}";
+ 
+     fn parse(buf: &mut BytesMut, ctx: ParseContext<'_>) -> ParseResult<RequestLine> {
+         debug_assert!(!buf.is_empty(), "parse called with empty buf");
+ 
+         let mut keep_alive;
+         let is_http_11;
+         let subject;
+         let version;
+         let len;
+         let headers_len;
+         let method;
+         let path_range;
+ 
+         // Both headers_indices and headers are using uninitialized memory,
+         // but we *never* read any of it until after httparse has assigned
+         // values into it. By not zeroing out the stack memory, this saves
+         // a good ~5% on pipeline benchmarks.
+         let mut headers_indices: SmallVec<[MaybeUninit<HeaderIndices>; DEFAULT_MAX_HEADERS]> =
+             match ctx.h1_max_headers {
+                 Some(cap) => smallvec![MaybeUninit::uninit(); cap],
+                 None => smallvec_inline![MaybeUninit::uninit(); DEFAULT_MAX_HEADERS],
+             };
+         {
+             let mut headers: SmallVec<[MaybeUninit<httparse::Header<'_>>; DEFAULT_MAX_HEADERS]> =
+                 match ctx.h1_max_headers {
+                     Some(cap) => smallvec![MaybeUninit::uninit(); cap],
+                     None => smallvec_inline![MaybeUninit::uninit(); DEFAULT_MAX_HEADERS],
+                 };
+             trace!(bytes = buf.len(), "Request.parse");
+             let mut req = httparse::Request::new(&mut []);
+             let bytes = buf.as_ref();
+             match req.parse_with_uninit_headers(bytes, &mut headers) {
+                 Ok(httparse::Status::Complete(parsed_len)) => {
+                     trace!("Request.parse Complete({})", parsed_len);
+                     len = parsed_len;
+                     let uri = req.path.unwrap();
+                     if uri.len() > MAX_URI_LEN {
+                         return Err(Parse::UriTooLong);
+                     }
+                     method = Method::from_bytes(req.method.unwrap().as_bytes())?;
+                     path_range = Server::record_path_range(bytes, uri);
+                     version = if req.version.unwrap() == 1 {
+                         keep_alive = true;
+                         is_http_11 = true;
+                         Version::HTTP_11
+                     } else {
+                         keep_alive = false;
+                         is_http_11 = false;
+                         Version::HTTP_10
+                     };
+ 
+                     record_header_indices(bytes, req.headers, &mut headers_indices)?;
+                     headers_len = req.headers.len();
+@@ -1554,442 +1534,400 @@ pub(crate) fn write_headers_title_case(headers: &HeaderMap, dst: &mut Vec<u8>) {
+     for (name, value) in headers {
+         title_case(dst, name.as_str().as_bytes());
+         extend(dst, b": ");
+         extend(dst, value.as_bytes());
+         extend(dst, b"\r\n");
+     }
+ }
+ 
+ pub(crate) fn write_headers(headers: &HeaderMap, dst: &mut Vec<u8>) {
+     for (name, value) in headers {
+         extend(dst, name.as_str().as_bytes());
+         extend(dst, b": ");
+         extend(dst, value.as_bytes());
+         extend(dst, b"\r\n");
+     }
+ }
+ 
+ #[cold]
+ #[cfg(feature = "client")]
+ fn write_headers_original_case(
+     headers: &HeaderMap,
+     orig_case: &HeaderCaseMap,
+     dst: &mut Vec<u8>,
+     title_case_headers: bool,
+ ) {
+     // For each header name/value pair, there may be a value in the casemap
+     // that corresponds to the HeaderValue. So, we iterator all the keys,
+     // and for each one, try to pair the originally cased name with the value.
+     //
+     // TODO: consider adding http::HeaderMap::entries() iterator
+     for name in headers.keys() {
+         let mut names = orig_case.get_all(name);
+ 
+         for value in headers.get_all(name) {
+             if let Some(orig_name) = names.next() {
+                 extend(dst, orig_name.as_ref());
+             } else if title_case_headers {
+                 title_case(dst, name.as_str().as_bytes());
+             } else {
+                 extend(dst, name.as_str().as_bytes());
+             }
+ 
+             // Wanted for curl test cases that send `X-Custom-Header:\r\n`
+             if value.is_empty() {
+                 extend(dst, b":\r\n");
+             } else {
+                 extend(dst, b": ");
+                 extend(dst, value.as_bytes());
+                 extend(dst, b"\r\n");
+             }
+         }
+     }
+ }
+ 
+ #[cfg(feature = "client")]
+ struct FastWrite<'a>(&'a mut Vec<u8>);
+ 
+ #[cfg(feature = "client")]
+ impl<'a> fmt::Write for FastWrite<'a> {
+     #[inline]
+     fn write_str(&mut self, s: &str) -> fmt::Result {
+         extend(self.0, s.as_bytes());
+         Ok(())
+     }
+ 
+     #[inline]
+     fn write_fmt(&mut self, args: fmt::Arguments<'_>) -> fmt::Result {
+         fmt::write(self, args)
+     }
+ }
+ 
+ #[inline]
+ fn extend(dst: &mut Vec<u8>, data: &[u8]) {
+     dst.extend_from_slice(data);
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use bytes::BytesMut;
+ 
+-    use crate::common::time::Time;
+-
+     use super::*;
+ 
+     #[test]
+     fn test_parse_request() {
+         let _ = pretty_env_logger::try_init();
+         let mut raw = BytesMut::from("GET /echo HTTP/1.1\r\nHost: hyper.rs\r\n\r\n");
+         let mut method = None;
+         let msg = Server::parse(
+             &mut raw,
+             ParseContext {
+                 cached_headers: &mut None,
+                 req_method: &mut method,
+                 h1_parser_config: Default::default(),
+                 h1_max_headers: None,
+-                h1_header_read_timeout: None,
+-                h1_header_read_timeout_fut: &mut None,
+-                h1_header_read_timeout_running: &mut false,
+-                timer: Time::Empty,
+                 preserve_header_case: false,
+                 #[cfg(feature = "ffi")]
+                 preserve_header_order: false,
+                 h09_responses: false,
+                 #[cfg(feature = "ffi")]
+                 on_informational: &mut None,
+             },
+         )
+         .unwrap()
+         .unwrap();
+         assert_eq!(raw.len(), 0);
+         assert_eq!(msg.head.subject.0, crate::Method::GET);
+         assert_eq!(msg.head.subject.1, "/echo");
+         assert_eq!(msg.head.version, crate::Version::HTTP_11);
+         assert_eq!(msg.head.headers.len(), 1);
+         assert_eq!(msg.head.headers["Host"], "hyper.rs");
+         assert_eq!(method, Some(crate::Method::GET));
+     }
+ 
+     #[test]
+     fn test_parse_response() {
+         let _ = pretty_env_logger::try_init();
+         let mut raw = BytesMut::from("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+         let ctx = ParseContext {
+             cached_headers: &mut None,
+             req_method: &mut Some(crate::Method::GET),
+             h1_parser_config: Default::default(),
+             h1_max_headers: None,
+-            h1_header_read_timeout: None,
+-            h1_header_read_timeout_fut: &mut None,
+-            h1_header_read_timeout_running: &mut false,
+-            timer: Time::Empty,
+             preserve_header_case: false,
+             #[cfg(feature = "ffi")]
+             preserve_header_order: false,
+             h09_responses: false,
+             #[cfg(feature = "ffi")]
+             on_informational: &mut None,
+         };
+         let msg = Client::parse(&mut raw, ctx).unwrap().unwrap();
+         assert_eq!(raw.len(), 0);
+         assert_eq!(msg.head.subject, crate::StatusCode::OK);
+         assert_eq!(msg.head.version, crate::Version::HTTP_11);
+         assert_eq!(msg.head.headers.len(), 1);
+         assert_eq!(msg.head.headers["Content-Length"], "0");
+     }
+ 
+     #[test]
+     fn test_parse_request_errors() {
+         let mut raw = BytesMut::from("GET htt:p// HTTP/1.1\r\nHost: hyper.rs\r\n\r\n");
+         let ctx = ParseContext {
+             cached_headers: &mut None,
+             req_method: &mut None,
+             h1_parser_config: Default::default(),
+             h1_max_headers: None,
+-            h1_header_read_timeout: None,
+-            h1_header_read_timeout_fut: &mut None,
+-            h1_header_read_timeout_running: &mut false,
+-            timer: Time::Empty,
+             preserve_header_case: false,
+             #[cfg(feature = "ffi")]
+             preserve_header_order: false,
+             h09_responses: false,
+             #[cfg(feature = "ffi")]
+             on_informational: &mut None,
+         };
+         Server::parse(&mut raw, ctx).unwrap_err();
+     }
+ 
+     const H09_RESPONSE: &'static str = "Baguettes are super delicious, don't you agree?";
+ 
+     #[test]
+     fn test_parse_response_h09_allowed() {
+         let _ = pretty_env_logger::try_init();
+         let mut raw = BytesMut::from(H09_RESPONSE);
+         let ctx = ParseContext {
+             cached_headers: &mut None,
+             req_method: &mut Some(crate::Method::GET),
+             h1_parser_config: Default::default(),
+             h1_max_headers: None,
+-            h1_header_read_timeout: None,
+-            h1_header_read_timeout_fut: &mut None,
+-            h1_header_read_timeout_running: &mut false,
+-            timer: Time::Empty,
+             preserve_header_case: false,
+             #[cfg(feature = "ffi")]
+             preserve_header_order: false,
+             h09_responses: true,
+             #[cfg(feature = "ffi")]
+             on_informational: &mut None,
+         };
+         let msg = Client::parse(&mut raw, ctx).unwrap().unwrap();
+         assert_eq!(raw, H09_RESPONSE);
+         assert_eq!(msg.head.subject, crate::StatusCode::OK);
+         assert_eq!(msg.head.version, crate::Version::HTTP_09);
+         assert_eq!(msg.head.headers.len(), 0);
+     }
+ 
+     #[test]
+     fn test_parse_response_h09_rejected() {
+         let _ = pretty_env_logger::try_init();
+         let mut raw = BytesMut::from(H09_RESPONSE);
+         let ctx = ParseContext {
+             cached_headers: &mut None,
+             req_method: &mut Some(crate::Method::GET),
+             h1_parser_config: Default::default(),
+             h1_max_headers: None,
+-            h1_header_read_timeout: None,
+-            h1_header_read_timeout_fut: &mut None,
+-            h1_header_read_timeout_running: &mut false,
+-            timer: Time::Empty,
+             preserve_header_case: false,
+             #[cfg(feature = "ffi")]
+             preserve_header_order: false,
+             h09_responses: false,
+             #[cfg(feature = "ffi")]
+             on_informational: &mut None,
+         };
+         Client::parse(&mut raw, ctx).unwrap_err();
+         assert_eq!(raw, H09_RESPONSE);
+     }
+ 
+     const RESPONSE_WITH_WHITESPACE_BETWEEN_HEADER_NAME_AND_COLON: &'static str =
+         "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Credentials : true\r\n\r\n";
+ 
+     #[test]
+     fn test_parse_allow_response_with_spaces_before_colons() {
+         use httparse::ParserConfig;
+ 
+         let _ = pretty_env_logger::try_init();
+         let mut raw = BytesMut::from(RESPONSE_WITH_WHITESPACE_BETWEEN_HEADER_NAME_AND_COLON);
+         let mut h1_parser_config = ParserConfig::default();
+         h1_parser_config.allow_spaces_after_header_name_in_responses(true);
+         let ctx = ParseContext {
+             cached_headers: &mut None,
+             req_method: &mut Some(crate::Method::GET),
+             h1_parser_config,
+             h1_max_headers: None,
+-            h1_header_read_timeout: None,
+-            h1_header_read_timeout_fut: &mut None,
+-            h1_header_read_timeout_running: &mut false,
+-            timer: Time::Empty,
+             preserve_header_case: false,
+             #[cfg(feature = "ffi")]
+             preserve_header_order: false,
+             h09_responses: false,
+             #[cfg(feature = "ffi")]
+             on_informational: &mut None,
+         };
+         let msg = Client::parse(&mut raw, ctx).unwrap().unwrap();
+         assert_eq!(raw.len(), 0);
+         assert_eq!(msg.head.subject, crate::StatusCode::OK);
+         assert_eq!(msg.head.version, crate::Version::HTTP_11);
+         assert_eq!(msg.head.headers.len(), 1);
+         assert_eq!(msg.head.headers["Access-Control-Allow-Credentials"], "true");
+     }
+ 
+     #[test]
+     fn test_parse_reject_response_with_spaces_before_colons() {
+         let _ = pretty_env_logger::try_init();
+         let mut raw = BytesMut::from(RESPONSE_WITH_WHITESPACE_BETWEEN_HEADER_NAME_AND_COLON);
+         let ctx = ParseContext {
+             cached_headers: &mut None,
+             req_method: &mut Some(crate::Method::GET),
+             h1_parser_config: Default::default(),
+             h1_max_headers: None,
+-            h1_header_read_timeout: None,
+-            h1_header_read_timeout_fut: &mut None,
+-            h1_header_read_timeout_running: &mut false,
+-            timer: Time::Empty,
+             preserve_header_case: false,
+             #[cfg(feature = "ffi")]
+             preserve_header_order: false,
+             h09_responses: false,
+             #[cfg(feature = "ffi")]
+             on_informational: &mut None,
+         };
+         Client::parse(&mut raw, ctx).unwrap_err();
+     }
+ 
+     #[test]
+     fn test_parse_preserve_header_case_in_request() {
+         let mut raw =
+             BytesMut::from("GET / HTTP/1.1\r\nHost: hyper.rs\r\nX-BREAD: baguette\r\n\r\n");
+         let ctx = ParseContext {
+             cached_headers: &mut None,
+             req_method: &mut None,
+             h1_parser_config: Default::default(),
+             h1_max_headers: None,
+-            h1_header_read_timeout: None,
+-            h1_header_read_timeout_fut: &mut None,
+-            h1_header_read_timeout_running: &mut false,
+-            timer: Time::Empty,
+             preserve_header_case: true,
+             #[cfg(feature = "ffi")]
+             preserve_header_order: false,
+             h09_responses: false,
+             #[cfg(feature = "ffi")]
+             on_informational: &mut None,
+         };
+         let parsed_message = Server::parse(&mut raw, ctx).unwrap().unwrap();
+         let orig_headers = parsed_message
+             .head
+             .extensions
+             .get::<HeaderCaseMap>()
+             .unwrap();
+         assert_eq!(
+             orig_headers
+                 .get_all_internal(&HeaderName::from_static("host"))
+                 .into_iter()
+                 .collect::<Vec<_>>(),
+             vec![&Bytes::from("Host")]
+         );
+         assert_eq!(
+             orig_headers
+                 .get_all_internal(&HeaderName::from_static("x-bread"))
+                 .into_iter()
+                 .collect::<Vec<_>>(),
+             vec![&Bytes::from("X-BREAD")]
+         );
+     }
+ 
+     #[test]
+     fn test_decoder_request() {
+         fn parse(s: &str) -> ParsedMessage<RequestLine> {
+             let mut bytes = BytesMut::from(s);
+             Server::parse(
+                 &mut bytes,
+                 ParseContext {
+                     cached_headers: &mut None,
+                     req_method: &mut None,
+                     h1_parser_config: Default::default(),
+                     h1_max_headers: None,
+-                    h1_header_read_timeout: None,
+-                    h1_header_read_timeout_fut: &mut None,
+-                    h1_header_read_timeout_running: &mut false,
+-                    timer: Time::Empty,
+                     preserve_header_case: false,
+                     #[cfg(feature = "ffi")]
+                     preserve_header_order: false,
+                     h09_responses: false,
+                     #[cfg(feature = "ffi")]
+                     on_informational: &mut None,
+                 },
+             )
+             .expect("parse ok")
+             .expect("parse complete")
+         }
+ 
+         fn parse_err(s: &str, comment: &str) -> crate::error::Parse {
+             let mut bytes = BytesMut::from(s);
+             Server::parse(
+                 &mut bytes,
+                 ParseContext {
+                     cached_headers: &mut None,
+                     req_method: &mut None,
+                     h1_parser_config: Default::default(),
+                     h1_max_headers: None,
+-                    h1_header_read_timeout: None,
+-                    h1_header_read_timeout_fut: &mut None,
+-                    h1_header_read_timeout_running: &mut false,
+-                    timer: Time::Empty,
+                     preserve_header_case: false,
+                     #[cfg(feature = "ffi")]
+                     preserve_header_order: false,
+                     h09_responses: false,
+                     #[cfg(feature = "ffi")]
+                     on_informational: &mut None,
+                 },
+             )
+             .expect_err(comment)
+         }
+ 
+         // no length or transfer-encoding means 0-length body
+         assert_eq!(
+             parse(
+                 "\
+                  GET / HTTP/1.1\r\n\
+                  \r\n\
+                  "
+             )
+             .decode,
+             DecodedLength::ZERO
+         );
+ 
+         assert_eq!(
+             parse(
+                 "\
+                  POST / HTTP/1.1\r\n\
+                  \r\n\
+                  "
+             )
+             .decode,
+             DecodedLength::ZERO
+         );
+ 
+         // transfer-encoding: chunked
+         assert_eq!(
+             parse(
+                 "\
+                  POST / HTTP/1.1\r\n\
+                  transfer-encoding: chunked\r\n\
+                  \r\n\
+                  "
+             )
+             .decode,
+             DecodedLength::CHUNKED
+         );
+ 
+         assert_eq!(
+             parse(
+                 "\
+                  POST / HTTP/1.1\r\n\
+                  transfer-encoding: gzip, chunked\r\n\
+                  \r\n\
+                  "
+             )
+             .decode,
+             DecodedLength::CHUNKED
+         );
+ 
+         assert_eq!(
+             parse(
+                 "\
+                  POST / HTTP/1.1\r\n\
+                  transfer-encoding: gzip\r\n\
+                  transfer-encoding: chunked\r\n\
+                  \r\n\
+                  "
+             )
+             .decode,
+             DecodedLength::CHUNKED
+         );
+ 
+         // content-length
+         assert_eq!(
+             parse(
+                 "\
+                  POST / HTTP/1.1\r\n\
+                  content-length: 10\r\n\
+                  \r\n\
+                  "
+@@ -2066,214 +2004,202 @@ mod tests {
+ 
+         // content-length with prefix is not allowed
+         parse_err(
+             "\
+              POST / HTTP/1.1\r\n\
+              content-length: +10\r\n\
+              \r\n\
+              ",
+             "prefixed content-length",
+         );
+ 
+         // transfer-encoding that isn't chunked is an error
+         parse_err(
+             "\
+              POST / HTTP/1.1\r\n\
+              transfer-encoding: gzip\r\n\
+              \r\n\
+              ",
+             "transfer-encoding but not chunked",
+         );
+ 
+         parse_err(
+             "\
+              POST / HTTP/1.1\r\n\
+              transfer-encoding: chunked, gzip\r\n\
+              \r\n\
+              ",
+             "transfer-encoding doesn't end in chunked",
+         );
+ 
+         parse_err(
+             "\
+              POST / HTTP/1.1\r\n\
+              transfer-encoding: chunked\r\n\
+              transfer-encoding: afterlol\r\n\
+              \r\n\
+              ",
+             "transfer-encoding multiple lines doesn't end in chunked",
+         );
+ 
+         // http/1.0
+ 
+         assert_eq!(
+             parse(
+                 "\
+                  POST / HTTP/1.0\r\n\
+                  content-length: 10\r\n\
+                  \r\n\
+                  "
+             )
+             .decode,
+             DecodedLength::new(10)
+         );
+ 
+         // 1.0 doesn't understand chunked, so its an error
+         parse_err(
+             "\
+              POST / HTTP/1.0\r\n\
+              transfer-encoding: chunked\r\n\
+              \r\n\
+              ",
+             "1.0 chunked",
+         );
+     }
+ 
+     #[test]
+     fn test_decoder_response() {
+         fn parse(s: &str) -> ParsedMessage<StatusCode> {
+             parse_with_method(s, Method::GET)
+         }
+ 
+         fn parse_ignores(s: &str) {
+             let mut bytes = BytesMut::from(s);
+             assert!(Client::parse(
+                 &mut bytes,
+                 ParseContext {
+                     cached_headers: &mut None,
+                     req_method: &mut Some(Method::GET),
+                     h1_parser_config: Default::default(),
+                     h1_max_headers: None,
+-                    h1_header_read_timeout: None,
+-                    h1_header_read_timeout_fut: &mut None,
+-                    h1_header_read_timeout_running: &mut false,
+-                    timer: Time::Empty,
+                     preserve_header_case: false,
+                     #[cfg(feature = "ffi")]
+                     preserve_header_order: false,
+                     h09_responses: false,
+                     #[cfg(feature = "ffi")]
+                     on_informational: &mut None,
+                 }
+             )
+             .expect("parse ok")
+             .is_none())
+         }
+ 
+         fn parse_with_method(s: &str, m: Method) -> ParsedMessage<StatusCode> {
+             let mut bytes = BytesMut::from(s);
+             Client::parse(
+                 &mut bytes,
+                 ParseContext {
+                     cached_headers: &mut None,
+                     req_method: &mut Some(m),
+                     h1_parser_config: Default::default(),
+                     h1_max_headers: None,
+-                    h1_header_read_timeout: None,
+-                    h1_header_read_timeout_fut: &mut None,
+-                    h1_header_read_timeout_running: &mut false,
+-                    timer: Time::Empty,
+                     preserve_header_case: false,
+                     #[cfg(feature = "ffi")]
+                     preserve_header_order: false,
+                     h09_responses: false,
+                     #[cfg(feature = "ffi")]
+                     on_informational: &mut None,
+                 },
+             )
+             .expect("parse ok")
+             .expect("parse complete")
+         }
+ 
+         fn parse_err(s: &str) -> crate::error::Parse {
+             let mut bytes = BytesMut::from(s);
+             Client::parse(
+                 &mut bytes,
+                 ParseContext {
+                     cached_headers: &mut None,
+                     req_method: &mut Some(Method::GET),
+                     h1_parser_config: Default::default(),
+                     h1_max_headers: None,
+-                    h1_header_read_timeout: None,
+-                    h1_header_read_timeout_fut: &mut None,
+-                    h1_header_read_timeout_running: &mut false,
+-                    timer: Time::Empty,
+                     preserve_header_case: false,
+                     #[cfg(feature = "ffi")]
+                     preserve_header_order: false,
+                     h09_responses: false,
+                     #[cfg(feature = "ffi")]
+                     on_informational: &mut None,
+                 },
+             )
+             .expect_err("parse should err")
+         }
+ 
+         // no content-length or transfer-encoding means close-delimited
+         assert_eq!(
+             parse(
+                 "\
+                  HTTP/1.1 200 OK\r\n\
+                  \r\n\
+                  "
+             )
+             .decode,
+             DecodedLength::CLOSE_DELIMITED
+         );
+ 
+         // 204 and 304 never have a body
+         assert_eq!(
+             parse(
+                 "\
+                  HTTP/1.1 204 No Content\r\n\
+                  \r\n\
+                  "
+             )
+             .decode,
+             DecodedLength::ZERO
+         );
+ 
+         assert_eq!(
+             parse(
+                 "\
+                  HTTP/1.1 304 Not Modified\r\n\
+                  \r\n\
+                  "
+             )
+             .decode,
+             DecodedLength::ZERO
+         );
+ 
+         // content-length
+         assert_eq!(
+             parse(
+                 "\
+                  HTTP/1.1 200 OK\r\n\
+                  content-length: 8\r\n\
+                  \r\n\
+                  "
+             )
+             .decode,
+             DecodedLength::new(8)
+         );
+ 
+         assert_eq!(
+             parse(
+                 "\
+                  HTTP/1.1 200 OK\r\n\
+                  content-length: 8\r\n\
+                  content-length: 8\r\n\
+                  \r\n\
+                  "
+             )
+             .decode,
+             DecodedLength::new(8)
+         );
+ 
+         parse_err(
+             "\
+              HTTP/1.1 200 OK\r\n\
+              content-length: 8\r\n\
+              content-length: 9\r\n\
+              \r\n\
+              ",
+         );
+@@ -2679,439 +2605,419 @@ mod tests {
+     fn test_server_response_encode_orig_and_title_case() {
+         use crate::proto::BodyLength;
+         use http::header::{HeaderValue, CONTENT_LENGTH};
+ 
+         let mut head = MessageHead::default();
+         head.headers
+             .insert("content-length", HeaderValue::from_static("10"));
+         head.headers
+             .insert("content-type", HeaderValue::from_static("application/json"));
+ 
+         let mut orig_headers = HeaderCaseMap::default();
+         orig_headers.insert(CONTENT_LENGTH, "CONTENT-LENGTH".into());
+         head.extensions.insert(orig_headers);
+ 
+         let mut vec = Vec::new();
+         Server::encode(
+             Encode {
+                 head: &mut head,
+                 body: Some(BodyLength::Known(10)),
+                 keep_alive: true,
+                 req_method: &mut None,
+                 title_case_headers: true,
+                 date_header: true,
+             },
+             &mut vec,
+         )
+         .unwrap();
+ 
+         // this will also test that the date does exist
+         let expected_response =
+             b"HTTP/1.1 200 OK\r\nCONTENT-LENGTH: 10\r\nContent-Type: application/json\r\nDate: ";
+ 
+         assert_eq!(&vec[..expected_response.len()], &expected_response[..]);
+     }
+ 
+     #[test]
+     fn test_disabled_date_header() {
+         use crate::proto::BodyLength;
+         use http::header::{HeaderValue, CONTENT_LENGTH};
+ 
+         let mut head = MessageHead::default();
+         head.headers
+             .insert("content-length", HeaderValue::from_static("10"));
+         head.headers
+             .insert("content-type", HeaderValue::from_static("application/json"));
+ 
+         let mut orig_headers = HeaderCaseMap::default();
+         orig_headers.insert(CONTENT_LENGTH, "CONTENT-LENGTH".into());
+         head.extensions.insert(orig_headers);
+ 
+         let mut vec = Vec::new();
+         Server::encode(
+             Encode {
+                 head: &mut head,
+                 body: Some(BodyLength::Known(10)),
+                 keep_alive: true,
+                 req_method: &mut None,
+                 title_case_headers: true,
+                 date_header: false,
+             },
+             &mut vec,
+         )
+         .unwrap();
+ 
+         let expected_response =
+             b"HTTP/1.1 200 OK\r\nCONTENT-LENGTH: 10\r\nContent-Type: application/json\r\n\r\n";
+ 
+         assert_eq!(&vec, &expected_response);
+     }
+ 
+     #[test]
+     fn parse_header_htabs() {
+         let mut bytes = BytesMut::from("HTTP/1.1 200 OK\r\nserver: hello\tworld\r\n\r\n");
+         let parsed = Client::parse(
+             &mut bytes,
+             ParseContext {
+                 cached_headers: &mut None,
+                 req_method: &mut Some(Method::GET),
+                 h1_parser_config: Default::default(),
+                 h1_max_headers: None,
+-                h1_header_read_timeout: None,
+-                h1_header_read_timeout_fut: &mut None,
+-                h1_header_read_timeout_running: &mut false,
+-                timer: Time::Empty,
+                 preserve_header_case: false,
+                 #[cfg(feature = "ffi")]
+                 preserve_header_order: false,
+                 h09_responses: false,
+                 #[cfg(feature = "ffi")]
+                 on_informational: &mut None,
+             },
+         )
+         .expect("parse ok")
+         .expect("parse complete");
+ 
+         assert_eq!(parsed.head.headers["server"], "hello\tworld");
+     }
+ 
+     #[test]
+     fn parse_too_large_headers() {
+         fn gen_req_with_headers(num: usize) -> String {
+             let mut req = String::from("GET / HTTP/1.1\r\n");
+             for i in 0..num {
+                 req.push_str(&format!("key{i}: val{i}\r\n"));
+             }
+             req.push_str("\r\n");
+             req
+         }
+         fn gen_resp_with_headers(num: usize) -> String {
+             let mut req = String::from("HTTP/1.1 200 OK\r\n");
+             for i in 0..num {
+                 req.push_str(&format!("key{i}: val{i}\r\n"));
+             }
+             req.push_str("\r\n");
+             req
+         }
+         fn parse(max_headers: Option<usize>, gen_size: usize, should_success: bool) {
+             {
+                 // server side
+                 let mut bytes = BytesMut::from(gen_req_with_headers(gen_size).as_str());
+                 let result = Server::parse(
+                     &mut bytes,
+                     ParseContext {
+                         cached_headers: &mut None,
+                         req_method: &mut None,
+                         h1_parser_config: Default::default(),
+                         h1_max_headers: max_headers,
+-                        h1_header_read_timeout: None,
+-                        h1_header_read_timeout_fut: &mut None,
+-                        h1_header_read_timeout_running: &mut false,
+-                        timer: Time::Empty,
+                         preserve_header_case: false,
+                         #[cfg(feature = "ffi")]
+                         preserve_header_order: false,
+                         h09_responses: false,
+                         #[cfg(feature = "ffi")]
+                         on_informational: &mut None,
+                     },
+                 );
+                 if should_success {
+                     result.expect("parse ok").expect("parse complete");
+                 } else {
+                     result.expect_err("parse should err");
+                 }
+             }
+             {
+                 // client side
+                 let mut bytes = BytesMut::from(gen_resp_with_headers(gen_size).as_str());
+                 let result = Client::parse(
+                     &mut bytes,
+                     ParseContext {
+                         cached_headers: &mut None,
+                         req_method: &mut None,
+                         h1_parser_config: Default::default(),
+                         h1_max_headers: max_headers,
+-                        h1_header_read_timeout: None,
+-                        h1_header_read_timeout_fut: &mut None,
+-                        h1_header_read_timeout_running: &mut false,
+-                        timer: Time::Empty,
+                         preserve_header_case: false,
+                         #[cfg(feature = "ffi")]
+                         preserve_header_order: false,
+                         h09_responses: false,
+                         #[cfg(feature = "ffi")]
+                         on_informational: &mut None,
+                     },
+                 );
+                 if should_success {
+                     result.expect("parse ok").expect("parse complete");
+                 } else {
+                     result.expect_err("parse should err");
+                 }
+             }
+         }
+ 
+         // check generator
+         assert_eq!(
+             gen_req_with_headers(0),
+             String::from("GET / HTTP/1.1\r\n\r\n")
+         );
+         assert_eq!(
+             gen_req_with_headers(1),
+             String::from("GET / HTTP/1.1\r\nkey0: val0\r\n\r\n")
+         );
+         assert_eq!(
+             gen_req_with_headers(2),
+             String::from("GET / HTTP/1.1\r\nkey0: val0\r\nkey1: val1\r\n\r\n")
+         );
+         assert_eq!(
+             gen_req_with_headers(3),
+             String::from("GET / HTTP/1.1\r\nkey0: val0\r\nkey1: val1\r\nkey2: val2\r\n\r\n")
+         );
+ 
+         // default max_headers is 100, so
+         //
+         // - less than or equal to 100, accepted
+         //
+         parse(None, 0, true);
+         parse(None, 1, true);
+         parse(None, 50, true);
+         parse(None, 99, true);
+         parse(None, 100, true);
+         //
+         // - more than 100, rejected
+         //
+         parse(None, 101, false);
+         parse(None, 102, false);
+         parse(None, 200, false);
+ 
+         // max_headers is 0, parser will reject any headers
+         //
+         // - without header, accepted
+         //
+         parse(Some(0), 0, true);
+         //
+         // - with header(s), rejected
+         //
+         parse(Some(0), 1, false);
+         parse(Some(0), 100, false);
+ 
+         // max_headers is 200
+         //
+         // - less than or equal to 200, accepted
+         //
+         parse(Some(200), 0, true);
+         parse(Some(200), 1, true);
+         parse(Some(200), 100, true);
+         parse(Some(200), 200, true);
+         //
+         // - more than 200, rejected
+         //
+         parse(Some(200), 201, false);
+         parse(Some(200), 210, false);
+     }
+ 
+     #[test]
+     fn test_write_headers_orig_case_empty_value() {
+         let mut headers = HeaderMap::new();
+         let name = http::header::HeaderName::from_static("x-empty");
+         headers.insert(&name, "".parse().expect("parse empty"));
+         let mut orig_cases = HeaderCaseMap::default();
+         orig_cases.insert(name, Bytes::from_static(b"X-EmptY"));
+ 
+         let mut dst = Vec::new();
+         super::write_headers_original_case(&headers, &orig_cases, &mut dst, false);
+ 
+         assert_eq!(
+             dst, b"X-EmptY:\r\n",
+             "there should be no space between the colon and CRLF"
+         );
+     }
+ 
+     #[test]
+     fn test_write_headers_orig_case_multiple_entries() {
+         let mut headers = HeaderMap::new();
+         let name = http::header::HeaderName::from_static("x-empty");
+         headers.insert(&name, "a".parse().unwrap());
+         headers.append(&name, "b".parse().unwrap());
+ 
+         let mut orig_cases = HeaderCaseMap::default();
+         orig_cases.insert(name.clone(), Bytes::from_static(b"X-Empty"));
+         orig_cases.append(name, Bytes::from_static(b"X-EMPTY"));
+ 
+         let mut dst = Vec::new();
+         super::write_headers_original_case(&headers, &orig_cases, &mut dst, false);
+ 
+         assert_eq!(dst, b"X-Empty: a\r\nX-EMPTY: b\r\n");
+     }
+ 
+     #[cfg(feature = "nightly")]
+     use test::Bencher;
+ 
+     #[cfg(feature = "nightly")]
+     #[bench]
+     fn bench_parse_incoming(b: &mut Bencher) {
+         let mut raw = BytesMut::from(
+             &b"GET /super_long_uri/and_whatever?what_should_we_talk_about/\
+             I_wonder/Hard_to_write_in_an_uri_after_all/you_have_to_make\
+             _up_the_punctuation_yourself/how_fun_is_that?test=foo&test1=\
+             foo1&test2=foo2&test3=foo3&test4=foo4 HTTP/1.1\r\nHost: \
+             hyper.rs\r\nAccept: a lot of things\r\nAccept-Charset: \
+             utf8\r\nAccept-Encoding: *\r\nAccess-Control-Allow-\
+             Credentials: None\r\nAccess-Control-Allow-Origin: None\r\n\
+             Access-Control-Allow-Methods: None\r\nAccess-Control-Allow-\
+             Headers: None\r\nContent-Encoding: utf8\r\nContent-Security-\
+             Policy: None\r\nContent-Type: text/html\r\nOrigin: hyper\
+             \r\nSec-Websocket-Extensions: It looks super important!\r\n\
+             Sec-Websocket-Origin: hyper\r\nSec-Websocket-Version: 4.3\r\
+             \nStrict-Transport-Security: None\r\nUser-Agent: hyper\r\n\
+             X-Content-Duration: None\r\nX-Content-Security-Policy: None\
+             \r\nX-DNSPrefetch-Control: None\r\nX-Frame-Options: \
+             Something important obviously\r\nX-Requested-With: Nothing\
+             \r\n\r\n"[..],
+         );
+         let len = raw.len();
+         let mut headers = Some(HeaderMap::new());
+ 
+         b.bytes = len as u64;
+         b.iter(|| {
+             let mut msg = Server::parse(
+                 &mut raw,
+                 ParseContext {
+                     cached_headers: &mut headers,
+                     req_method: &mut None,
+                     h1_parser_config: Default::default(),
+                     h1_max_headers: None,
+-                    h1_header_read_timeout: None,
+-                    h1_header_read_timeout_fut: &mut None,
+-                    h1_header_read_timeout_running: &mut false,
+-                    timer: Time::Empty,
+                     preserve_header_case: false,
+                     #[cfg(feature = "ffi")]
+                     preserve_header_order: false,
+                     h09_responses: false,
+                     #[cfg(feature = "ffi")]
+                     on_informational: &mut None,
+                 },
+             )
+             .unwrap()
+             .unwrap();
+             ::test::black_box(&msg);
+ 
+             // Remove all references pointing into BytesMut.
+             msg.head.headers.clear();
+             headers = Some(msg.head.headers);
+             std::mem::take(&mut msg.head.subject);
+ 
+             restart(&mut raw, len);
+         });
+ 
+         fn restart(b: &mut BytesMut, len: usize) {
+             b.reserve(1);
+             unsafe {
+                 b.set_len(len);
+             }
+         }
+     }
+ 
+     #[cfg(feature = "nightly")]
+     #[bench]
+     fn bench_parse_short(b: &mut Bencher) {
+         let s = &b"GET / HTTP/1.1\r\nHost: localhost:8080\r\n\r\n"[..];
+         let mut raw = BytesMut::from(s);
+         let len = raw.len();
+         let mut headers = Some(HeaderMap::new());
+ 
+         b.bytes = len as u64;
+         b.iter(|| {
+             let mut msg = Server::parse(
+                 &mut raw,
+                 ParseContext {
+                     cached_headers: &mut headers,
+                     req_method: &mut None,
+                     h1_parser_config: Default::default(),
+                     h1_max_headers: None,
+-                    h1_header_read_timeout: None,
+-                    h1_header_read_timeout_fut: &mut None,
+-                    h1_header_read_timeout_running: &mut false,
+-                    timer: Time::Empty,
+                     preserve_header_case: false,
+                     #[cfg(feature = "ffi")]
+                     preserve_header_order: false,
+                     h09_responses: false,
+                     #[cfg(feature = "ffi")]
+                     on_informational: &mut None,
+                 },
+             )
+             .unwrap()
+             .unwrap();
+             ::test::black_box(&msg);
+             msg.head.headers.clear();
+             headers = Some(msg.head.headers);
+             restart(&mut raw, len);
+         });
+ 
+         fn restart(b: &mut BytesMut, len: usize) {
+             b.reserve(1);
+             unsafe {
+                 b.set_len(len);
+             }
+         }
+     }
+ 
+     #[cfg(feature = "nightly")]
+     #[bench]
+     fn bench_server_encode_headers_preset(b: &mut Bencher) {
+         use crate::proto::BodyLength;
+         use http::header::HeaderValue;
+ 
+         let len = 108;
+         b.bytes = len as u64;
+ 
+         let mut head = MessageHead::default();
+         let mut headers = HeaderMap::new();
+         headers.insert("content-length", HeaderValue::from_static("10"));
+         headers.insert("content-type", HeaderValue::from_static("application/json"));
+ 
+         b.iter(|| {
+             let mut vec = Vec::new();
+             head.headers = headers.clone();
+             Server::encode(
+                 Encode {
+                     head: &mut head,
+                     body: Some(BodyLength::Known(10)),
+                     keep_alive: true,
+                     req_method: &mut Some(Method::GET),
+                     title_case_headers: false,
+                     date_header: true,
+                 },
+                 &mut vec,
+             )
+             .unwrap();
+             assert_eq!(vec.len(), len);
+             ::test::black_box(vec);
+         })
+     }
+ 
+     #[cfg(feature = "nightly")]
+     #[bench]
+     fn bench_server_encode_no_headers(b: &mut Bencher) {
+         use crate::proto::BodyLength;
+ 
+         let len = 76;
+         b.bytes = len as u64;
+ 
+         let mut head = MessageHead::default();
+         let mut vec = Vec::with_capacity(128);
+ 
+         b.iter(|| {
+             Server::encode(
+                 Encode {
+                     head: &mut head,
+                     body: Some(BodyLength::Known(10)),
+                     keep_alive: true,
+                     req_method: &mut Some(Method::GET),
+                     title_case_headers: false,
+                     date_header: true,
+                 },
+                 &mut vec,
+diff --git a/tests/server.rs b/tests/server.rs
+index f3efbf3c..82bc8066 100644
+--- a/tests/server.rs
++++ b/tests/server.rs
+@@ -1431,160 +1431,181 @@ async fn returning_1xx_response_is_error() {
+         .serve_connection(
+             socket,
+             service_fn(|_| async move {
+                 Ok::<_, hyper::Error>(
+                     Response::builder()
+                         .status(StatusCode::CONTINUE)
+                         .body(Empty::<Bytes>::new())
+                         .unwrap(),
+                 )
+             }),
+         )
+         .await
+         .expect_err("1xx status code should error");
+ }
+ 
+ #[test]
+ fn header_name_too_long() {
+     let server = serve();
+ 
+     let mut req = connect(server.addr());
+     let mut write = Vec::with_capacity(1024 * 66);
+     write.extend_from_slice(b"GET / HTTP/1.1\r\n");
+     for _ in 0..(1024 * 65) {
+         write.push(b'x');
+     }
+     write.extend_from_slice(b": foo\r\n\r\n");
+     req.write_all(&write).unwrap();
+ 
+     let mut buf = [0; 1024];
+     let n = req.read(&mut buf).unwrap();
+     assert!(s(&buf[..n]).starts_with("HTTP/1.1 431 Request Header Fields Too Large\r\n"));
+ }
+ 
+ #[tokio::test]
+ async fn header_read_timeout_slow_writes() {
+     let (listener, addr) = setup_tcp_listener();
+ 
+     thread::spawn(move || {
+         let mut tcp = connect(&addr);
+         tcp.write_all(
+             b"\
+             GET / HTTP/1.1\r\n\
+         ",
+         )
+         .expect("write 1");
+         thread::sleep(Duration::from_secs(3));
+         tcp.write_all(
+             b"\
+             Something: 1\r\n\
+             \r\n\
+         ",
+         )
+         .expect("write 2");
+         thread::sleep(Duration::from_secs(6));
+         tcp.write_all(
+             b"\
+             Works: 0\r\n\
+         ",
+         )
+         .expect_err("write 3");
+     });
+ 
+     let (socket, _) = listener.accept().await.unwrap();
+     let socket = TokioIo::new(socket);
+     let conn = http1::Builder::new()
+         .timer(TokioTimer)
+         .header_read_timeout(Duration::from_secs(5))
+         .serve_connection(
+             socket,
+             service_fn(|_| {
+                 let res = Response::builder()
+                     .status(200)
+                     .body(Empty::<Bytes>::new())
+                     .unwrap();
+                 future::ready(Ok::<_, hyper::Error>(res))
+             }),
+         );
+     conn.without_shutdown().await.expect_err("header timeout");
+ }
+ 
++#[tokio::test]
++async fn header_read_timeout_starts_immediately() {
++    let (listener, addr) = setup_tcp_listener();
++
++    thread::spawn(move || {
++        let mut tcp = connect(&addr);
++        thread::sleep(Duration::from_secs(3));
++        let mut buf = [0u8; 256];
++        let n = tcp.read(&mut buf).expect("read 1");
++        assert_eq!(n, 0); //eof
++    });
++
++    let (socket, _) = listener.accept().await.unwrap();
++    let socket = TokioIo::new(socket);
++    let conn = http1::Builder::new()
++        .timer(TokioTimer)
++        .header_read_timeout(Duration::from_secs(2))
++        .serve_connection(socket, unreachable_service());
++    conn.await.expect_err("header timeout");
++}
++
+ #[tokio::test]
+ async fn header_read_timeout_slow_writes_multiple_requests() {
+     let (listener, addr) = setup_tcp_listener();
+ 
+     thread::spawn(move || {
+         let mut tcp = connect(&addr);
+ 
+         tcp.write_all(
+             b"\
+             GET / HTTP/1.1\r\n\
+         ",
+         )
+         .expect("write 1");
+         thread::sleep(Duration::from_secs(3));
+         tcp.write_all(
+             b"\
+             Something: 1\r\n\
+             \r\n\
+         ",
+         )
+         .expect("write 2");
+ 
+         thread::sleep(Duration::from_secs(3));
+ 
+         tcp.write_all(
+             b"\
+             GET / HTTP/1.1\r\n\
+         ",
+         )
+         .expect("write 3");
+         thread::sleep(Duration::from_secs(3));
+         tcp.write_all(
+             b"\
+             Something: 1\r\n\
+             \r\n\
+         ",
+         )
+         .expect("write 4");
+ 
+         thread::sleep(Duration::from_secs(6));
+ 
+         tcp.write_all(
+             b"\
+             GET / HTTP/1.1\r\n\
+             Something: 1\r\n\
+             \r\n\
+         ",
+         )
+         .expect("write 5");
+         thread::sleep(Duration::from_secs(6));
+         tcp.write_all(
+             b"\
+             Works: 0\r\n\
+         ",
+         )
+         .expect_err("write 6");
+     });
+ 
+     let (socket, _) = listener.accept().await.unwrap();
+     let socket = TokioIo::new(socket);
+     let conn = http1::Builder::new()
+         .timer(TokioTimer)
+         .header_read_timeout(Duration::from_secs(5))
+         .serve_connection(
+             socket,
+             service_fn(|_| {
+                 let res = Response::builder()
+                     .status(200)
+                     .body(Empty::<Bytes>::new())
+                     .unwrap();
+                 future::ready(Ok::<_, hyper::Error>(res))
+             }),
+         );
+     conn.without_shutdown().await.expect_err("header timeout");
+ }
+ 
+ #[tokio::test]
+ async fn upgrades() {
+     let (listener, addr) = setup_tcp_listener();
+     let (tx, rx) = oneshot::channel();

@@ -1,0 +1,141 @@
+{
+  "case_id": "BurntSushi-ripgrep-1065",
+  "refs": [
+    {
+      "detail": {
+        "body": "#### What version of ripgrep are you using?\r\n\r\n```\r\njack@happy:~/Downloads/ruby-2.5.1$ rg --version\r\nripgrep 0.10.0\r\n-SIMD -AVX (compiled)\r\n+SIMD +AVX (runtime)\r\n```\r\n\r\n#### How did you install ripgrep?\r\n\r\n`cargo install ripgrep`\r\n\r\n#### What operating system are you using ripgrep on?\r\n\r\nUbuntu 18.04.1\r\n\r\n```\r\njack@happy:~/Downloads/ruby-2.5.1$ uname -a\r\nLinux happy 4.15.0-33-generic #36-Ubuntu SMP Wed Aug 15 16:00:05 UTC 2018 x86_64 x86_64 x86_64 GNU/Linux\r\n```\r\n\r\n#### If this is a bug, what are the steps to reproduce the behavior?\r\n\r\nDownload Ruby source code and search in it's directory.\r\n\r\n```\r\njack@happy:/tmp$ curl --silent https://cache.ruby-lang.org/pub/ruby/2.5/ruby-2.5.1.tar.gz > ruby-2.5.1.tar.gz\r\njack@happy:/tmp$ tar xf ruby-2.5.1.tar.gz \r\njack@happy:/tmp$ cd ruby-2.5.1/\r\njack@happy:/tmp/ruby-2.5.1$ rg foobarbazquz\r\nthread '<unnamed>' panicked at 'index out of bounds: the len is 1 but the index is 1', /home/jack/.cargo/registry/src/github.com-1ecc6299db9ec823/encoding_rs-0.8.6/src/handles.rs:309:21\r\nnote: Run with `RUST_BACKTRACE=1` for a backtrace.\r\n^C\r\n```\r\n\r\nProcess then is hung.\r\n\r\n#### If this is a bug, what is the actual behavior?\r\n\r\nCommand: `rg --debug foobarbazquz`\r\n\r\nOutput: https://gist.github.com/jackc/06e3cd8ce8ae238e6762249564cc1a76\r\n\r\n#### If this is a bug, what is the expected behavior?\r\n\r\nNot panic.\r\n",
+        "closedAt": "2018-09-25T20:56:05Z",
+        "comments": [
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "Interesting! It looks like the panic is coming from inside `encoding_rs`, but it could still be ripgrep's fault. I'll need to dig into this and come up with a smaller reproduction. Thanks for reporting this!",
+            "createdAt": "2018-09-13T17:30:18Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDQyMTA4ODEyOQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/1052#issuecomment-421088129",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "A smaller reproduction of this bug:\r\n\r\n```\r\n$ rg ZZZZZ ruby-2.5.1/test/rexml/data/t63-2.svg\r\n```\r\n\r\nIt turns out that this svg file starts with a UTF-16LE BOM, but does not actually appear to be UTF-16. In any case, this trips over a corner case in the streaming transcoder that in turn causes a panic. The fault is either in my implementation of the streaming transcoder (by not upholding some precondition of the transcoder) or in the implementation of the encoding handling itself. Either way, I filed a bug to get to the bottom of it: https://github.com/hsivonen/encoding_rs/issues/34\r\n\r\nFor now, I [patched this via a work-around in the streaming transcoder](https://github.com/BurntSushi/encoding_rs_io/commit/8405b0f9aeacd35dfdb3f02a522454eb25ee3773), although it's not clear that the root cause has been fixed. PR #1065 brings in the workaround to ripgrep.\r\n\r\nThanks so much for reporting this!",
+            "createdAt": "2018-09-25T01:05:03Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDQyNDE3MzU0OQ==",
+            "includesCreatedEdit": true,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [
+              {
+                "content": "THUMBS_UP",
+                "users": {
+                  "totalCount": 2
+                }
+              }
+            ],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/1052#issuecomment-424173549",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2018-09-13T17:08:52Z",
+        "labels": [
+          {
+            "color": "fc2929",
+            "description": "A bug.",
+            "id": "MDU6TGFiZWwzMzk3MjE2Nzg=",
+            "name": "bug"
+          }
+        ],
+        "number": 1052,
+        "state": "CLOSED",
+        "title": "Panic when searching Ruby language interpreter source code",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/1052"
+      },
+      "target": {
+        "number": 1052,
+        "reason": "Ruby source checkout panic.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    },
+    {
+      "detail": {
+        "body": "#### What version of ripgrep are you using?\r\n\r\nripgrep 0.10.0\r\n-SIMD -AVX (compiled)\r\n+SIMD +AVX (runtime)\r\n\r\n\r\n#### Bug\r\n\r\nExample:\r\n\r\n`echo abc | rg --debug 'a(.*c)'`\r\n\r\n```\r\nDEBUG|grep_regex::literal|grep-regex/src/literal.rs:110: required literal found: \"ac\"\r\nDEBUG|globset|globset/src/lib.rs:429: built glob set; 0 literals, 0 basenames, 8 extensions, 0 prefixes, 0 suffixes, 0 required extensions, 0 regexes\r\n```\r\n\r\ndoesn't find any results. The following all work:\r\n\r\n`echo ac | rg 'a(.*c)'`\r\n\r\n`echo abc | rg 'a.*c'`\r\n\r\n`echo abc | ag 'a(.*c)'`\r\n\r\n`echo abc | grep 'a\\(.*c\\)'`",
+        "closedAt": "2018-09-25T20:56:06Z",
+        "comments": [
+          {
+            "author": {
+              "login": "lespea"
+            },
+            "authorAssociation": "NONE",
+            "body": "Interestingly enough this also fails: `echo abc | rg --debug 'a(?:.*c)'` but this works: `echo abc | rg --debug 'a(.*)c'`",
+            "createdAt": "2018-09-24T20:11:36Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDQyNDEwODQxOQ==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/1064#issuecomment-424108419",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "BurntSushi"
+            },
+            "authorAssociation": "OWNER",
+            "body": "Ug. This looks like a bug in ripgrep's inner literal extractor. It thinks `ac` is a literal that must appear in every match, but this is obviously wrong. The regex engine prefix/suffix detection is correct:\r\n\r\n```\r\n[andrew@Cheetah ~]$ regex-debug prefixes 'a(.*c)'\r\nCut(a)\r\n[andrew@Cheetah ~]$ regex-debug suffixes 'a(.*c)'\r\nCut(c)\r\n```\r\n\r\nI diagnosed this from the `--debug` output. Cutting out the irrelevant stuff, you can see the problem here:\r\n\r\n```\r\n[andrew@Cheetah ~]$ echo abc | rg 'a(.*c)' --debug\r\nDEBUG|grep_regex::literal|grep-regex/src/literal.rs:110: required literal found: \"ac\"\r\n[andrew@Cheetah ~]$ echo abc | rg 'a.*c' --debug\r\nDEBUG|grep_regex::literal|grep-regex/src/literal.rs:110: required literal found: \"a\"\r\n```\r\n\r\nI would have thought this was a regression since I touched this code as part of libripgrep work, but 0.9.0 exhibits the same bug.",
+            "createdAt": "2018-09-24T20:17:36Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDQyNDExMDM0Mg==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/1064#issuecomment-424110342",
+            "viewerDidAuthor": false
+          },
+          {
+            "author": {
+              "login": "phiresky"
+            },
+            "authorAssociation": "CONTRIBUTOR",
+            "body": "checking out ripgrep 0.0.1 (with `regex = \"0.1.75\"`) has the same bug",
+            "createdAt": "2018-09-24T20:19:02Z",
+            "id": "MDEyOklzc3VlQ29tbWVudDQyNDExMDgwMw==",
+            "includesCreatedEdit": false,
+            "isMinimized": false,
+            "minimizedReason": "",
+            "reactionGroups": [],
+            "url": "https://github.com/BurntSushi/ripgrep/issues/1064#issuecomment-424110803",
+            "viewerDidAuthor": false
+          }
+        ],
+        "createdAt": "2018-09-24T18:41:37Z",
+        "labels": [
+          {
+            "color": "fc2929",
+            "description": "A bug.",
+            "id": "MDU6TGFiZWwzMzk3MjE2Nzg=",
+            "name": "bug"
+          }
+        ],
+        "number": 1064,
+        "state": "CLOSED",
+        "title": "Obvious match missing from results when using group: a(.*c) does not match abc",
+        "url": "https://github.com/BurntSushi/ripgrep/issues/1064"
+      },
+      "target": {
+        "number": 1064,
+        "reason": "Missing match for regex pattern.",
+        "repo": "BurntSushi/ripgrep",
+        "type": "issue"
+      }
+    }
+  ]
+}

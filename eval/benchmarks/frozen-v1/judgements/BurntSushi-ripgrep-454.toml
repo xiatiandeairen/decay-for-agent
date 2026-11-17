@@ -1,0 +1,32 @@
+# Filled after reviewing fact-only decay output and semantic-filtered output.
+# Do not edit the frozen corpus to improve these scores.
+
+case_id = "BurntSushi-ripgrep-454"
+repo = "BurntSushi/ripgrep"
+pr = 454
+status = "complete"
+judge = "codex"
+judged_at = "2026-05-14"
+ground_truth_summary = "Only-matching match iteration repeated first match."
+
+[fact_only]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 2
+notes = "True risk is only-matching repeated first match. Fact output flags panic-like/coverage/prod-test in src/printer.rs but does not identify match iteration correctness."
+
+[semantic_filtered]
+top3_total = 0
+top3_useful = 0
+actionable = false
+missed_high_risk_count = 1
+weak_only_top_risk_count = 1
+notes = "Semantic focuses on panic-like runtime risk and partial coverage, still missing repeated-match output behavior."
+
+[comparison]
+semantic_improved_ranking = false
+semantic_reduced_noise = false
+semantic_introduced_noise = true
+notes = "Semantic may over-focus on panic-like evidence unrelated to the output-correctness risk."

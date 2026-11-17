@@ -1,0 +1,41 @@
+{
+  "case_id": "BurntSushi-ripgrep-454",
+  "manifest_hash": "e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029",
+  "model": "claude-opus-4-7",
+  "top_risks": [
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "let start_offset = start + column;\n                let m = re.find(&buf[start_offset..end]).unwrap();"
+      ],
+      "rank": 1,
+      "rationale": "only_matching path re-runs re.find on a slice starting at the previously-found column and unwraps. Assumes the regex still matches at offset 0 of the subslice; any divergence (e.g. empty/zero-width s\u2026",
+      "risk_signal": "assumption_boundary",
+      "subject": "src/printer.rs:write_match",
+      "value": "direct"
+    },
+    {
+      "confidence": "high",
+      "evidence_refs": [
+        "let column = re.find(&buf[start..end])\n                           .map(|m| m.start()).unwrap_or(0);",
+        "if self.column {\n            self.column_number(column as u64 + 1, b':');"
+      ],
+      "rank": 2,
+      "rationale": "column is now always computed (re.find runs even when --column is off), and the Option<u64> contract becomes a raw usize defaulted to 0 \u2014 losing the no-match-found distinction at the API boundary.",
+      "risk_signal": "state_transition",
+      "subject": "src/printer.rs:matched",
+      "value": "direct"
+    },
+    {
+      "confidence": "medium",
+      "evidence_refs": [
+        "cmd.arg(\"[0-9]\").arg(path)\n        .arg(\"--only-matching\")\n        .arg(\"--column\");"
+      ],
+      "rank": 3,
+      "rationale": "New tests cover single-char numeric matches but do not exercise overlapping/empty matches, multi-byte UTF-8 columns, or only-matching without --column where the re-find+unwrap path still runs.",
+      "risk_signal": "test_gap_for_risk_path",
+      "subject": "tests/tests.rs:regression_451_only_matching",
+      "value": "supporting"
+    }
+  ]
+}

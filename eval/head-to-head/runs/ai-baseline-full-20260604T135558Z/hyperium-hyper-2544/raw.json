@@ -1,0 +1,12 @@
+{
+  "case_id": "hyperium-hyper-2544",
+  "attempt_count": 1,
+  "attempts": [
+    {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "```json\n{\n  \"case_id\": \"hyperium-hyper-2544\",\n  \"model\": \"claude-opus-4-7\",\n  \"manifest_hash\": \"e92895c738cd0595ee9941836cd538573fe5d01aabc75b34612b7f23b8e37029\",\n  \"top_risks\": [\n    {\n      \"rank\": 1,\n      \"risk_signal\": \"error_propagation\",\n      \"subject\": \"src/proto/h1/role.rs:header_name!/maybe_panic!\",\n      \"evidence_refs\": [\n        \"Err(e) => maybe_panic!(e),\",\n        \"return Err(Parse::Internal)\"\n      ],\n      \"confidence\": \"high\",\n      \"value\": \"direct\",\n      \"rationale\": \"Previously an illegal header name from httparse panicked in both debug and release. Now release mode silently returns Err(Parse::Internal) via a macro-hidden early return, changing the error contract for parse callers.\"\n    },\n    {\n      \"rank\": 2,\n      \"risk_signal\": \"assumption_boundary\",\n      \"subject\": \"src/proto/h1/role.rs:header_value!\",\n      \"evidence_refs\": [\n        \"unsafe { HeaderValue::from_maybe_shared_unchecked($bytes) }\"\n      ],\n      \"confidence\": \"high\",\n      \"value\": \"direct\",\n      \"rationale\": \"Debug-only validation branch (from_maybe_shared with panic-on-Err) was removed; the unchecked unsafe path now runs in debug too, eliminating the safety net that previously caught httparse contract violations during testing.\"\n    },\n    {\n      \"rank\": 3,\n      \"risk_signal\": \"external_contract\",\n      \"subject\": \"src/error.rs:Parse::Internal\",\n      \"evidence_refs\": [\n        \"\\\"internal error inside Hyper and/or its dependencies, please report\\\"\",\n        \"matches!(self.inner.kind, Kind::Parse(_))\"\n      ],\n      \"confidence\": \"medium\",\n      \"value\": \"supporting\",\n      \"rationale\": \"A new Parse::Internal variant is folded into Kind::Parse, so Error::is_parse() now returns true for internal/bug errors as well as real HTTP parse failures, blurring the public is_parse semantics for downstream classification.\"\n    }\n  ]\n}\n```\n",
+      "stderr_tail": ""
+    }
+  ]
+}
